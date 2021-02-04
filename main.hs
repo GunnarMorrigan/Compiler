@@ -6,6 +6,9 @@ module Main where
 import Control.Applicative
 import Data.Char
 
+
+-- ======================================== SPL Grammar ========================================
+
 data Exp = ExpId Id Field
          | ExpInt Integer
          | ExpChar Char
@@ -38,8 +41,17 @@ data BasicType
 newtype Code = Code [(Char, Int, Int)]
   deriving (Show)
 
+-- ======================================== Parser Error ========================================
+
 data Error = Error Int Int String
   deriving (Show)
+
+instance Alternative (Either Error) where
+  empty = Left $ Error 0 0 ""
+  Left _ <|> e2 = e2
+  e1 <|> _ = e1
+
+-- ======================================== Parser ========================================
 
 newtype Parser x = Parser
   {run :: Code -> Either Error (x, Code)}
@@ -58,14 +70,12 @@ instance Applicative Parser where
       (out, input'') <- p2 input'
       Right (f out, input'')
 
-instance Alternative (Either Error) where
-  empty = Left $ Error 0 0 ""
-  Left _ <|> e2 = e2
-  e1 <|> _ = e1
-
 instance Alternative Parser where
   empty = Parser $ const empty
   (Parser p1) <|> (Parser p2) = Parser $ \input -> p1 input <|> p2 input
+
+
+-- ======================================== Helper functions ========================================
 
 stringToCode :: String -> Code
 stringToCode x = Code <$> concat $ zipWith lineToCode (lines x) [1 ..]
@@ -97,7 +107,6 @@ spanP f =
   let (token, rest) = span f input
   in Right (map (\(a,b,c) -> a ) token, Code rest)
 
-
 sepBy :: Parser a -> Parser b -> Parser [b]
 sepBy sep elem = (:) <$> elem <*> many (sep *> elem) <|> pure []
 
@@ -118,7 +127,6 @@ charLiteral = Parser f
     f (Code (x : xs)) =
       case x of
         (ch, line, col) -> Right (ch, Code xs)
-
 
 -- ======================================== BasicType ========================================
 
@@ -155,8 +163,6 @@ splType :: Parser SPLType
 splType = typeTuple <|> typeArray <|> TypeBasic <$> basicType
 
 -- ==========================================================================================
-
-
 
 main :: IO ()
 main = undefined
