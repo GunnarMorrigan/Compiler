@@ -9,6 +9,30 @@ import Data.Char
 
 -- ======================================== SPL Grammar ========================================
 
+data VarDecl = VarDeclVar String Exp
+             | VarDeclType SPLType String Exp
+
+data FunDecl = FunDeclFun String Fargs FunType [VarDecl] [Stmt]
+
+data FunType = P
+
+data FTypes = Undef
+
+data SPLType = TypeBasic BasicType
+          | TypeTuple (SPLType, SPLType)
+          | TypeArray [SPLType]
+          deriving (Show, Eq)
+          
+data BasicType
+  = BasicInt Integer
+  | BasicBool Bool
+  | BasicChar Char
+  deriving (Show, Eq)
+
+data Fargs = Hoi
+
+data Stmt = Statement
+
 data Exp = ExpId Id Field
          | ExpInt Integer
          | ExpChar Char
@@ -27,16 +51,7 @@ data Id = Doei
 data Field = Fjeld
 data FunCall = CallFun
 
-data SPLType = TypeBasic BasicType
-          | TypeTuple (SPLType, SPLType)
-          | TypeArray [SPLType]
-          deriving (Show, Eq)
-          
-data BasicType
-  = BasicInt Integer
-  | BasicBool Bool
-  | BasicChar Char
-  deriving (Show, Eq)
+
 
 newtype Code = Code [(Char, Int, Int)]
   deriving (Show)
