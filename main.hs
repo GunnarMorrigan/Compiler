@@ -29,7 +29,7 @@ data BasicType
   | BasicChar Char
   deriving (Show, Eq)
 
-data Fargs = Hoi
+data Fargs = Hallo
 
 data Stmt = Statement
 
