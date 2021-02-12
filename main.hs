@@ -32,9 +32,10 @@ data BasicType
 
 data Fargs = Hallo
 
-data Stmt = IfStmt (Exp, [Stmt]) [(Exp, [Stmt])]
-            | WhileStmt Exp Stmt
-
+data Stmt = StmtIf Exp [Stmt] (Maybe [Stmt])
+          | StmtWhile Exp [Stmt]
+          | StmtReturn (Maybe Exp)
+          deriving (Show, Eq)
 data Exp 
   = ExpId String Field
   | ExpInt Integer
@@ -120,8 +121,8 @@ charP char = Parser f
     f (Code x) =
       case x of
         (ch, line, col) : xs | ch == char -> Right (ch, Code xs)
-        (ch, line, col) : xs -> Left $ Error line col ("Expect " ++ [char] ++ " but found " ++ [ch])
-        _ -> Left $ Error 0 0 ("Unexpected EOF, expected: " ++ [char])
+        (ch, line, col) : xs -> Left $ Error line col ("expected " ++ [char] ++ " but found \'" ++ [ch]++"\'")
+        _ -> Left $ Error 0 0 ("Unexpected EOF, expected: \'" ++ [char]++"\'")
 
 
 stringP :: String -> Parser String
@@ -132,17 +133,35 @@ stringP s = Parser f
                 Left (Error line col error) -> Left $ Error line col ("Could not match with " ++ s)
                 x -> x
 
+
+spanStarP :: ((Char, Int, Int) -> Bool) -> Parser String
+spanStarP f =
+  Parser $ \(Code input) ->
+    let (token, rest) = span f input
+    in Right (map (\(a,b,c) -> a ) token, Code rest)
+
 spanP :: ((Char, Int, Int) -> Bool) -> Parser String
 spanP f =
-  Parser $ \(Code input) ->
-  let (token, rest) = span f input
-  in Right (map (\(a,b,c) -> a ) token, Code rest)
+  Parser $ \(Code input) -> 
+    case  span f input of
+      ([], (char,line,col):xs) -> Left $ Error line col "Could not parse any characters using given function"
+      (token, rest) -> Right (map (\(a,b,c) -> a ) token, Code rest)
+-- let (token, rest) = span f input
+-- in Right (map (\(a,b,c) -> a ) token, Code rest)
+
+satisfy :: ((Char, Int, Int) -> Bool) -> Parser Char
+satisfy f = Parser $ \case
+        Code ((ch,line,col) : xs) | f (ch,line,col) -> Right (ch, Code xs)
+        _ -> Left $ Error 0 0 "Could not match input with any char in a..z or A..Z"
 
 sepBy :: Parser a -> Parser b -> Parser [b]
 sepBy sep elem = (:) <$> elem <*> many (sep *> elem) <|> pure []
 
+sepByKeepSep :: Parser a -> Parser b -> Parser [b]
+sepByKeepSep sep elem = (:) <$> elem <*> many (sep *> elem) <|> pure []
+
 ws :: Parser String
-ws = spanP (\(a,b,c) -> isSpace a)
+ws = spanStarP (\(a,b,c) -> isSpace a)
 
 notEmpty :: Parser [a] -> Parser [a]
 notEmpty (Parser p) = 
@@ -160,46 +179,9 @@ charLiteral = Parser f
         (ch, line, col):xs -> Right (ch, Code xs)
         [] -> Left $ Error 0 0 "There was no input"
 
-isAlphaP :: Char -> Parser Char
-isAlphaP c = Parser f
-        where 
-          f (Code x) =
-            case x of
-              (ch, line, col) : xs | ch == c && isAlpha c -> Right (ch, Code xs)
-              (ch, line, col) : xs -> Left $ Error line col ("Expect " ++ [c] ++ " but found " ++ [ch])
-              _ -> Left $ Error 0 0 ("Unexpected EOF, expected: " ++ [c])
+idP :: Parser String
+idP = (:) <$> satisfy (\(c,line,col) -> isAlpha c) <*> spanP (\(c,line,col) -> isAlphaNum c || c == '_')
 
-ididid :: String -> Parser String
-ididid s = Parser f
-        where 
-          f x  =
-            case run (traverse isAlphaP s) x of 
-                Left (Error line col error) -> Left $ Error line col ("Oh noes" ++ s)
-                x -> x
-
-
-
--- idLiteral :: Parser String
--- idLiteral = Parser f
---   where 
---     f (Code (x:xs)) = 
---       case x of (ch, line, col) -> Left (ch, Code xs)
-
--- idLiteral :: Parser String
--- idLiteral = \input -> 
---   case run (spanP (\(c,line,col) -> isAlpha c)) input of
---     Right (x, y) -> Left $ Error 0 0 "Can't match with an ID"
-    -- Right ([], ((Code (c, line, col)):ys)) -> Left $ Error line col "Can't match with an ID"
-
-
-    -- Right ((x:xs), code) -> 
-    --   let Right (s, code') = run (spanP (\(c,line,col) -> isAlphaNum c || c == '_')) code
-    --   in Right ((x:xs)++s, code')
-  
--- let Right s (Code x:xs) = run (spanP (\(c,line,col) -> isAlpha c) input 
--- in 
--- <*> spanP (\(c,line,col) -> isAlphaNum c || c == '_')
--- idLiteral = ((++) . concat <$> some(spanP (\(c,line,col) -> isAlpha c))) <*> (concat <$> many(spanP (\(c,line,col) -> isAlphaNum c)))
 
 -- ======================================== SPLType ========================================
 
@@ -267,13 +249,29 @@ parserExp = expChar <|> expInt <|> expBool <|> expArray <|> expTuple <|> expOp1 
 --data Stmt = IfStmt (Exp, Stmt) [(Exp, Stmt)]
             -- | WhileStmt Exp Stmt
 
--- ifStmt :: Parser Stmt
--- ifStmt = IfStmt <$> (stringP "if" *> ws *> charP '(' *> ws *> parserExp <* ws <* charP ')' <*> 
---                     charP '{' *> ws *> stmts <* ws <* charP '}') <*> []
---                     where stmts = sepBy (ws *> charP ';' <* ws) stmt
 
--- stmt :: Parser Stmt
--- stmt = ifStmt
+  
+  -- StmtIf <$> (stringP "if" *> ws *> charP '(' *> ws *> parserExp <* ws <* charP ')' <* ws <* charP '{') <*>
+  --                   (many (ws *> stmt) <* ws <* charP '}') <*>
+  --                   (many ((stringP "else" *> ws *> charP '(' *> ws *> parserExp <* ws <* charP ')' <* ws <* charP '{') <*> many (ws *> stmt) <* ws <* charP '}' <* charP '}'))
+-- ifStmt = IfStmt <$> (stringP "if" $> ws *> charP '(' *> ws *> parserExp <* ws <* charP ')' <*> 
+--                     charP '{' *> ws *> stmts <* ws <* charP '}') 
+--                     where stmts = sepBy (ws *> charP ';' <* ws) stmt
+-- stringP "while" *> ws *> parserExp <* charP '{'
+
+stmtWhile :: Parser Stmt
+stmtWhile = StmtWhile <$> (stringP "while" *> ws *> charP '(' *> ws *>  parserExp <* ws <* charP ')' <* ws <* charP  '{') <*> 
+                          many (ws *> stmt) <* ws <* charP '}'
+
+stmtReturn :: Parser Stmt
+stmtReturn =  StmtReturn <$>  (Nothing <$ (stringP "return" *> ws <* charP ';'))
+                              
+-- expBool :: Parser Exp
+-- expBool = (ExpBool True <$ stringP "True") <|>
+--             (ExpBool False <$ stringP "False")
+
+stmt :: Parser Stmt
+stmt = stmtWhile <|> stmtReturn
 
 -- ======================================== Op ==============================================
 op1 :: Parser Op1
