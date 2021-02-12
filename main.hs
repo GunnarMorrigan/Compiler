@@ -2,73 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 
 module Main where
-
-import Control.Applicative
-import Data.Char
-
-
--- ======================================== SPL Grammar ========================================
-
-data VarDecl = VarDeclVar String Exp
-             | VarDeclType SPLType String Exp
-
-data FunDecl = FunDeclFun String Fargs FunType [VarDecl] [Stmt]
-
-data FunType = P
-
-data FTypes = Undef
-
-data SPLType 
-  = TypeBasic BasicType
-  | TupleType (SPLType, SPLType)
-  | ArrayType SPLType
-  deriving (Show, Eq)
-          
-data BasicType
-  = BasicInt
-  | BasicBool
-  | BasicChar
-  deriving (Show, Eq)
-
-data Fargs = Hallo
-
-data Stmt = StmtIf Exp [Stmt] (Maybe [Stmt])
-          | StmtWhile Exp [Stmt]
-          | StmtReturn (Maybe Exp)
-          deriving (Show, Eq)
-data Exp 
-  = ExpId String Field
-  | ExpInt Integer
-  | ExpChar Char
-  | ExpBool Bool
-  | ExpBracket Exp
-  | ExpOp2 Exp Op2 Exp
-  | ExpOp1 Op1 Exp
-  | ExpFunCall FunCall
-  | ExpArray [Exp]
-  | ExpTuple (Exp, Exp)
-  deriving (Show, Eq)
-
-         -- | ExpArray 
-         -- | ExpTuple (Exp, Exp)
-        
--- TODO: Types kloppen niet helemaal meer met beschrijving, zorg dat het in EXp komt te staan
-data Op1 = Not
-         | Neg
-        deriving (Show, Eq)
-        
-data Op2 = Plus|Min|Mult|Div|Mod|Eq|Le|Ge|Leq|Geq|Neq|And|Or|Con
-         deriving (Show, Eq)
-
--- data Id = Doei
---         deriving (Show, Eq)
-
-data Field = Fjeld
-            deriving (Show, Eq)
-
-data FunCall = CallFun
-        deriving (Show, Eq)
-
+import Grammar
 
 newtype Code = Code [(Char, Int, Int)]
   deriving (Show, Eq)
@@ -231,7 +165,7 @@ expTuple = ExpTuple <$> (charP '(' *> ws *> elems <* ws <* charP ')')
 --We assumed that array elements in SPL are seperated by a comma
 expArray :: Parser Exp
 expArray = ExpArray <$> (charP '[' *> ws *> elems <* ws <* charP ']')
-  where elems = sepBy (ws *> charP ',' <* ws ) parserExp
+  where elems = many (ws *> parserExp <* charP ',' <* ws )
 
 expOp1 :: Parser Exp
 expOp1 = ExpOp1 <$> op1 <*> parserExp
@@ -257,41 +191,31 @@ parserExp = expChar <|> expInt <|> expBool <|> expArray <|> expTuple <|> expOp1 
 -- ifStmt = IfStmt <$> (stringP "if" $> ws *> charP '(' *> ws *> parserExp <* ws <* charP ')' <*> 
 --                     charP '{' *> ws *> stmts <* ws <* charP '}') 
 --                     where stmts = sepBy (ws *> charP ';' <* ws) stmt
--- stringP "while" *> ws *> parserExp <* charP '{'
+
 
 stmtWhile :: Parser Stmt
-stmtWhile = StmtWhile <$> (stringP "while" *> ws *> charP '(' *> ws *>  parserExp <* ws <* charP ')' <* ws <* charP  '{') <*> 
+stmtWhile = StmtWhile <$> (stringP "while" *> ws *> charP '(' *> ws *> parserExp <* ws <* charP ')' <* ws <* charP  '{') <*> 
                           many (ws *> stmt) <* ws <* charP '}'
 
 stmtReturn :: Parser Stmt
-stmtReturn =  StmtReturn <$>  (Nothing <$ (stringP "return" *> ws <* charP ';'))
-                              
+stmtReturn =  StmtReturn <$>((Nothing <$ (stringP "return" *> ws <* charP ';')) <|>  
+                            (Just <$> (stringP "return" *> ws *> parserExp <* ws <* charP ';')))
+                            
 -- expBool :: Parser Exp
 -- expBool = (ExpBool True <$ stringP "True") <|>
 --             (ExpBool False <$ stringP "False")
 
 stmt :: Parser Stmt
-stmt = stmtWhile <|> stmtReturn
+stmt =  stmtWhile <|> stmtReturn 
 
 -- ======================================== Op ==============================================
-op1 :: Parser Op1
 op1 = (Not <$ charP '!') <|> (Neg <$ charP '-')
-
-op2 :: Parser Op2
-op2 = (Plus <$ charP '+') <|>
-      (Min <$ charP '-') <|>
-      (Mult <$ charP '*') <|>
-      (Div <$ charP '/') <|>
-      (Mod <$ charP '%') <|>
-      (Eq <$ stringP "==") <|>
-      (Le <$ charP '<') <|>
-      (Ge <$ charP '>') <|>
-      (Leq <$ stringP "<=") <|>
-      (Geq <$ stringP ">=") <|>
-      (Neq <$ stringP "!=") <|>
-      (And <$ stringP "&&") <|>
-      (Or <$ stringP "||") <|>
-      (Con <$ charP ':')
+opPre3 = (Div <$ charP '/') <|> (Mult <$ charP '*') <|> (Mod <$ charP '%')
+opPre4 = (Plus <$ charP '+') <|> (Min <$ charP '-')
+opPre6 = (Le <$ charP '<') <|> (Ge <$ charP '>') <|> (Leq <$ stringP "<=") <|> (Geq <$ stringP ">=")<|> (Eq <$ stringP "==") <|> (Neq <$ stringP "!=")
+opPre11 = And <$ stringP "&&"
+opPre12 = Or <$ stringP "||"
+opCon = Con <$ charP ':'
 -- ==========================================================================================
   
 
