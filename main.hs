@@ -155,9 +155,28 @@ notEmpty (Parser p) =
 charLiteral :: Parser Char
 charLiteral = Parser f
   where
-    f (Code (x : xs)) =
+    f (Code x) =
       case x of
-        (ch, line, col) -> Right (ch, Code xs)
+        (ch, line, col):xs -> Right (ch, Code xs)
+        [] -> Left $ Error 0 0 "There was no input"
+
+isAlphaP :: Char -> Parser Char
+isAlphaP c = Parser f
+        where 
+          f (Code x) =
+            case x of
+              (ch, line, col) : xs | ch == c && isAlpha c -> Right (ch, Code xs)
+              (ch, line, col) : xs -> Left $ Error line col ("Expect " ++ [c] ++ " but found " ++ [ch])
+              _ -> Left $ Error 0 0 ("Unexpected EOF, expected: " ++ [c])
+
+ididid :: String -> Parser String
+ididid s = Parser f
+        where 
+          f x  =
+            case run (traverse isAlphaP s) x of 
+                Left (Error line col error) -> Left $ Error line col ("Oh noes" ++ s)
+                x -> x
+
 
 
 -- idLiteral :: Parser String
@@ -169,8 +188,8 @@ charLiteral = Parser f
 -- idLiteral :: Parser String
 -- idLiteral = \input -> 
 --   case run (spanP (\(c,line,col) -> isAlpha c)) input of
---     Right (x, y) -> Error 0 0 "Can't match with an ID"
-    -- Right ([], ((Code (c, line, col)):ys)) -> Error line col "Can't match with an ID"
+--     Right (x, y) -> Left $ Error 0 0 "Can't match with an ID"
+    -- Right ([], ((Code (c, line, col)):ys)) -> Left $ Error line col "Can't match with an ID"
 
 
     -- Right ((x:xs), code) -> 
