@@ -2,7 +2,13 @@
 {-# LANGUAGE LambdaCase #-}
 
 module Main where
+
+
+import Control.Applicative
+import Data.Char
+
 import Grammar
+
 
 newtype Code = Code [(Char, Int, Int)]
   deriving (Show, Eq)
