@@ -1,17 +1,33 @@
+{-# LANGUAGE FlexibleInstances #-}
+module Lexer where
+
 import Control.Applicative
 import Data.Char
+
+
+data Error = Error Int Int String
+  deriving (Eq)
+  
+instance Show Error where
+       show (Error line col message) = message ++ ", on line: " ++show line ++ " and character: " ++ show col 
+
+instance Alternative (Either Error) where
+  empty = Left $ Error 0 0 ""
+  Left _ <|> e2 = e2
+  e1 <|> _ = e1
+
 
 newtype Code = Code [(Char, Int, Int)]
   deriving (Show, Eq)
 
 data Token
-  = VarToken| IntToken Int| BoolToken Bool| CharToken Char
+  = VarToken| IntToken Integer| BoolToken Bool| CharToken Char
   | TypeIntToken| TypeBoolToken| TypeCharToken
   | SemiColToken| CommaToken| IsToken
   | FunTypeToken| ArrowToken| VoidToken| ReturnToken
   | EmptyListToken| BrackOpenToken| BrackCloseToken| CurlyBrackOpenToken| CurlyBrackCloseToken| SquareBrackOpenToken| SquareBrackCloseToken
   | HdToken| TlToken| FstToken| SndToken| IsEmptyToken
-  | PlusToken | MinToken | MultToken | DivToken  | ModToken 
+  | PlusToken| MinToken| MultToken| DivToken| ModToken 
   | EqToken| LeToken | GeToken | LeqToken | GeqToken| NeqToken| AndToken| OrToken| ConstToken| NotToken
   | IdToken String
   | IfToken| ElseToken| WhileToken
@@ -22,10 +38,10 @@ stringToCode x = Code <$> concat $ zipWith (\s line -> zip3 s (repeat line) [1 .
 alphaCheck :: [Char] -> Bool
 alphaCheck xs = null xs || not (isAlphaNum (head xs))
 
-runTokenise :: [Char] -> Either String [(Token, Int, Int)]
+runTokenise :: [Char] -> Either Error [(Token, Int, Int)]
 runTokenise x = tokenise x 0 0
 
-tokenise :: [Char] -> Int -> Int -> Either String [(Token, Int, Int)]
+tokenise :: [Char] -> Int -> Int -> Either Error [(Token, Int, Int)]
 tokenise ('/' : '*' : xs) line col = gulp xs line col
   where
     gulp ('*' : '/' : rest) line col = tokenise rest line (col + 2)
@@ -83,8 +99,8 @@ tokenise (c : xs) line col
   | isSpace c = tokenise xs line col
   | isDigit c = spanToken isDigit line col (IntToken . read) (c : xs)
   | isAlpha c = spanToken (\c -> isAlphaNum c || c == '_') line col IdToken (c : xs)
-  | otherwise = Left $ "Unrecognized character: " ++ show c ++ ", at line: " ++ show line ++ ", col: " ++ show col
+  | otherwise = Left $ Error line col ("Unrecognized character: " ++ show c)
 tokenise [] line col = Right []
 
-spanToken :: (Char -> Bool) -> Int -> Int -> ([Char] -> Token) -> [Char] -> Either String [(Token, Int, Int)]
+spanToken :: (Char -> Bool) -> Int -> Int -> ([Char] -> Token) -> [Char] -> Either Error [(Token, Int, Int)]
 spanToken p line col t = (\(ds, rest) -> ((t ds, line, col) :) <$> tokenise rest line (col + length ds)) . span p
