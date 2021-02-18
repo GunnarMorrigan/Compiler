@@ -7,31 +7,43 @@ import Data.Char
 data VarDecl = VarDeclVar String Exp
              | VarDeclType SPLType String Exp
 
-data FunDecl = FunDeclFun String Fargs FunType [VarDecl] [Stmt]
+-- ==== FunDecl ====
+data FunDecl = FunDeclFun String FArgs FunType [VarDecl] [Stmt]
 
-data FunType = P
+-- ==== RetType ====
+-- Nothing is 'Void'
+newtype RetType = Maybe SPLType
 
-data FTypes = Undef
+-- ==== FunType ====
+data FunType = FunType FTypes RetType
 
+-- ==== FTypes ====
+newtype FTypes = FTypes [SPLType]
+
+-- ==== Type ====
 data SPLType 
   = TypeBasic BasicType
   | TupleType (SPLType, SPLType)
   | ArrayType SPLType
   deriving (Show, Eq)
-          
+
+-- ==== BasicType ====
 data BasicType
   = BasicInt
   | BasicBool
   | BasicChar
   deriving (Show, Eq)
 
-data Fargs = Hallo
+-- ==== FArgs ====
+newtype FArgs = FArgs [String]
 
+-- ==== Stmt ====
 data Stmt = StmtIf Exp [Stmt] (Maybe [Stmt])
           | StmtWhile Exp [Stmt]
           | StmtReturn (Maybe Exp)
           deriving (Show, Eq)
 
+-- ==== Exp ====
 data HigherExp
     = ExpOp1 Op1 HigherExp
     | ExpOr OrExp 
@@ -78,22 +90,27 @@ data Exp
   | ExpTuple (Exp, Exp)
   deriving (Show, Eq)
 
-data OpCon = Con deriving (Show, Eq)
-data Op1 = Neg | Not deriving (Show, Eq)
+-- === Field ===
+data Field =  Field Field String
+              | ExpField Exp
+            deriving (Show, Eq)
+            
+-- === FunCall ===
+data FunCall = FunCall String ActArgs
+        deriving (Show, Eq)
+
+-- === ActArgs ===
+newtype ActArgs = Actargs [HigherExp]
+  deriving (Show, Eq)
 
 -- ==== Op2 ====
 data OpPre3 = Mult|Div|Mod deriving (Show, Eq)
 data OpPre4 = Plus|Min deriving (Show, Eq)
 data OpComp = Le|Ge|Leq|Geq|Eq|Neq deriving (Show, Eq)
-
+data OpCon = Con deriving (Show, Eq)
 -- Not needed
 -- data OpPre11 = And deriving (Show, Eq)
 -- data OpPre12 = Or deriving (Show, Eq)
 
--- ========
-
-data Field = Fjeld
-            deriving (Show, Eq)
-
-data FunCall = CallFun
-        deriving (Show, Eq)
+-- ==== Op1 ====
+data Op1 = Neg | Not deriving (Show, Eq)
