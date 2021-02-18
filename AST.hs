@@ -1,7 +1,9 @@
-data VarDecl = VarDeclVar String Exp
-             | VarDeclType SPLType String Exp
+module AST where
 
-data FunDecl = FunDeclFun String FArgs FunType [VarDecl] [Stmt]
+data VarDecl = VarDeclVar ID Exp
+             | VarDeclType SPLType ID Exp
+
+data FunDecl = FunDeclFun ID FArgs FunType [VarDecl] [Stmt]
 
 data RetType = Void | RetSplType SPLType
 
@@ -11,7 +13,7 @@ data SPLType
   = TypeBasic BasicType
   | TupleType (SPLType, SPLType)
   | ArrayType SPLType
-  | IdType String
+  | IdType ID
   deriving (Show, Eq)
           
 data BasicType
@@ -24,13 +26,13 @@ newtype FArgs = FArgs [String]
 
 data Stmt = StmtIf Exp [Stmt] (Maybe [Stmt])
           | StmtWhile Exp [Stmt]
-          | StmtDeclareVar String Field Exp
+          | StmtDeclareVar ID Field Exp
           | StmtFuncCall FunCall
           | StmtReturn (Maybe Exp)
           deriving (Show, Eq)
 
 data Exp 
-  = ExpId String Field
+  = ExpId ID Field
   | ExpInt Integer
   | ExpChar Char
   | ExpBool Bool
@@ -38,17 +40,23 @@ data Exp
   | ExpOp2 Exp Op2 Exp
   | ExpOp1 Op1 Exp
   | ExpFunCall FunCall
-  | ExpArray [Exp]
+  | ExpEmptyList
+  | ExpList [Exp]
   | ExpTuple (Exp, Exp)
   deriving (Show, Eq)
 
-data Field 
-    = Field Field [String]
-    | FieldId String
+newtype Field 
+  = Field [StandardFunctions]
+  deriving (Show, Eq)
+
+data StandardFunctions
+    = Head | Tail | First | Second | IsEmpty | Print 
     deriving (Show, Eq)
 
+type ID = String 
+
 data FunCall 
-    = FuncCall String ActArgs
+    = FunCall String ActArgs
     deriving (Show, Eq)
 
 newtype ActArgs 

@@ -30,7 +30,7 @@ satisfy f = Parser $ \input->case input of
     _              -> []
 
 symbol :: Eq s => s -> Parser s s
-symbol s = satisfy (==s)
+symbol s = satisfy (== s)
 {-|
 infixl 3 <|>
 (<|>) :: Parser s a -> Parser s a -> Parser s a
@@ -106,6 +106,7 @@ data Expr
     deriving (Show)
 
 pExpr  = pChainl (op '+' <|> op '-') pFact
+pFact :: Parser Char Expr
 pFact  = pChainl (op '*' <|> op '/') pPow
 pPow   =   BinOp <$> pBasic <*> symbol '^' <*> pExpr
        <|> pBasic
