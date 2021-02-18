@@ -103,7 +103,7 @@ data Expr
     = BinOp Expr Char Expr
     | Val Int
     | Id String
---    deriving (Show)
+    deriving (Show)
 
 pExpr  = pChainl (op '+' <|> op '-') pFact
 pFact  = pChainl (op '*' <|> op '/') pPow
@@ -119,9 +119,9 @@ op c = (\c x y->BinOp x c y) <$> symbol c
 pChainl :: Parser s (a -> a -> a) -> Parser s a -> Parser s a
 pChainl op p = foldl (&) <$> p <*> many (flip <$> op <*> p)
 
-instance Show Expr where
-    show (Id s) = s
-    show (Val i) = show i
-    show (BinOp l o r) = ('(':show l) ++ (o:show r) ++ ")"
+-- instance Show Expr where
+--     show (Id s) = s
+--     show (Val i) = show i
+--     show (BinOp l o r) = ('(':show l) ++ (o:show r) ++ ")"
 
 main = print $ runParser ((+1) <$> top) [1 :: Int]
