@@ -115,7 +115,7 @@ pBasic =   parens pExpr
        <|> Id <$> some pAlpha
 
 op :: Char -> Parser Char (Expr -> Expr -> Expr)
-op c = (\c x y->BinOp x c y) <$> symbol c
+op c = flip BinOp <$> symbol c
 
 pChainl :: Parser s (a -> a -> a) -> Parser s a -> Parser s a
 pChainl op p = foldl (&) <$> p <*> many (flip <$> op <*> p)
