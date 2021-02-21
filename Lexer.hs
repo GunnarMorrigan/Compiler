@@ -1,6 +1,7 @@
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE FlexibleInstances #-}
 module Lexer where
-
+import Data.List
 import Control.Applicative
 import Data.Char
 
@@ -26,12 +27,12 @@ newtype Code = Code [(Char, Int, Int)]
   deriving (Show, Eq)
 
 data Token
-  = VarToken| IntToken Integer| BoolToken Bool| CharToken Char
+  = VarToken | IntToken Integer | BoolToken Bool| CharToken Char
   | TypeIntToken| TypeBoolToken| TypeCharToken
   | SemiColToken| CommaToken| IsToken
   | FunTypeToken| ArrowToken| VoidToken| ReturnToken
   | EmptyListToken| BrackOToken| BrackCToken| CBrackOToken| CBrackCToken| SBrackOToken| SBrackCToken
-  | HdToken| TlToken| FstToken| SndToken| PrintToken | IsEmptyToken
+  | HdToken| TlToken| FstToken| SndToken| IsEmptyToken
   | PlusToken| MinToken| MultToken| DivToken| ModToken 
   | EqToken| LeToken | GeToken | LeqToken | GeqToken| NeqToken| AndToken| OrToken| ConstToken| NotToken
   | IdToken String
@@ -89,10 +90,15 @@ stringToCode x = Code <$> concat $ zipWith (\s line -> zip3 s (repeat line) [1 .
 alphaCheck :: [Char] -> Bool
 alphaCheck xs = null xs || not (isAlphaNum (head xs))
 
-runTokenise :: [Char] -> Either Error [(Token, Int, Int)]
+acTokens = [VarToken, ReturnToken, VoidToken, BoolToken True, BoolToken False, TypeBoolToken, TypeIntToken, TypeCharToken, IfToken, ElseToken, WhileToken, 
+            HdToken, TlToken, FstToken, SndToken, IsEmptyToken]
+tokens = [EmptyListToken, BrackOToken,BrackCToken,CBrackOToken,CBrackCToken,SBrackOToken,SBrackCToken,FunTypeToken,ArrowToken,SemiColToken,EqToken,LeqToken,GeqToken,
+          NotToken,AndToken,OrToken,IsToken,PlusToken,MinToken,MultToken,DivToken,ModToken,LeToken,GeToken,ConstToken,NotToken,CommaToken]
+
+runTokenise :: String -> Either Error [(Token, Int, Int)]
 runTokenise x = tokenise x 0 0
 
-tokenise :: [Char] -> Int -> Int -> Either Error [(Token, Int, Int)]
+tokenise:: String -> Int -> Int -> Either Error [(Token, Int, Int)]
 tokenise ('/' : '*' : xs) line col = gulp xs line col
   where
     gulp ('*' : '/' : rest) line col = tokenise rest line (col + 2)
@@ -100,61 +106,25 @@ tokenise ('/' : '*' : xs) line col = gulp xs line col
     gulp [] line col = Right []
 tokenise ('/' : '/' : xs) line col = tokenise (dropWhile (/= '\n') xs) (line + 1) 0
 tokenise (' ' : xs) line col = tokenise xs line (col + 1)
-tokenise ('[' : ']' : xs) line col = ((EmptyListToken, line, col) :) <$> tokenise xs line (col + 6)
-tokenise ('\t' : xs) line col = tokenise xs line (col + 1)
+tokenise ('\t' : xs) line col = tokenise xs line (col + 2)
 tokenise ('\n' : xs) line col = tokenise xs (line + 1) 0
-tokenise ('(' : xs) line col = ((BrackOToken, line, col) :) <$> tokenise xs line (col + 1)
-tokenise (')' : xs) line col = ((BrackCToken, line, col) :) <$> tokenise xs line (col + 1)
-tokenise ('{' : xs) line col = ((CBrackOToken, line, col) :) <$> tokenise xs line (col + 1)
-tokenise ('}' : xs) line col = ((CBrackCToken, line, col) :) <$> tokenise xs line (col + 1)
-tokenise ('[' : xs) line col = ((SBrackOToken, line, col) :) <$> tokenise xs line (col + 1)
-tokenise (']' : xs) line col = ((SBrackCToken, line, col) :) <$> tokenise xs line (col + 1)
-tokenise (':' : ':' : xs) line col = ((FunTypeToken, line, col) :) <$> tokenise xs line (col + 2)
-tokenise ('-' : '>' : xs) line col = ((ArrowToken, line, col) :) <$> tokenise xs line (col + 2)
-tokenise (';' : xs) line col = ((SemiColToken, line, col) :) <$> tokenise xs line (col + 1)
-
-tokenise ('v': 'a': 'r':xs) line col | alphaCheck xs = ((VarToken, line, col) :) <$> tokenise xs line (col + 3)
-tokenise ('r' : 'e' : 't' : 'u' : 'r' : 'n' : xs) line col | alphaCheck xs = ((ReturnToken, line, col) :) <$> tokenise xs line (col + 6)
-tokenise ('V' : 'o' : 'i' : 'd' : xs) line col | alphaCheck xs = ((VoidToken, line, col) :) <$> tokenise xs line (col + 4)
-tokenise ('T' : 'r' : 'u' : 'e' : xs) line col | alphaCheck xs = ((BoolToken True, line, col) :) <$> tokenise xs line (col + 4)
-tokenise ('F' : 'a' : 'l' : 's' : 'e' : xs) line col | alphaCheck xs = ((BoolToken False, line, col) :) <$> tokenise xs line (col + 4)
-tokenise ('I' : 'n' : 't' : xs) line col | alphaCheck xs = ((TypeIntToken, line, col) :) <$> tokenise xs line (col + 3)
-tokenise ('B' : 'o' : 'o' : 'l' : xs) line col | alphaCheck xs = ((TypeBoolToken, line, col) :) <$> tokenise xs line (col + 4)
-tokenise ('C' : 'h' : 'a' : 'r' : xs) line col | alphaCheck xs = ((TypeCharToken, line, col) :) <$> tokenise xs line (col + 4)
-tokenise ('i' : 'f' : xs) line col | alphaCheck xs = ((IfToken, line, col) :) <$> tokenise xs line (col + 2)
-tokenise ('e' : 'l' : 's' : 'e' : xs) line col | alphaCheck xs = ((ElseToken, line, col) :) <$> tokenise xs line (col + 4)
-tokenise ('w' : 'h' : 'i' : 'l' : 'e' : xs) line col | alphaCheck xs = ((WhileToken, line, col) :) <$> tokenise xs line (col + 5)
-tokenise ('.' : 'h' : 'd' : xs) line col | alphaCheck xs = ((HdToken, line, col) :) <$> tokenise xs line (col + 3)
-tokenise ('.' : 't' : 'l' : xs) line col | alphaCheck xs = ((TlToken, line, col) :) <$> tokenise xs line (col + 3)
-tokenise ('.' : 'f' : 's' : 't' : xs) line col | alphaCheck xs = ((FstToken, line, col) :) <$> tokenise xs line (col + 4)
-tokenise ('.' : 's' : 'n' : 'd' : xs) line col | alphaCheck xs = ((SndToken, line, col) :) <$> tokenise xs line (col + 4)
-tokenise ('.' : 'i' : 's' : 'E' : 'm' : 'p' : 't' : 'y' : xs) line col | alphaCheck xs = ((IsEmptyToken, line, col) :) <$> tokenise xs line (col + 8)
--- tokenise ('.':xs) line col = ((DotToken,line,col):) <$> tokenise xs line (col + 1)
-
-tokenise ('=' : '=' : xs) line col = ((EqToken, line, col) :) <$> tokenise xs line (col + 2)
-tokenise ('<' : '=' : xs) line col = ((LeqToken, line, col) :) <$> tokenise xs line (col + 2)
-tokenise ('>' : '=' : xs) line col = ((GeqToken, line, col) :) <$> tokenise xs line (col + 2)
-tokenise ('!' : '=' : xs) line col = ((NotToken, line, col) :) <$> tokenise xs line (col + 2)
-tokenise ('&' : '&' : xs) line col = ((AndToken, line, col) :) <$> tokenise xs line (col + 2)
-tokenise ('|' : '|' : xs) line col = ((OrToken, line, col) :) <$> tokenise xs line (col + 2)
-tokenise ('=' : xs) line col = ((IsToken, line, col) :) <$> tokenise xs line (col + 1)
-tokenise ('+' : xs) line col = ((PlusToken, line, col) :) <$> tokenise xs line (col + 1)
-tokenise ('-' : xs) line col = ((MinToken, line, col) :) <$> tokenise xs line (col + 1)
-tokenise ('*' : xs) line col = ((MultToken, line, col) :) <$> tokenise xs line (col + 1)
-tokenise ('/' : xs) line col = ((DivToken, line, col) :) <$> tokenise xs line (col + 1)
-tokenise ('%' : xs) line col = ((ModToken, line, col) :) <$> tokenise xs line (col + 1)
-tokenise ('<' : xs) line col = ((LeToken, line, col) :) <$> tokenise xs line (col + 1)
-tokenise ('>' : xs) line col = ((GeToken, line, col) :) <$> tokenise xs line (col + 1)
-tokenise (':' : xs) line col = ((ConstToken, line, col) :) <$> tokenise xs line (col + 1)
-tokenise ('!' : xs) line col = ((NotToken, line, col) :) <$> tokenise xs line (col + 1)
-tokenise (',' : xs) line col = ((CommaToken,line,col):) <$> tokenise xs line (col + 1)
 tokenise ('\'' : x : '\'' : xs) line col = ((CharToken x, line, col) :) <$> tokenise xs line (col + 3)
-tokenise (c : xs) line col
-  | isSpace c = tokenise xs line col
+tokenise input line col = tokenise2 acTokens tokens input line col
+
+
+tokenise2 :: [Token] -> [Token] -> String -> Int -> Int -> Either Error [(Token, Int, Int)]
+tokenise2 (at:art) ts (stripPrefix (show at) -> Just rc) l c | alphaCheck rc =  ((at, l, c) :) <$> tokenise rc l (c + length (show at))
+tokenise2 (at:art) ts x l c = tokenise2 art ts x l c
+tokenise2 ats (t:rt) (stripPrefix (show t) -> Just rc) l c =  ((t, l, c) :) <$> tokenise rc l (c + length (show t))
+tokenise2 ats (t:rt) x l c = tokenise2 ats rt x l c
+
+tokenise2 _ _ (c : xs) line col
+  | isSpace c = tokenise xs line (col+1)
   | isDigit c = spanToken isDigit line col (IntToken . read) (c : xs)
   | isAlpha c = spanToken (\c -> isAlphaNum c || c == '_') line col IdToken (c : xs)
   | otherwise = Left $ Error line col ("Unrecognized character: " ++ show c)
-tokenise [] line col = Right []
 
-spanToken :: (Char -> Bool) -> Int -> Int -> ([Char] -> Token) -> [Char] -> Either Error [(Token, Int, Int)]
+tokenise2 _ _ [] line col = Right []
+
+spanToken ::  (Char -> Bool) -> Int -> Int -> ([Char] -> Token) -> [Char] -> Either Error [(Token, Int, Int)]
 spanToken p line col t = (\(ds, rest) -> ((t ds, line, col) :) <$> tokenise rest line (col + length ds)) . span p
