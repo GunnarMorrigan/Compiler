@@ -31,7 +31,7 @@ data Token
   | SemiColToken| CommaToken| IsToken
   | FunTypeToken| ArrowToken| VoidToken| ReturnToken
   | EmptyListToken| BrackOToken| BrackCToken| CBrackOToken| CBrackCToken| SBrackOToken| SBrackCToken
-  | HdToken| TlToken| FstToken| SndToken| IsEmptyToken
+  | HdToken| TlToken| FstToken| SndToken| PrintToken | IsEmptyToken
   | PlusToken| MinToken| MultToken| DivToken| ModToken 
   | EqToken| LeToken | GeToken | LeqToken | GeqToken| NeqToken| AndToken| OrToken| ConstToken| NotToken
   | IdToken String

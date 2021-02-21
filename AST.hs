@@ -1,29 +1,32 @@
 module AST where
 import Data.List
 
-data MainSegment = VarMain [VarDecl]
-                  | FuncMain [FunDecl]
-  deriving (Eq)
-instance Show MainSegment where
+newtype MainSegments =  MainSegments [Decl] deriving (Eq)
+instance Show MainSegments where
+  show (MainSegments decls) = unlines $ map show decls
+    -- unlines $ map show decls
+
+data Decl = VarMain VarDecl
+          | FuncMain FunDecl
+          deriving (Eq)
+instance Show Decl where
   show (VarMain x) = show x
   show (FuncMain x) = show x  
 
 data VarDecl = VarDeclVar ID Exp
              | VarDeclType SPLType ID Exp
-  deriving (Eq)
+             deriving (Eq)
 instance Show VarDecl where
   show (VarDeclVar i e) = "var " ++ i ++ " = "++ show e ++ ";"
   show (VarDeclType t i e) = show t ++ " " ++ i ++ " = "++ show e ++ ";"
 
 data FunDecl = FunDecl ID [ID] FunType [VarDecl] [Stmt]
-  deriving (Eq)
+             deriving (Eq)
 instance Show FunDecl where
   show (FunDecl fName fArgs fType fVard fStmts) = 
-    fName ++ " (" ++ unwords fArgs ++ ") " ++
-    ":: " ++ show fType ++ 
-    " {\n"++ 
-    unlines (map (("\t"++) .show) fVard) ++ 
-    unlines (map (("\t"++) .show) fStmts) ++ 
+    fName ++ " (" ++ unwords fArgs ++ ") " ++ ":: " ++ show fType ++ " {\n"++ 
+    unlines (map (("\t"++) . show) fVard) ++ 
+    unlines (map (("\t"++) . show) fStmts) ++ 
     "}"
 
 data RetType = Void | RetSplType SPLType

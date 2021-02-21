@@ -11,6 +11,7 @@ import Data.Typeable
 import Prelude
 import Debug.Trace
 import System.Exit
+import System.Directory
 
 import Control.Monad
 import Data.Functor; import Data.Function
@@ -50,6 +51,21 @@ instance Monad (Parser s) where
               (a,b) <- run ma input
               (x,y) <- run (a2mb a) b
               Right(x, b)
+
+-- infixr 4 <<|>
+-- (<<|>) :: Parser s r -> Parser s r -> Parser s r
+-- x <<|> y = Parser $ \input -> case input of
+--     Left _  -> run y input
+--     res -> res
+
+
+-- infixr 4 <<|>
+-- (<<|>) :: Parser s r -> Parser s r -> Parser s r
+-- x <<|> y = Parser $ \input -> case input of
+--     Left _  -> run y input
+--     res -> res
+
+
 --   (Parser p1) <|> (Parser p2) = Parser $ \input -> case  p1 input of
 --          Right(a, xs) -> Right(a,xs)
 --          Left (Error line col message) -> p2 input
@@ -144,7 +160,7 @@ stmtWhile = StmtWhile <$>
        (pToken CBrackOToken *> ((:) <$> stmt <*> many ( pToken SemiColToken  *> stmt)) <* pToken CBrackCToken) 
 
 stmtDeclareVar :: Parser (Token, Int, Int) Stmt
-stmtDeclareVar = StmtDeclareVar <$> idP <*> (fieldP <* pToken EqToken)  <*> (expParser <* pToken SemiColToken)
+stmtDeclareVar = StmtDeclareVar <$> idP <*> (fieldP <* pToken IsToken)  <*> (expParser <* pToken SemiColToken)
 
 stmtFuncCall :: Parser (Token, Int, Int) Stmt
 stmtFuncCall = StmtFuncCall <$> funCall <* pToken SemiColToken
@@ -155,6 +171,7 @@ stmtReturn = StmtReturn <$> ((Nothing <$ pToken ReturnToken <* pToken SemiColTok
 
 stmt :: Parser (Token, Int, Int) Stmt         
 stmt = stmtReturn  <|> stmtFuncCall <|> stmtDeclareVar <|> stmtIf <|> stmtWhile
+
 -- ===================== Expressions ============================
 expId :: Parser (Token, Int, Int) Exp
 expId = ExpId <$> idP <*> (Field <$> many standardFunctionP)
@@ -193,10 +210,10 @@ pComp :: Parser (Token, Int, Int) Exp
 pComp = pChainl operators pPlusMin
        where operators =    op (Le <$ pToken LeToken) <|> 
                             op (Ge <$ pToken GeToken) <|>
+                            op (Eq <$ pToken EqToken) <|>
                             op (Leq <$ pToken LeqToken) <|>
                             op (Geq <$ pToken GeqToken) <|>
                             op (Leq <$ pToken LeqToken) <|>
-                            op (Eq <$ pToken EqToken) <|>
                             op (Neq <$ pToken LeqToken)
 
 pPlusMin :: Parser (Token, Int, Int) Exp
@@ -243,7 +260,7 @@ standardFunctionP :: Parser (Token, Int, Int) StandardFunction
 standardFunctionP = Head <$ pToken HdToken <|> 
                     Tail <$ pToken TlToken <|> 
                     First <$ pToken FstToken <|> 
-                    Second <$ pToken SndToken <|> 
+                    Second <$ pToken SndToken <|>
                     IsEmpty <$ pToken IsEmptyToken
 
 -- ===================== FunCall ============================
@@ -251,7 +268,7 @@ funCall :: Parser (Token, Int, Int) FunCall
 funCall = FunCall <$> idP <*> (pToken BrackOToken *> actArgs <* pToken BrackCToken)
 
 -- ===================== ActArgs ============================
-actArgs =  (:) <$> expParser <*> many ( pToken CommaToken *> expParser)
+actArgs = (:) <$> expParser <*> many ( pToken CommaToken *> expParser)
 
 -- ===================== ID ============================
 idP :: Parser (Token, Int, Int) ID
@@ -260,27 +277,44 @@ idP =   Parser (\case
               (x, line, col):xs -> Left $ Error line col ("Expected Id but got token: " ++ show x)
               _ -> Left $ Error 0 0 "Expected Id but got invalid token")
 
-
 -- =====================================================
+mainSegments :: Parser (Token, Int, Int) MainSegments
+mainSegments = MainSegments <$> all' (FuncMain <$> funDecl <|> VarMain <$> varDecl)
+         
+all' :: Parser s a -> Parser s [a]
+all' p = (:) <$> p <*> all p
+       where all p =
+              Parser $ \case
+                     [] -> Right([],[])
+                     xs -> run (all' p) xs
 
-parseAndTokenise :: Parser (Token, Int, Int) a -> [Char] -> Either Error (a, [(Token, Int, Int)])
-parseAndTokenise parser x  = runTokenise x >>= run parser
+tokeniseAndParse :: Parser (Token, Int, Int) a -> [Char] -> Either Error (a, [(Token, Int, Int)])
+tokeniseAndParse parser x  = runTokenise x >>= run parser
 
--- TODO :: See how to correctly combine these parsers
--- StmtIf <$> 
---        (pToken IfToken *> pToken BrackOToken *> expParser <* pToken BrackCToken) <*>
---        (pToken CBrackOToken *> many stmt <* pToken CBrackCToken) <*> 
---        stmtElse
+-- parseCode :: String -> Parser (Token, Int, Int) a -> Either Error (a, [(Token, Int, Int)])
+-- parseCode code parser = case parseAndTokenise parser code of
+--                      Right (parsed, []) -> Right (parsed, [])
+--                      Right (parsed, unParsed) -> run parser unParsed
+--                      x -> x
 
--- mainSegment :: Parser (Token, Int, Int) MainSegment
--- mainSegment = funcMain
-
+main :: IO()
 main = do file <- readFile "SPL_code/main.spl"
-          case parseAndTokenise (many funDecl) file of 
-               Right (x,y) -> do 
+          case tokeniseAndParse mainSegments file of 
+              Right (x, _) -> do
+                     exists <- doesFileExist "SPL_code/out.spl"
+                     when exists $ removeFile "SPL_code/out.spl"
+                     writeFile "SPL_code/out.spl"$ show x
+              Left x -> do
                      print x
-                     print y
-               Left x -> do
-                     print x
-                     exitFailure 
+                     exitFailure
+
+-- main = do file <- readFile "SPL_code/main.spl"
+--           case parseCode file mainSegments of 
+--               Right (x, _) -> do
+--                      exists <- doesFileExist "SPL_code/out.spl"
+--                      when exists $ removeFile "SPL_code/out.spl"
+--                      writeFile "SPL_code/out.spl"$ show x
+--               Left x -> do
+--                      print x
+--                      exitFailure
        -- runTokenise "\'x\'" >>= run expChar
