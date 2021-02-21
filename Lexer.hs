@@ -14,7 +14,8 @@ instance Ord Error where
   (Error line col m) `compare` (Error line' col' m') = if line == line' then compare col col' else compare line line'
 
 instance Show Error where
-       show (Error line col message) = message ++ ", on line: " ++show line ++ " and character: " ++ show col 
+  show (Error (-1) (-1) message) = message
+  show (Error line col message) = message ++ ", on line: " ++show line ++ " and character: " ++ show col 
 
 instance Alternative (Either Error) where
   empty = Left $ Error 0 0 ""

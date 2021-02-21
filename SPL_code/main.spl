@@ -12,7 +12,7 @@ temp(x y)::Int Int -> (Int, Int){
 
     if(x==True) {
         print ('x':[]);
-        b = (b + 10);
+        b = (b + 10)
         b = (b + 10);
         return 10+10*9/7+8;
     }

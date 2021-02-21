@@ -35,6 +35,14 @@ instance Applicative (Parser s) where
                      (f, input') <- p1 input
                      (out, input'') <- p2 input'
                      Right (f out, input'')
+       -- (Parser p1) <* (Parser p2) =
+       --        Parser $ \input -> (do
+       --               (a, input') <- p1 input
+       --               if null input' then Left (Error 0 0 "Unexpected EOF") else do
+       --               (out, input'') <- p2 input'
+       --               Right (a, input''))
+
+
 
 instance Alternative (Parser s) where
        empty = Parser $ const empty
@@ -46,6 +54,9 @@ instance Monad (Parser s) where
               (x,y) <- run (a2mb a) b
               Right(x, b)
 
+-- This alternative operator tries the left side and if it can not parse anything it tries the right
+-- If it can parse some tokens but then fails, it returns the error from the left.
+-- Making error returning from many possible.
 infixr 4 <<|>
 (<<|>) :: Parser (Token, Int, Int) r -> Parser (Token, Int, Int) r -> Parser (Token, Int, Int) r
 x <<|> y = Parser $ \case 
@@ -54,13 +65,14 @@ x <<|> y = Parser $ \case
                      Left (Error line' col' m) | line==line' && col==col' -> run y ((tokens, line, col):xs)
                      Left (Error line' col' m) -> Left (Error line' col' m)
                      res -> res
+       x -> empty
               
 
-satisfy :: ((Token, Int, Int) -> Bool) -> (Token -> a) -> Parser (Token, Int, Int) a
-satisfy f g = Parser $ \case 
-       (s, line, col):rest | f (s, line, col) -> Right (g s, rest)
-       (x, line, col):xs -> Left $ Error line col ""
-       _ -> Left $ Error 0 0 ""
+-- satisfy :: ((Token, Int, Int) -> Bool) -> (Token -> a) -> Parser (Token, Int, Int) a
+-- satisfy f g = Parser $ \case 
+--        (s, line, col):rest | f (s, line, col) -> Right (g s, rest)
+--        (x, line, col):xs -> Left $ Error line col ""
+--        _ -> Left $ Error 0 0 ""
 
 pChainl :: Parser s (a -> a -> a) -> Parser s a -> Parser s a
 pChainl x p = foldl (&) <$> p <*> many (flip <$> x <*> p)
@@ -72,8 +84,8 @@ pToken :: Token -> Parser (Token, Int, Int) Token
 pToken t = Parser $ 
        \case 
               (x, line, col):xs | x == t -> Right (x,xs)
-              (x, line, col):xs -> Left $ Error line col ("Expected: "++show t++" but found: " ++ show x)
-              _ -> Left $ Error 0 0 "Unexpected token"
+              (x, line, col):xs -> Left $ Error line col ("Expected: '"++show t++"' but found: " ++ show x)
+              [] -> Left $ Error (-1) (-1) ("Unexpected EOF, expected: '"++show t++"'")
 
 -- ===================== VarDecl ============================
 varDecl :: Parser (Token, Int, Int) VarDecl 
@@ -140,13 +152,13 @@ stmtElse = Parser $ \case
 stmtWhile :: Parser (Token, Int, Int) Stmt
 stmtWhile = StmtWhile <$> 
        (pToken WhileToken *> pToken BrackOToken *> expParser <* pToken BrackCToken) <*>
-       (pToken CBrackOToken *>  many stmt <* pToken CBrackCToken) 
+       (pToken CBrackOToken *>  many' stmt <* pToken CBrackCToken) 
 
 stmtDeclareVar :: Parser (Token, Int, Int) Stmt
 stmtDeclareVar = StmtDeclareVar <$> 
        idP <*> 
        (fieldP <* pToken IsToken) <*> 
-       expParser <* pToken SemiColToken
+       (expParser <* pToken SemiColToken)
 
 stmtFuncCall :: Parser (Token, Int, Int) Stmt
 stmtFuncCall = StmtFuncCall <$> funCall <* pToken SemiColToken
@@ -271,20 +283,11 @@ idP =   Parser $ \case
 mainSegments :: Parser (Token, Int, Int) MainSegments
 mainSegments = MainSegments <$> all' (FuncMain <$> funDecl <|> VarMain <$> varDecl)
 
-
-
 many' :: Parser (Token, Int, Int) a -> Parser (Token, Int, Int) [a]
 many' p = ((:) <$> p <*> many' p) <<|> pure []
 
-
-many'' :: Parser s a -> Parser s [a]
-many'' p = (:) <$> p <*> many p
-       where all p =
-              Parser $ \case
-                     [] -> Right([],[])
-                     xs -> run (all' p) xs
-
--- many v = ((:) <$> v <*> many v) <|> pure []
+some' :: Parser (Token, Int, Int) a -> Parser (Token, Int, Int) [a]
+some' p = (:) <$> p <*> many' p
 
 all' :: Parser s a -> Parser s [a]
 all' p = (:) <$> p <*> all p
@@ -296,7 +299,7 @@ all' p = (:) <$> p <*> all p
 tokeniseAndParse :: Parser (Token, Int, Int) a -> [Char] -> Either Error (a, [(Token, Int, Int)])
 tokeniseAndParse parser x  = runTokenise x >>= run parser
 
-
+test = tokeniseAndParse expList "[10,10,10,]"
 
 main :: IO()
 main = do
