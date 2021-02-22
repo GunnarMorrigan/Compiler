@@ -20,17 +20,19 @@ instance Show VarDecl where
   show (VarDeclVar i e) = "var " ++ i ++ " = "++ show e ++ ";"
   show (VarDeclType t i e) = show t ++ " " ++ i ++ " = "++ show e ++ ";"
 
-data FunDecl = FunDecl ID [ID] FunType [VarDecl] [Stmt]
+data FunDecl = FunDecl ID [ID] (Maybe FunType) [VarDecl] [Stmt]
              deriving (Eq)
 instance Show FunDecl where
   show (FunDecl fName fArgs fType fVard fStmts) = 
-    fName ++ " (" ++ unwords fArgs ++ ") " ++ ":: " ++ show fType ++ " {\n"++ 
+    fName ++ " (" ++ unwords fArgs ++ ") " ++ (case fType of  Just x -> ":: "++show x
+                                                              Nothing -> "") ++ " {\n"++ 
     prettyPrinter fVard ++ "\n" ++
     prettyPrinter fStmts ++
     "}"
 
 prettyPrinter :: Show a => [a] -> String
 prettyPrinter (x:xs) = concatMap (\x -> unlines $ map ("\t"++) (lines $ show x)) (x:xs)
+prettyPrinter [] = ""
 
 data RetType = Void | RetSplType SPLType
   deriving (Eq)

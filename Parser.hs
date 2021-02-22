@@ -82,9 +82,14 @@ funDecl :: Parser (Token, Int, Int) FunDecl
 funDecl = FunDecl <$> 
        idP <*> 
        (pToken BrackOToken *> many idP <* pToken BrackCToken) <*>
-       (pToken FunTypeToken *> funType) <*>
+       funTypeOptional <*>
        (pToken CBrackOToken*> many' varDecl) <*>
        some stmt <* pToken CBrackCToken
+ where funTypeOptional = Parser $ \case
+                     (FunTypeToken, line, col): xs -> do
+                            (ys, rest) <- run funType xs
+                            Right (Just ys, rest)
+                     x -> Right (Nothing, x)
 
 -- ===================== Types ============================
 -- ===== FunType =====
