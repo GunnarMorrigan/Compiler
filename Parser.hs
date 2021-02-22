@@ -9,7 +9,7 @@ import AST
 import Prelude
 import Control.Monad
 import Control.Applicative
-import Data.Char
+import Data.Char ()
 import Data.List
 import Data.Functor
 import Data.Typeable
@@ -99,7 +99,7 @@ funDecl = FunDecl <$>
        idP <*> 
        (pToken BrackOToken *> many idP <* pToken BrackCToken) <*>
        (pToken FunTypeToken *> funType) <*>
-       (pToken CBrackOToken*> many varDecl) <*>
+       (pToken CBrackOToken*> many' varDecl) <*>
        some stmt <* pToken CBrackCToken
 
 -- ===================== Types ============================
@@ -109,7 +109,7 @@ funType = FunType <$> many splType <*> (pToken ArrowToken *> retType)
 
 -- ===== RetType =====
 retType :: Parser (Token, Int, Int) RetType
-retType =  RetSplType <$> splType <|> Void <$ pToken VoidToken
+retType = RetSplType <$> splType <|> Void <$ pToken VoidToken
 
 -- ===== Type =====
 splType :: Parser (Token, Int, Int) SPLType 
@@ -130,7 +130,7 @@ basicBool :: Parser (Token, Int, Int) BasicType
 basicBool = BasicBool <$ pToken TypeBoolToken
 
 basicChar :: Parser (Token, Int, Int) BasicType
-basicChar = BasicChar <$ pToken TypeBoolToken
+basicChar = BasicChar <$ pToken TypeCharToken
 
 basicType :: Parser (Token, Int, Int) BasicType
 basicType = basicInt <|> basicBool <|> basicChar 
@@ -145,7 +145,7 @@ stmtIf = StmtIf <$>
 stmtElse :: Parser (Token, Int, Int) (Maybe [Stmt])
 stmtElse = Parser $ \case
        (ElseToken,line,col):xs -> do
-              (ys,rest) <- run (pToken CBrackOToken *> many stmt <* pToken CBrackCToken) xs
+              (ys,rest) <- run (pToken CBrackOToken *> many' stmt <* pToken CBrackCToken) xs
               Right (Just ys, rest)
        x -> Right (Nothing,x)
 
@@ -174,6 +174,13 @@ stmt = stmtReturn <|> stmtFuncCall <|> stmtDeclareVar <|> stmtIf <|> stmtWhile
 -- ===================== Expressions ============================
 expId :: Parser (Token, Int, Int) Exp
 expId = ExpId <$> idP <*> (Field <$> many standardFunctionP)
+
+expInt1 :: Parser (Token, Int, Int) Exp
+expInt1 = ExpInt <$> Parser 
+       (\case
+              (IntToken c,line,col):xs -> Right (c,xs)
+              (x, line, col):xs -> Left $ Error line col ("Expected Integer but got token: " ++ show x)
+              _ -> Left $ Error 0 0 "Expected Integer but got invalid token" )
 
 expInt :: Parser (Token, Int, Int) Exp
 expInt = ExpInt <$> Parser 
@@ -214,8 +221,7 @@ pComp = pChainl operators pPlusMin
               op (Eq <$ pToken EqToken) <|>
               op (Leq <$ pToken LeqToken) <|>
               op (Geq <$ pToken GeqToken) <|>
-              op (Leq <$ pToken LeqToken) <|>
-              op (Neq <$ pToken LeqToken)
+              op (Neq <$ pToken NeqToken)
 
 pPlusMin :: Parser (Token, Int, Int) Exp
 pPlusMin = pChainl operators pMultDivMod
@@ -248,7 +254,17 @@ expFunCall :: Parser (Token, Int, Int) Exp
 expFunCall = ExpFunCall <$> funCall
 
 basicExpParser :: Parser (Token, Int, Int) Exp 
-basicExpParser = expBracket <|> expFunCall <|> expTuple <|> expList <|> expEmptyList <|> expOp1 <|> expBool <|> expChar <|> expInt <|> expId
+basicExpParser = 
+       expBracket <|>
+       expFunCall <|>
+       expTuple <|>
+       expList <|>
+       expEmptyList <|>
+       expOp1 <|>
+       expBool <|>
+       expChar <|>
+       expInt <|>
+       expId
 
 expParser :: Parser (Token, Int, Int) Exp 
 expParser = pOr
@@ -270,7 +286,7 @@ funCall :: Parser (Token, Int, Int) FunCall
 funCall = FunCall <$> idP <*> (pToken BrackOToken *> actArgs <* pToken BrackCToken)
 
 -- ===================== ActArgs ============================
-actArgs = (:) <$> expParser <*> many ( pToken CommaToken *> expParser)
+actArgs = (:) <$> expParser <*> many' ( pToken CommaToken *> expParser)
 
 -- ===================== ID ============================
 idP :: Parser (Token, Int, Int) ID
@@ -299,11 +315,24 @@ all' p = (:) <$> p <*> all p
 tokeniseAndParse :: Parser (Token, Int, Int) a -> [Char] -> Either Error (a, [(Token, Int, Int)])
 tokeniseAndParse parser x  = runTokenise x >>= run parser
 
+tokeniseFile :: String -> IO()
+tokeniseFile filename = do
+       file <- readFile $ "SPL_code/"++filename
+       case runTokenise file of 
+              Right (x:xs) -> do
+                     exists <- doesFileExist "SPL_code/tokenOut.spl"
+                     when exists $ removeFile "SPL_code/tokenOut.spl"
+                     writeFile "SPL_code/tokenOut.spl"$ show (x:xs)
+              Right [] -> print "No failure but nothing parsed" 
+              Left x -> do
+                     print x
+                     exitFailure
+
 test = tokeniseAndParse expList "[10,10,10,]"
 
-main :: IO()
-main = do
-       file <- readFile "SPL_code/main.spl"
+main :: String -> IO()
+main filename = do
+       file <- readFile $ "SPL_code/"++filename
        case tokeniseAndParse mainSegments file of 
               Right (x, _) -> do
                      exists <- doesFileExist "SPL_code/out.spl"

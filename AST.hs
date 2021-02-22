@@ -25,9 +25,12 @@ data FunDecl = FunDecl ID [ID] FunType [VarDecl] [Stmt]
 instance Show FunDecl where
   show (FunDecl fName fArgs fType fVard fStmts) = 
     fName ++ " (" ++ unwords fArgs ++ ") " ++ ":: " ++ show fType ++ " {\n"++ 
-    unlines (map (("\t"++) . show) fVard) ++ 
-    unlines (map (("\t"++) . show) fStmts) ++ 
+    prettyPrinter fVard ++ "\n" ++
+    prettyPrinter fStmts ++
     "}"
+
+prettyPrinter :: Show a => [a] -> String
+prettyPrinter (x:xs) = concatMap (\x -> unlines $ map ("\t"++) (lines $ show x)) (x:xs)
 
 data RetType = Void | RetSplType SPLType
   deriving (Eq)
@@ -71,10 +74,12 @@ data Stmt = StmtIf Exp [Stmt] (Maybe [Stmt])
           | StmtReturn (Maybe Exp)
           deriving (Eq)
 instance Show Stmt where
-    show (StmtIf e iS eS) = 
-      "if (" ++ show e ++ ") {\n" ++ unlines (map (("\t"++) .show) iS) ++"}" ++ 
-        case eS of
-          Just x -> " else {\n" ++ unlines (map (("\t"++) .show) x) ++"}" 
+    show (StmtIf e ifS elseS) = 
+      "if (" ++ show e ++ ") {\n" ++ 
+        prettyPrinter ifS ++"}" ++ 
+        case elseS of
+          Just x -> " else {\n" ++ 
+            prettyPrinter x ++"}" 
           Nothing -> ""
     show (StmtWhile e s) = 
       "while (" ++ show e ++ ") {\n" ++ unlines (map show s) ++"}"
@@ -158,11 +163,11 @@ instance Show Op2 where
   show Mult = "*"
   show Div = "/"
   show Mod = "%"
+  show Eq = "=="
   show Le = "<"
   show Ge = ">"
   show Leq = "<="
   show Geq = ">="
-  show Eq = "=="
   show Neq = "!="
   show And = "&&"
   show Or = "||"
