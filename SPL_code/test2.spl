@@ -1,4 +1,4 @@
-complexCombined (a b n) :: [Char] Bool Int -> Void {
+complexCombined (a, b, n) :: [Char] Bool Int -> Void {
     [Char] c = [];
     if(a.isEmpty) {
         if(a.isEmpty) {

@@ -1,9 +1,9 @@
 module AST where
-import Data.List
+import Data.List ( intercalate )
 
-newtype MainSegments =  MainSegments [Decl] deriving (Eq)
-instance Show MainSegments where
-  show (MainSegments decls) = unlines $ map show decls
+newtype SPL =  SPL [Decl] deriving (Eq)
+instance Show SPL where
+  show (SPL decls) = unlines $ map show decls
     -- unlines $ map show decls
 
 data Decl = VarMain VarDecl
@@ -96,7 +96,7 @@ data Exp
   | ExpOp2 Exp Op2 Exp
   | ExpOp1 Op1 Exp
   | ExpFunCall FunCall
-  -- | ExpEmptyList
+  | ExpEmptyList
   | ExpList [Exp]
   | ExpTuple (Exp, Exp)
   deriving(Eq)
@@ -111,6 +111,7 @@ instance Show Exp where
       show (ExpFunCall c) = show c;
       show (ExpList xs) =  show xs
       show (ExpTuple t) =  "Tuple"++show t
+      show ExpEmptyList = "[]"
       
 newtype Field 
   = Field [StandardFunction]
@@ -127,7 +128,6 @@ instance Show StandardFunction where
   show First = ".fst"
   show Second = ".snd"
   show IsEmpty = ".isEmpty"
-  show Print = ".print"
 
 type ID = String 
 
