@@ -20,7 +20,6 @@ import System.Directory
 
 
 -- ======================================== Parser ========================================
-
 newtype Parser s a = Parser {run :: [s] -> Either Error (a, [s])}
 
 instance Functor (Parser s) where
@@ -35,14 +34,6 @@ instance Applicative (Parser s) where
                      (f, input') <- p1 input
                      (out, input'') <- p2 input'
                      Right (f out, input'')
-       -- (Parser p1) <* (Parser p2) =
-       --        Parser $ \input -> (do
-       --               (a, input') <- p1 input
-       --               if null input' then Left (Error 0 0 "Unexpected EOF") else do
-       --               (out, input'') <- p2 input'
-       --               Right (a, input''))
-
-
 
 instance Alternative (Parser s) where
        empty = Parser $ const empty
@@ -66,13 +57,6 @@ x <<|> y = Parser $ \case
                      Left (Error line' col' m) -> Left (Error line' col' m)
                      res -> res
        x -> empty
-              
-
--- satisfy :: ((Token, Int, Int) -> Bool) -> (Token -> a) -> Parser (Token, Int, Int) a
--- satisfy f g = Parser $ \case 
---        (s, line, col):rest | f (s, line, col) -> Right (g s, rest)
---        (x, line, col):xs -> Left $ Error line col ""
---        _ -> Left $ Error 0 0 ""
 
 pChainl :: Parser s (a -> a -> a) -> Parser s a -> Parser s a
 pChainl x p = foldl (&) <$> p <*> many (flip <$> x <*> p)
@@ -116,13 +100,18 @@ splType :: Parser (Token, Int, Int) SPLType
 splType = (TypeBasic <$> basicType) <|> tupleType <|> arrayType
 
 tupleType :: Parser (Token, Int, Int) SPLType 
-tupleType = TupleType <$> ( pToken BrackOToken *> ((,) <$> splType <* pToken CommaToken  <*> 
-                            splType) <* pToken BrackCToken)
+tupleType = TupleType <$> ( pToken BrackOToken *> ((,) <$> splType <* pToken CommaToken  <*> splType) <* pToken BrackCToken)
 
 arrayType :: Parser (Token, Int, Int) SPLType
 arrayType = ArrayType <$> (pToken SBrackOToken *> splType <* pToken SBrackCToken)
 
+idType :: Parser (Token, Int, Int) SPLType 
+idType = IdType <$> idP
+
 -- ===== BasicType =====
+basicType :: Parser (Token, Int, Int) BasicType
+basicType = basicInt <|> basicBool <|> basicChar 
+
 basicInt :: Parser (Token, Int, Int) BasicType
 basicInt = BasicInt <$ pToken TypeIntToken
 
@@ -132,10 +121,12 @@ basicBool = BasicBool <$ pToken TypeBoolToken
 basicChar :: Parser (Token, Int, Int) BasicType
 basicChar = BasicChar <$ pToken TypeCharToken
 
-basicType :: Parser (Token, Int, Int) BasicType
-basicType = basicInt <|> basicBool <|> basicChar 
+
 
 -- ===================== Statements ============================
+stmt :: Parser (Token, Int, Int) Stmt         
+stmt = stmtReturn <|> stmtFuncCall <|> stmtDeclareVar <|> stmtIf <|> stmtWhile
+
 stmtIf :: Parser (Token, Int, Int) Stmt
 stmtIf = StmtIf <$> 
        (pToken IfToken *> pToken BrackOToken *> expParser <* pToken BrackCToken) <*>
@@ -168,10 +159,10 @@ stmtReturn = StmtReturn <$>
        ((Nothing <$ pToken ReturnToken <* pToken SemiColToken ) <|>
        (Just <$> (pToken ReturnToken *> expParser) <* pToken SemiColToken))
 
-stmt :: Parser (Token, Int, Int) Stmt         
-stmt = stmtReturn <|> stmtFuncCall <|> stmtDeclareVar <|> stmtIf <|> stmtWhile
-
 -- ===================== Expressions ============================
+expParser :: Parser (Token, Int, Int) Exp 
+expParser = pOr
+
 expId :: Parser (Token, Int, Int) Exp
 expId = ExpId <$> idP <*> (Field <$> many standardFunctionP)
 
@@ -239,8 +230,8 @@ pMultDivMod = pChainl operators basicExpParser
 expOp1 :: Parser (Token, Int, Int) Exp
 expOp1 = ExpOp1 <$> (Neg <$ pToken MinToken <|> Not <$ pToken NotToken) <*> expParser
 
-expEmptyList :: Parser (Token, Int, Int) Exp 
-expEmptyList = ExpList [] <$ pToken EmptyListToken 
+expEmptyList :: Parser (Token, Int, Int) Exp
+expEmptyList = ExpEmptyList <$ pToken EmptyListToken
 
 expList :: Parser (Token, Int, Int) Exp 
 expList = ExpList <$> (pToken SBrackOToken *> expList <* pToken SBrackCToken)
@@ -265,9 +256,6 @@ basicExpParser =
        expChar <|>
        expInt <|>
        expId
-
-expParser :: Parser (Token, Int, Int) Exp 
-expParser = pOr
 
 -- ===================== Field ============================
 fieldP :: Parser (Token, Int, Int) Field
@@ -296,8 +284,8 @@ idP =   Parser $ \case
        _ -> Left $ Error 0 0 "Expected Id but got invalid token"
 
 -- =====================================================
-mainSegments :: Parser (Token, Int, Int) MainSegments
-mainSegments = MainSegments <$> all' (FuncMain <$> funDecl <|> VarMain <$> varDecl)
+mainSegments :: Parser (Token, Int, Int) SPL
+mainSegments = SPL <$> all' (FuncMain <$> funDecl <|> VarMain <$> varDecl)
 
 many' :: Parser (Token, Int, Int) a -> Parser (Token, Int, Int) [a]
 many' p = ((:) <$> p <*> many' p) <<|> pure []
