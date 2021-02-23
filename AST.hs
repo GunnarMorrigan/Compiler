@@ -1,4 +1,6 @@
 module AST where
+
+
 import Data.List ( intercalate )
 
 newtype SPL =  SPL [Decl] deriving (Eq)
@@ -120,7 +122,7 @@ instance Show Field where
     show (Field xs) = concatMap show xs
 
 data StandardFunction
-    = Head | Tail | First | Second | IsEmpty | Print 
+    = Head | Tail | First | Second | IsEmpty
     deriving (Eq)
 instance Show StandardFunction where
   show Head = ".hd"

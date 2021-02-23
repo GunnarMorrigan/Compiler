@@ -9,7 +9,7 @@ import AST
 import Prelude
 import Control.Monad
 import Control.Applicative
-import Data.Char ()
+import Data.Char
 import Data.List
 import Data.Functor
 import Data.Typeable
