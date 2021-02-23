@@ -242,7 +242,7 @@ expEmptyList = ExpEmptyList <$ pToken EmptyListToken
 
 expList :: Parser (Token, Int, Int) Exp 
 expList = ExpList <$> (pToken SBrackOToken *> expList <* pToken SBrackCToken)
-       where expList =  (:) <$> expParser <*> many ( pToken CommaToken *> expParser)
+       where expList = sepBy (pToken CommaToken) expParser
        
 expTuple :: Parser (Token, Int, Int) Exp 
 expTuple = ExpTuple <$> tuple
