@@ -1,15 +1,8 @@
-complexCombined (a b n) :: [Char] Bool Int ->Void {
-	[Char] c = [];
+swap () :: (a,a) ->(a,a) {
+	var tmp = tuple.fst;
 
-	if (a.isEmpty) {
-		if (a.isEmpty) {
-			return;
-		}
-		return;
-	}
-	c = (a.hd : getList(((b == 'x') != a.hd)));
-	if ((c.tl.hd == 'a')) {
-		return;
-	}
-	print(c);
+	tuple.fst = swap();
+	tuple.fst = tuple.snd;
+	tuple.snd = tmp;
+	return tuple;
 }
