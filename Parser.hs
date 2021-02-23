@@ -75,16 +75,17 @@ pToken t = Parser $
 varDecl :: Parser (Token, Int, Int) VarDecl 
 varDecl = (VarDeclType <$> splType <*> idP <*> varAss) <|>
           (VarDeclVar <$> (pToken VarToken *> idP) <*> varAss)
-              where varAss = pToken IsToken *>expParser <* pToken SemiColToken
+              where varAss = pToken IsToken *> expParser <* pToken SemiColToken
 
 -- ===================== FunDecl ============================ 
 funDecl :: Parser (Token, Int, Int) FunDecl
 funDecl = FunDecl <$> 
        idP <*> 
-       (pToken BrackOToken *> many idP <* pToken BrackCToken) <*>
+       (pToken BrackOToken *> sepBy (pToken CommaToken ) idP <* pToken BrackCToken) <*>
        funTypeOptional <*>
-       (pToken CBrackOToken*> many' varDecl) <*>
-       some stmt <* pToken CBrackCToken
+       (pToken CBrackOToken*> many varDecl) <*>
+       some stmt 
+       <* pToken CBrackCToken
  where funTypeOptional = Parser $ \case
                      (FunTypeToken, line, col): xs -> do
                             (ys, rest) <- run funType xs
@@ -153,8 +154,8 @@ stmtWhile = StmtWhile <$>
 stmtDeclareVar :: Parser (Token, Int, Int) Stmt
 stmtDeclareVar = StmtDeclareVar <$> 
        idP <*> 
-       (fieldP <* pToken IsToken) <*> 
-       (expParser <* pToken SemiColToken)
+       fieldP <*> 
+       (pToken IsToken *> expParser <* pToken SemiColToken)
 
 stmtFuncCall :: Parser (Token, Int, Int) Stmt
 stmtFuncCall = StmtFuncCall <$> funCall <* pToken SemiColToken
@@ -207,7 +208,8 @@ pAnd :: Parser (Token, Int, Int) Exp
 pAnd = pChainl (op (And <$ pToken AndToken)) pConst
 
 pConst :: Parser (Token, Int, Int) Exp 
-pConst = pChainl (op (Con <$ pToken ConstToken)) pComp
+pConst = (ExpOp2 <$> basicExpParser <*> (Con <$ pToken ConstToken) <*> expParser) <|> pComp
+-- pConst = pChainl (op (Con <$ pToken ConstToken)) pComp
 
 pComp :: Parser (Token, Int, Int) Exp 
 pComp = pChainl operators pPlusMin
@@ -279,7 +281,8 @@ funCall :: Parser (Token, Int, Int) FunCall
 funCall = FunCall <$> idP <*> (pToken BrackOToken *> actArgs <* pToken BrackCToken)
 
 -- ===================== ActArgs ============================
-actArgs = (:) <$> expParser <*> many' ( pToken CommaToken *> expParser)
+actArgs = sepBy (pToken CommaToken) expParser
+-- actArgs = (:) <$> expParser <*> many' ( pToken CommaToken *> expParser)
 
 -- ===================== ID ============================
 idP :: Parser (Token, Int, Int) ID
@@ -291,6 +294,9 @@ idP =   Parser $ \case
 -- =====================================================
 mainSegments :: Parser (Token, Int, Int) SPL
 mainSegments = SPL <$> all' (FuncMain <$> funDecl <|> VarMain <$> varDecl)
+
+sepBy :: Parser (Token, Int, Int) a -> Parser (Token, Int, Int) b -> Parser (Token, Int, Int) [b]
+sepBy sep elem = ((:) <$> elem <*> many (sep *> elem)) <|> pure []
 
 many' :: Parser (Token, Int, Int) a -> Parser (Token, Int, Int) [a]
 many' p = ((:) <$> p <*> many' p) <<|> pure []

@@ -58,7 +58,7 @@ instance Show SPLType where
   show (TypeBasic x) = show x
   show (TupleType (a, b)) = "(" ++ show a ++ ","++show b ++ ")"
   show (ArrayType x) = "["++show x++"]"
-  show (IdType id) = show id
+  show (IdType id) = id
 
 data BasicType
   = BasicInt
