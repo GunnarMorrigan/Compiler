@@ -102,7 +102,7 @@ retType = RetSplType <$> splType <|> Void <$ pToken VoidToken
 
 -- ===== Type =====
 splType :: Parser (Token, Int, Int) SPLType 
-splType = (TypeBasic <$> basicType) <|> tupleType <|> arrayType
+splType = (TypeBasic <$> basicType) <|> tupleType <|> arrayType <|> idType
 
 tupleType :: Parser (Token, Int, Int) SPLType 
 tupleType = TupleType <$> ( pToken BrackOToken *> ((,) <$> splType <* pToken CommaToken  <*> splType) <* pToken BrackCToken)
