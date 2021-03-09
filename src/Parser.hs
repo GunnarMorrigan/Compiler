@@ -127,8 +127,6 @@ basicBool = BasicBool <$ pToken TypeBoolToken
 basicChar :: Parser (Token, Int, Int) BasicType
 basicChar = BasicChar <$ pToken TypeCharToken
 
-
-
 -- ===================== Statements ============================
 stmt :: Parser (Token, Int, Int) Stmt         
 stmt = stmtReturn <|> stmtFuncCall <|> stmtDeclareVar <|> stmtIf <|> stmtWhile
@@ -170,7 +168,7 @@ expParser :: Parser (Token, Int, Int) Exp
 expParser = pOr
 
 expId :: Parser (Token, Int, Int) Exp
-expId = ExpId <$> idP <*> (Field <$> many standardFunctionP)
+expId = ExpId <$> idP <*> fieldP
 
 expInt1 :: Parser (Token, Int, Int) Exp
 expInt1 = ExpInt <$> Parser 
