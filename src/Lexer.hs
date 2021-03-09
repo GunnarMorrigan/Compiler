@@ -23,7 +23,6 @@ instance Alternative (Either Error) where
   Left _ <|> e2 = e2
   e1 <|> _ = e1
 
-
 newtype Code = Code [(Char, Int, Int)]
   deriving (Show, Eq)
 
@@ -86,8 +85,6 @@ instance Show Token where
   show ElseToken = "else"
   show WhileToken = "while"
 
-stringToCode x = Code <$> concat $ zipWith (\s line -> zip3 s (repeat line) [1 ..]) (lines x) [1 ..]
-
 alphaCheck :: [Char] -> Bool
 alphaCheck xs = null xs || not (isAlphaNum (head xs))
 
@@ -95,9 +92,6 @@ acTokens = [VarToken, ReturnToken, VoidToken, BoolToken True, BoolToken False, T
             HdToken, TlToken, FstToken, SndToken, IsEmptyToken]
 tokens = [EmptyListToken, BrackOToken,BrackCToken,CBrackOToken,CBrackCToken,SBrackOToken,SBrackCToken,FunTypeToken,ArrowToken,SemiColToken,EqToken,LeqToken,GeqToken,
           NeqToken,AndToken,OrToken,IsToken,PlusToken,MinToken,MultToken,DivToken,ModToken,LeToken,GeToken,ConstToken,NotToken,CommaToken]
-
-runTokenise :: String -> Either Error [(Token, Int, Int)]
-runTokenise x = tokenise x 0 0
 
 tokenise:: String -> Int -> Int -> Either Error [(Token, Int, Int)]
 tokenise ('/' : '*' : xs) line col = gulp xs line col
@@ -112,7 +106,6 @@ tokenise ('\n' : xs) line col = tokenise xs (line + 1) 0
 tokenise ('\'' : x : '\'' : xs) line col = ((CharToken x, line, col) :) <$> tokenise xs line (col + 3)
 tokenise input line col = tokenise2 acTokens tokens input line col
 
-
 tokenise2 :: [Token] -> [Token] -> String -> Int -> Int -> Either Error [(Token, Int, Int)]
 tokenise2 (at:art) ts (stripPrefix (show at) -> Just rc) l c | alphaCheck rc =  ((at, l, c) :) <$> tokenise rc l (c + length (show at))
 tokenise2 (at:art) ts x l c = tokenise2 art ts x l c
@@ -126,6 +119,11 @@ tokenise2 _ _ (c : xs) line col
   | otherwise = Left $ Error line col ("Unrecognized character: " ++ show c)
 
 tokenise2 _ _ [] line col = Right []
+
+stringToCode x = Code <$> concat $ zipWith (\s line -> zip3 s (repeat line) [1 ..]) (lines x) [1 ..]
+
+runTokenise :: String -> Either Error [(Token, Int, Int)]
+runTokenise x = tokenise x 0 0
 
 spanToken ::  (Char -> Bool) -> Int -> Int -> ([Char] -> Token) -> [Char] -> Either Error [(Token, Int, Int)]
 spanToken p line col t = (\(ds, rest) -> ((t ds, line, col) :) <$> tokenise rest line (col + length ds)) . span p
