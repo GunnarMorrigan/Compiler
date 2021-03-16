@@ -2,7 +2,7 @@ module BTA where
 
 import Parser
 import AST
--- import Lexer
+import Lexer
 
 import Data.Map as Map
 import Data.Set as Set
@@ -67,7 +67,6 @@ instance Types SPLType where
     apply s (ArrayType x) = apply s x
     apply _ x = x
 
-
 instance Types FunType where
     ftv (FunType args ret) = ftv args `Set.union` ftv ret
     apply s (FunType x r) = FunType (apply s x) (apply s r)
@@ -119,7 +118,6 @@ instantiate (Scheme vars t) = do  nvars <- mapM (const newVar) vars
                                   return $ apply s t
 
 -- TODO Change TI stuff to Either
-
 class MGU a where
     mgu :: a -> a -> TI Subst
 
@@ -186,3 +184,17 @@ varBind id t | t == IdType id = return nullSubst
 -- varDeclBTA (VarDeclType spltype id exp) decls = undefined
 
 -- checkExpr :: Declarations ->
+
+
+-- ===================== Binding time analysis ============================
+type Context = Map.Map ID AllType 
+
+class BTA a where
+    bta :: a -> Either Error Context
+
+instance BTA SPL where
+    bta (SPL ((VarMain x):xs)) = bta x 
+
+instance BTA VarDecl where
+    bta (VarDeclVar id exp) = undefined
+    bta (VarDeclType t id exp) = Right $ Map.singleton id (ASPLType t)
