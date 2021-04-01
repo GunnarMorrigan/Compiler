@@ -124,17 +124,6 @@ newASPLVar =
               | otherwise = let (n, r) = c `divMod` 26
                             in toEnum (97+r) : toTyVar (n-1)
 
--- newASPLVar :: TI AllType
--- newASPLVar =
---     do  s <- get
---         put (s + 1)
---         return $ ASPLType (IdType (reverse (toTyVar s)))
---   where 
---     toTyVar :: Int -> String
---     toTyVar c | c < 26    =  [toEnum (97+c)]
---               | otherwise = let (n, r) = c `divMod` 26
---                             in toEnum (97+r) : toTyVar (n-1)
-
 newSPLVar :: TI SPLType
 newSPLVar =
     do  s <- get
@@ -145,11 +134,6 @@ newSPLVar =
     toTyVar c | c < 26    =  [toEnum (97+c)]
               | otherwise = let (n, r) = c `divMod` 26
                             in toEnum (97+r) : toTyVar (n-1)
--- newASPLVar :: TI AllType 
--- newASPLVar =
---     do  s <- get
---         put (s + 1)
---         return (ASPLType (IdType $ ID (reverse (toTyVar s)) (Line (-1) (-1))))
 
 instantiate :: Scheme -> TI AllType
 instantiate (Scheme vars t) = do  nvars <- mapM (const newASPLVar) vars
@@ -166,11 +150,6 @@ instance MGU AllType where
     mgu (ARetType l) (ARetType r) = do mgu l r
     mgu t1 t2 =  throwError $ "types do not unify: " ++ show t1 ++ " vs. " ++ show t2
 
-    -- mgu t1 t2 =  throwError $ ID ("types do not unify: " ++ show t1 ++ " vs. " ++ show t2) (Line (-1) (-1))
-
--- mgu (TFun l r) (TFun l' r')  =  do  s1 <- mgu l l'
---                                     s2 <- mgu (apply s1 r) (apply s1 r')
---                                     return (s1 `composeSubst` s2)
 instance MGU FunType where
     mgu (FunType xs retx) (FunType ys rety) = do s1 <- mgu xs ys
                                                  s2 <- mgu (apply s1 retx) (apply s1 rety)  
@@ -203,32 +182,44 @@ instance MGU a => MGU [a] where
                            s2 <- mgu xs ys
                            return (s1 `composeSubst` s2) 
 
+
+class GetParamType a where
+    getParamType :: TypeEnv -> ID -> a -> TI (Subst, AllType)
+
+instance GetParamType Stmt where
+    getParamType env id (StmtIf exp stmts Nothing) = undefined
+    getParamType env id (StmtIf exp stmts (Just elseStmts)) = undefined 
+
+instance GetParamType Exp where
+    getParamType env id (ExpId id' (Field fields)) | id == id' = do
+        return undefined 
+
+getType :: TypeEnv -> AllType -> [StandardFunction] -> TI (Subst, AllType)
+getType env t [x] = do
+    tv <- fieldType x
+    let AFunType (FunType [idtype] (RetSplType retType)) = tv
+    s1 <- mgu t (ASPLType idtype)
+    return (s1, ASPLType idtype)
+getType env t (x:xs) = do
+    tv <- fieldType x
+    let AFunType (FunType [idtype] (RetSplType retType)) = tv
+    s1 <- mgu t (ASPLType idtype)
+    (s2,t2) <- getType (apply s1 env) t xs
+    let cs1 = s2 `composeSubst` s1
+    
+    return undefined
+
+
 varBind :: ID -> AllType -> TI Subst
 varBind id (ASPLType (IdType t)) | id == t  = return nullSubst
 varBind id t | id `Set.member` ftv t = throwError $ "occurs check fails: " ++ id ++ " vs. " ++ show t
 varBind id t = return (Map.singleton id t)
 
--- class TIclass a where
---     ti :: TypeEnv -> a -> TI (Subst, AllType)
-
--- instance TIclass SPL => TIclass [SPL] where
---     ti env [] = return nullSubst
---     ti env (x:xs) = undefined
-
--- Pattern match vardecl bij decl, dan moet wel werken inplaats van sperate instance voor vardecl
--- instance TIclass SPL where
 tiSPL :: TypeEnv -> SPL -> TI TypeEnv
 tiSPL env (SPL [decl]) = do tiDecl env decl
 tiSPL env (SPL (decl:decls)) = do 
             env' <- tiDecl env decl
             tiSPL env' (SPL decls)
-
--- tiSPL (TypeEnv env) (SPL ((VarMain (VarDeclVar id e)):decls)) = do 
---                             (s1,t1) <- tiDecl (TypeEnv env) (VarDeclVar id e)
---                             let t' = generalize (apply s1 (TypeEnv env)) t1
---                             let env' = TypeEnv (Map.insert id t' env)
---                             (s2,t2) <- tiDecl (apply s1 env') (SPL decls)
---                             return (s2 `composeSubst` s1, t1)
 
 tiDecl :: TypeEnv -> Decl -> TI TypeEnv
 tiDecl env (VarMain x) = tiVarDecl env x
@@ -253,6 +244,8 @@ tiFunDecl :: TypeEnv -> FunDecl -> TI TypeEnv
 tiFunDecl env (FunDecl funName params (Just funType) vars stmts) = undefined  
 tiFunDecl env (FunDecl funName params Nothing vars stmts) = do
     retType <- newSPLVar
+    (s1,t1) <- getReturnType env stmts
+    s1 <- mgu (apply s1 $ ARetType $ RetSplType retType) t1
     return undefined 
 
 getReturnType :: TypeEnv -> [Stmt]-> TI (Subst, AllType)
@@ -289,27 +282,48 @@ tiExp env (ExpList (x:xs)) = do
       (s2, t2) <- tiExp (apply s1 env) (ExpList xs)
       return (s2 `composeSubst` s1, t2)
 tiExp env (ExpOp2 e1 op e2) = do
-      res <- tiOp2 env op
-      let (_, AFunType (FunType (t1:t2:_) (RetSplType t3))) = res
-      (s1, t1') <- tiExp env e1
-      s2 <- mgu t1' (apply s1 (ASPLType t1))
-      let cs1 = s1 `composeSubst` s2
-      (s3,t2') <- tiExp (apply cs1 env) e2
-      let cs2 = s3 `composeSubst` cs1
-      s4 <- mgu (apply cs2 t2') (apply cs2 (ASPLType t2))
-      let cs3 = s4 `composeSubst` cs2 
-      return (cs3, apply cs3 (ASPLType t3))
+    tv <- op2Type op
+    let AFunType (FunType (t1:t2:_) (RetSplType t3)) = tv
+    (s1, t1') <- tiExp env e1
+    s2 <- mgu t1' (apply s1 (ASPLType t1))
+    let cs1 = s1 `composeSubst` s2
+    (s3,t2') <- tiExp (apply cs1 env) e2
+    let cs2 = s3 `composeSubst` cs1
+    s4 <- mgu (apply cs2 t2') (apply cs2 (ASPLType t2))
+    let cs3 = s4 `composeSubst` cs2 
+    return (cs3, apply cs3 (ASPLType t3))
 tiExp env (ExpOp1 e op) = undefined
 
-tiOp2 :: TypeEnv -> Op2 -> TI (Subst, AllType)
-tiOp2 _ x | x == Plus || x == Min || x == Mult || x == Div || x == Mod = return (nullSubst, AFunType $ FunType [TypeBasic BasicInt, TypeBasic BasicInt] (RetSplType $ TypeBasic BasicInt))
-tiOp2 _ x | x == Eq || x == Le || x == Ge || x == Leq || x == Geq || x == Neq = do
-        tv <- newSPLVar
-        return (nullSubst, AFunType $ FunType [tv, tv] (RetSplType $ TypeBasic BasicBool))
-tiOp2 _ x | x== And || x == Or = return (nullSubst, AFunType $ FunType [TypeBasic BasicBool , TypeBasic BasicBool] (RetSplType $ TypeBasic BasicBool))
-tiOp2 _ Con = do 
-        tv <- newSPLVar
-        return (nullSubst, AFunType $ FunType [tv , ArrayType tv] (RetSplType $ ArrayType tv))
+fieldType :: StandardFunction -> TI AllType
+fieldType Head = do 
+    tv <- newSPLVar
+    return $ AFunType $ FunType [ArrayType tv] (RetSplType tv)
+fieldType Tail = do
+    tv <- newSPLVar
+    return $ AFunType $ FunType [ArrayType tv] (RetSplType $ ArrayType tv)
+fieldType First = do
+    a <- newSPLVar
+    b <- newSPLVar
+    return $ AFunType $ FunType [TupleType (a, b)] (RetSplType a)
+fieldType Second = do
+    a <- newSPLVar
+    b <- newSPLVar
+    return $ AFunType $ FunType [TupleType (a, b)] (RetSplType b)
+fieldType IsEmpty = do
+    tv <- newSPLVar
+    return $ AFunType $ FunType [ArrayType tv] (RetSplType $ TypeBasic BasicBool)
+
+op2Type :: Op2 -> TI AllType
+op2Type x | x == Plus || x == Min || x == Mult || x == Div || x == Mod = 
+    return $ AFunType $ FunType [TypeBasic BasicInt, TypeBasic BasicInt] (RetSplType $ TypeBasic BasicInt)
+op2Type x | x == Eq || x == Le || x == Ge || x == Leq || x == Geq || x == Neq = do
+    tv <- newSPLVar
+    return $ AFunType $ FunType [tv, tv] (RetSplType $ TypeBasic BasicBool)
+op2Type x | x== And || x == Or = 
+    return $ AFunType $ FunType [TypeBasic BasicBool, TypeBasic BasicBool] (RetSplType $ TypeBasic BasicBool)
+op2Type Con = do 
+    tv <- newSPLVar
+    return $ AFunType $ FunType [tv , ArrayType tv] (RetSplType $ ArrayType tv)
 
 -- ===================== Binding time analysis ============================
 
