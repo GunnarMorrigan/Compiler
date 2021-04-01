@@ -73,7 +73,7 @@ pToken t = Parser $
 
 -- ===================== VarDecl ============================
 varDecl :: Parser (Token, Int, Int) VarDecl 
-varDecl = (VarDeclType <$> splType <*> idP <*> varAss) <|>
+varDecl = VarDeclType <$> splType <*> idP <*> varAss <|>
           (VarDeclVar <$> (pToken VarToken *> idP) <*> varAss)
               where varAss = pToken IsToken *> expParser <* pToken SemiColToken
 
@@ -170,12 +170,12 @@ expParser = pOr
 expId :: Parser (Token, Int, Int) Exp
 expId = ExpId <$> idP <*> fieldP
 
-expInt1 :: Parser (Token, Int, Int) Exp
-expInt1 = ExpInt <$> Parser 
-       (\case
-              (IntToken c,line,col):xs -> Right (c,xs)
-              (x, line, col):xs -> Left $ Error line col ("Expected Integer but got token: " ++ show x)
-              _ -> Left $ Error 0 0 "Expected Integer but got invalid token" )
+-- expInt1 :: Parser (Token, Int, Int) Exp
+-- expInt1 = ExpInt <$> Parser 
+--        (\case
+--               (IntToken c,line,col):xs -> Right (c,xs)
+--               (x, line, col):xs -> Left $ Error line col ("Expected Integer but got token: " ++ show x)
+--               _ -> Left $ Error 0 0 "Expected Integer but got invalid token" )
 
 expInt :: Parser (Token, Int, Int) Exp
 expInt = ExpInt <$> Parser 
@@ -289,6 +289,12 @@ idP =   Parser $ \case
        (x, line, col):xs -> Left $ Error line col ("Expected Id but got token: " ++ show x)
        _ -> Left $ Error 0 0 "Expected Id but got invalid token"
 
+-- idP :: Parser (Token, Int, Int) ID
+-- idP =   Parser $ \case
+--        (IdToken id, line, col):xs -> Right( ID id (Line line col), xs)
+--        (x, line, col):xs -> Left $ Error line col ("Expected Id but got token: " ++ show x)
+--        _ -> Left $ Error 0 0 "Expected Id but got invalid token"
+
 -- =====================================================
 mainSegments :: Parser (Token, Int, Int) SPL
 mainSegments = SPL <$> all' (FuncMain <$> funDecl <|> VarMain <$> varDecl)
@@ -312,14 +318,30 @@ all' p = (:) <$> p <*> all p
 tokeniseAndParse :: Parser (Token, Int, Int) a -> [Char] -> Either Error (a, [(Token, Int, Int)])
 tokeniseAndParse parser x  = runTokenise x >>= run parser
 
+splFilePath = "../SPL_code/"
+
+
+-- main :: String -> IO()
+-- tokeniseAndParseFile2 filename = do
+--        file <- readFile $ splFilePath++filename
+--        bta (tokeniseAndParse mainSegments file) 0 empty
+       
+              -- Right (x, _) -> do
+              --        exists <- doesFileExist "SPL_code/out.spl"
+              --        when exists $ removeFile "SPL_code/out.spl"
+              --        writeFile "SPL_code/out.spl"$ show x
+              -- Left x -> do
+              --        print x
+              --        exitFailure
+
 tokeniseFile :: String -> IO()
 tokeniseFile filename = do
-       file <- readFile $ "SPL_code/"++filename
+       file <- readFile $ splFilePath++filename
        case runTokenise file of 
               Right (x:xs) -> do
-                     exists <- doesFileExist "SPL_code/tokenOut.spl"
-                     when exists $ removeFile "SPL_code/tokenOut.spl"
-                     writeFile "SPL_code/tokenOut.spl"$ show (x:xs)
+                     exists <- doesFileExist (splFilePath++"tokenOut.spl")
+                     when exists $ removeFile (splFilePath++"tokenOut.spl")
+                     writeFile (splFilePath++"tokenOut.spl") $ show (x:xs)
               Right [] -> print "No failure but nothing parsed" 
               Left x -> do
                      print x
@@ -329,12 +351,12 @@ test = tokeniseAndParse expList "[10,10,10,]"
 
 main :: String -> IO()
 main filename = do
-       file <- readFile $ "SPL_code/"++filename
+       file <- readFile $ splFilePath++filename
        case tokeniseAndParse mainSegments file of 
               Right (x, _) -> do
                      exists <- doesFileExist "SPL_code/out.spl"
                      when exists $ removeFile "SPL_code/out.spl"
-                     writeFile "SPL_code/out.spl"$ show x
+                     writeFile "SPL_code/out.spl"$ pp x
               Left x -> do
                      print x
                      exitFailure

@@ -10,49 +10,59 @@ import Data.Set as Set
 import Control.Monad.Reader
 import Control.Monad.Except
 import Control.Monad.State
+import System.Exit
+import System.Directory
 
 -- ===================== TypeEnv ============================
-newtype TypeEnv = TypeEnv (Map ID AllType)
+newtype TypeEnv = TypeEnv (Map ID Scheme)
+    deriving (Show)
 
 remove :: TypeEnv -> ID -> TypeEnv
-remove (TypeEnv id) = undefined 
+remove (TypeEnv env) var = TypeEnv (Map.delete var env)
+
+find :: ID -> TypeEnv -> Maybe AllType
+find id (TypeEnv env) = do 
+    (Scheme _ t) <- Map.lookup id env
+    return t
 
 generalize :: TypeEnv -> AllType -> Scheme
 generalize env t  =   Scheme vars t
   where vars = Set.toList (ftv t Set.\\ ftv env)
 
-instance Types TypeEnv where
-    ftv (TypeEnv env)      =  ftv (Map.elems env)
-    apply s (TypeEnv env)  =  TypeEnv (Map.map (apply s) env)
-
 -- ===================== AllType ============================
 data AllType = ASPLType SPLType  
              | AFunType FunType
-             | PolyType
-             deriving (Eq)
-instance Show AllType where
-    show (ASPLType x) = show x 
-    show (AFunType x) = show x
-    show PolyType = "POLY?" 
+             | ARetType RetType
+             deriving (Eq, Show)
+instance PrettyPrinter AllType where
+    pp (ASPLType x) = pp x 
+    pp (AFunType x) = pp x
+    pp (ARetType x) = pp x
     
 -- ===================== Scheme ============================
 data Scheme = Scheme [ID] AllType
     deriving (Show, Eq)
 
-instance Types Scheme where
-    ftv (Scheme vars t) = ftv t Set.\\ Set.fromList vars
-    apply s (Scheme vars t) = Scheme vars (apply (Prelude.foldr Map.delete s vars) t)
-
 class Types a where
     ftv :: a -> Set ID 
     apply :: Subst -> a -> a
 
+instance Types TypeEnv where
+    ftv (TypeEnv env)      =  ftv (Map.elems env)
+    apply s (TypeEnv env)  =  TypeEnv (Map.map (apply s) env)
+
+instance Types Scheme where
+    ftv (Scheme vars t) = ftv t Set.\\ Set.fromList vars
+    apply s (Scheme vars t) = Scheme vars (apply (Prelude.foldr Map.delete s vars) t)
+
 instance Types AllType where
     ftv (ASPLType x) = ftv x
     ftv (AFunType x) = ftv x
-    ftv PolyType = Set.empty
+    ftv (ARetType x) = ftv x
+    -- ftv PolyType = Set.empty
     apply s (ASPLType x) = ASPLType (apply s x)
     apply s (AFunType x) = AFunType (apply s x)
+    apply s (ARetType x) = ARetType (apply s x)
     
 instance Types SPLType where
     ftv (TypeBasic x) = Set.empty
@@ -64,7 +74,7 @@ instance Types SPLType where
                         Just (AFunType t) -> IdType x
                         Nothing -> IdType x
     apply s (TupleType (x,y)) = TupleType (apply s x, apply s y)
-    apply s (ArrayType x) = apply s x
+    apply s (ArrayType x) = ArrayType (apply s x)
     apply _ x = x
 
 instance Types FunType where
@@ -78,8 +88,8 @@ instance Types RetType where
     apply _ Void = Void
 
 instance Types a => Types [a] where
-    apply s = Prelude.map (apply s)
     ftv l = Prelude.foldr (Set.union . ftv) Set.empty l
+    apply s = Prelude.map (apply s)
 
 -- ===================== Substitution ============================
 type Subst = Map.Map ID AllType
@@ -93,6 +103,8 @@ composeSubst s1 s2 = Map.map (apply s1) s2 `Map.union` s1
 -- ===================== Type inference ============================
 
 data TIEnv = TIEnv  {}
+    deriving(Show)
+    
 type TIState = Int
 type TI a = ExceptT ID (State TIState) a
 
@@ -100,20 +112,47 @@ runTI :: TI a -> (Either ID a, TIState)
 runTI t = runState (runExceptT t) initTIState
   where initTIState = 0
 
-newVar :: TI AllType 
-newVar =
+
+newASPLVar :: TI AllType
+newASPLVar =
     do  s <- get
         put (s + 1)
-        return (ASPLType (IdType (reverse (toTyVar s))))
+        return $ ASPLType (IdType (reverse (toTyVar s)))
   where 
     toTyVar :: Int -> String
-    toTyVar c | c < 26    = [toEnum (97+c)]
+    toTyVar c | c < 26    =  [toEnum (97+c)]
               | otherwise = let (n, r) = c `divMod` 26
                             in toEnum (97+r) : toTyVar (n-1)
 
+-- newASPLVar :: TI AllType
+-- newASPLVar =
+--     do  s <- get
+--         put (s + 1)
+--         return $ ASPLType (IdType (reverse (toTyVar s)))
+--   where 
+--     toTyVar :: Int -> String
+--     toTyVar c | c < 26    =  [toEnum (97+c)]
+--               | otherwise = let (n, r) = c `divMod` 26
+--                             in toEnum (97+r) : toTyVar (n-1)
+
+newSPLVar :: TI SPLType
+newSPLVar =
+    do  s <- get
+        put (s + 1)
+        return $ IdType (reverse (toTyVar s))
+  where 
+    toTyVar :: Int -> String
+    toTyVar c | c < 26    =  [toEnum (97+c)]
+              | otherwise = let (n, r) = c `divMod` 26
+                            in toEnum (97+r) : toTyVar (n-1)
+-- newASPLVar :: TI AllType 
+-- newASPLVar =
+--     do  s <- get
+--         put (s + 1)
+--         return (ASPLType (IdType $ ID (reverse (toTyVar s)) (Line (-1) (-1))))
 
 instantiate :: Scheme -> TI AllType
-instantiate (Scheme vars t) = do  nvars <- mapM (const newVar) vars
+instantiate (Scheme vars t) = do  nvars <- mapM (const newASPLVar) vars
                                   let s = Map.fromList (zip vars nvars)
                                   return $ apply s t
 
@@ -124,7 +163,10 @@ class MGU a where
 instance MGU AllType where
     mgu (AFunType l) (AFunType r) = do mgu l r
     mgu (ASPLType l) (ASPLType r) = do mgu l r
+    mgu (ARetType l) (ARetType r) = do mgu l r
     mgu t1 t2 =  throwError $ "types do not unify: " ++ show t1 ++ " vs. " ++ show t2
+
+    -- mgu t1 t2 =  throwError $ ID ("types do not unify: " ++ show t1 ++ " vs. " ++ show t2) (Line (-1) (-1))
 
 -- mgu (TFun l r) (TFun l' r')  =  do  s1 <- mgu l l'
 --                                     s2 <- mgu (apply s1 r) (apply s1 r')
@@ -139,8 +181,9 @@ instance MGU SPLType where
                                                      s2 <- mgu r1 r2
                                                      return (s1 `composeSubst` s2)     
     mgu (ArrayType x) (ArrayType y) = do mgu x y
-    mgu (IdType l) r = do varBind l r
-    mgu l (IdType r) = do varBind r l
+    mgu (TypeBasic x) (TypeBasic y) = do mgu x y
+    mgu (IdType l) r = do varBind l (ASPLType r)
+    mgu l (IdType r) = do varBind r (ASPLType l)
     mgu t1 t2 =  throwError $ "types do not unify: " ++ show t1 ++ " vs. " ++ show t2
 
 instance MGU BasicType where
@@ -148,7 +191,9 @@ instance MGU BasicType where
     mgu t1 t2 =  throwError $ "types do not unify: " ++ show t1 ++ " vs. " ++ show t2
 
 instance MGU RetType where
-    mgu Void Void = return nullSubst  
+    mgu Void Void = return nullSubst
+    mgu Void (RetSplType (IdType id)) = do varBind id (ARetType Void)
+    mgu (RetSplType (IdType id)) Void = do varBind id (ARetType Void)
     mgu (RetSplType x) (RetSplType y) = do mgu x y
     mgu t1 t2 =  throwError $ "types do not unify: " ++ show t1 ++ " vs. " ++ show t2
 
@@ -158,43 +203,238 @@ instance MGU a => MGU [a] where
                            s2 <- mgu xs ys
                            return (s1 `composeSubst` s2) 
 
-varBind :: ID -> SPLType -> TI Subst
-varBind id t | t == IdType id = return nullSubst
-             | id `Set.member` ftv t = throwError $ "occurs check fails: " ++ id ++ " vs. " ++ show t
-             | otherwise = return (Map.singleton id (ASPLType t))
+varBind :: ID -> AllType -> TI Subst
+varBind id (ASPLType (IdType t)) | id == t  = return nullSubst
+varBind id t | id `Set.member` ftv t = throwError $ "occurs check fails: " ++ id ++ " vs. " ++ show t
+varBind id t = return (Map.singleton id t)
 
--- mgu (TVar u) t               =  varBind u t
--- mgu t (TVar u)               =  varBind u t
--- mgu TInt TInt                =  return nullSubst
--- mgu TBool TBool              =  return nullSubst
--- mgu t1 t2                    =  throwError $ "types do not unify: " ++ show t1 ++
---                                 " vs. " ++ show t2
+-- class TIclass a where
+--     ti :: TypeEnv -> a -> TI (Subst, AllType)
 
+-- instance TIclass SPL => TIclass [SPL] where
+--     ti env [] = return nullSubst
+--     ti env (x:xs) = undefined
 
+-- Pattern match vardecl bij decl, dan moet wel werken inplaats van sperate instance voor vardecl
+-- instance TIclass SPL where
+tiSPL :: TypeEnv -> SPL -> TI TypeEnv
+tiSPL env (SPL [decl]) = do tiDecl env decl
+tiSPL env (SPL (decl:decls)) = do 
+            env' <- tiDecl env decl
+            tiSPL env' (SPL decls)
 
+-- tiSPL (TypeEnv env) (SPL ((VarMain (VarDeclVar id e)):decls)) = do 
+--                             (s1,t1) <- tiDecl (TypeEnv env) (VarDeclVar id e)
+--                             let t' = generalize (apply s1 (TypeEnv env)) t1
+--                             let env' = TypeEnv (Map.insert id t' env)
+--                             (s2,t2) <- tiDecl (apply s1 env') (SPL decls)
+--                             return (s2 `composeSubst` s1, t1)
 
--- function :: SPL -> TypeEnv -> Either Error (a, [(Token, Int, Int)])
--- function (SPL ((VarMain v):xs)) env = undefined 
--- function (SPL ((FuncMain f):xs)) env = undefined
+tiDecl :: TypeEnv -> Decl -> TI TypeEnv
+tiDecl env (VarMain x) = tiVarDecl env x
+tiDecl env (FuncMain x) = tiFunDecl env x
 
--- varDeclBTA v decls
+tiVarDecl :: TypeEnv -> VarDecl -> TI TypeEnv
+tiVarDecl (TypeEnv env) (VarDeclVar id e) = do
+    --tv <- newASPLVar
+    (s1, t1) <- tiExp (TypeEnv env) e
+    let t' = generalize (apply s1 (TypeEnv env)) t1
+    let env' = TypeEnv (Map.insert id t' env)
+    -- s2 <- mgu (apply s1 t1) (ASPLType $ IdType id)
+    return env'
+tiVarDecl (TypeEnv env) (VarDeclType t id e) = do
+    (s1, t1) <- tiExp (TypeEnv env) e
+    s2 <- mgu (apply s1 (ASPLType t)) t1
+    let t' = generalize (apply (s2 `composeSubst` s1) (TypeEnv env)) t1
+    let env' = TypeEnv (Map.insert id t' env)
+    return env'
 
--- varDeclBTA :: VarDecl -> Declarations  -> Either Error (a, [(Token, Int, Int)])
--- varDeclBTA (VarDeclVar id exp) decls = undefined
--- varDeclBTA (VarDeclType spltype id exp) decls = undefined
+tiFunDecl :: TypeEnv -> FunDecl -> TI TypeEnv
+tiFunDecl env (FunDecl funName params (Just funType) vars stmts) = undefined  
+tiFunDecl env (FunDecl funName params Nothing vars stmts) = do
+    retType <- newSPLVar
+    return undefined 
 
--- checkExpr :: Declarations ->
+getReturnType :: TypeEnv -> [Stmt]-> TI (Subst, AllType)
+getReturnType env ((StmtReturn (Just e)):xs) = do 
+    (s1, t1) <- tiExp env e
+    (s2, t2) <- getReturnType (apply s1 env) xs
+    let cs1 = s2 `composeSubst` s1
+    s3 <- mgu (apply cs1 t1) (apply cs1 t2)
+    let cs2 = s3 `composeSubst` cs1
+    return (cs2, apply cs2 t1)
+getReturnType env ((StmtReturn Nothing):xs) = do 
+    (s1, t1) <- getReturnType env xs
+    s2 <- mgu (ARetType Void) t1
+    let cs2 = s2 `composeSubst` s1
+    return (cs2, ARetType Void)
+getReturnType env [] = return (nullSubst, ARetType Void)
+getReturnType env (x:xs) = getReturnType env xs  
 
+tiExp :: TypeEnv -> Exp -> TI (Subst, AllType)    
+tiExp env (ExpId id (Field [])) = do
+    case find id env of
+        Just t -> return (nullSubst, t)
+        Nothing -> throwError $ "id: '" ++ id ++ "', does not exist in the type environment"
+tiExp env (ExpId id field) = undefined
+tiExp _ (ExpInt i) = return (nullSubst, ASPLType (TypeBasic BasicInt))
+tiExp _ (ExpBool b) = return (nullSubst, ASPLType (TypeBasic BasicBool))
+tiExp _ (ExpChar c) = return (nullSubst, ASPLType (TypeBasic BasicChar))
+tiExp env (ExpBracket e) = tiExp env e
+tiExp env x | x == ExpList [] || x == ExpEmptyList = do 
+      tv <- newASPLVar
+      return (nullSubst, tv)
+tiExp env (ExpList (x:xs)) = do
+      (s1, t1) <- tiExp env x
+      (s2, t2) <- tiExp (apply s1 env) (ExpList xs)
+      return (s2 `composeSubst` s1, t2)
+tiExp env (ExpOp2 e1 op e2) = do
+      res <- tiOp2 env op
+      let (_, AFunType (FunType (t1:t2:_) (RetSplType t3))) = res
+      (s1, t1') <- tiExp env e1
+      s2 <- mgu t1' (apply s1 (ASPLType t1))
+      let cs1 = s1 `composeSubst` s2
+      (s3,t2') <- tiExp (apply cs1 env) e2
+      let cs2 = s3 `composeSubst` cs1
+      s4 <- mgu (apply cs2 t2') (apply cs2 (ASPLType t2))
+      let cs3 = s4 `composeSubst` cs2 
+      return (cs3, apply cs3 (ASPLType t3))
+tiExp env (ExpOp1 e op) = undefined
+
+tiOp2 :: TypeEnv -> Op2 -> TI (Subst, AllType)
+tiOp2 _ x | x == Plus || x == Min || x == Mult || x == Div || x == Mod = return (nullSubst, AFunType $ FunType [TypeBasic BasicInt, TypeBasic BasicInt] (RetSplType $ TypeBasic BasicInt))
+tiOp2 _ x | x == Eq || x == Le || x == Ge || x == Leq || x == Geq || x == Neq = do
+        tv <- newSPLVar
+        return (nullSubst, AFunType $ FunType [tv, tv] (RetSplType $ TypeBasic BasicBool))
+tiOp2 _ x | x== And || x == Or = return (nullSubst, AFunType $ FunType [TypeBasic BasicBool , TypeBasic BasicBool] (RetSplType $ TypeBasic BasicBool))
+tiOp2 _ Con = do 
+        tv <- newSPLVar
+        return (nullSubst, AFunType $ FunType [tv , ArrayType tv] (RetSplType $ ArrayType tv))
 
 -- ===================== Binding time analysis ============================
-type Context = Map.Map ID AllType 
 
-class BTA a where
-    bta :: a -> Either Error Context
+help :: TypeEnv
+help = TypeEnv Map.empty 
 
-instance BTA SPL where
-    bta (SPL ((VarMain x):xs)) = bta x 
+typeInference :: Map.Map ID Scheme -> SPL -> TI TypeEnv
+typeInference env e =
+    do tiSPL (TypeEnv env) e
 
-instance BTA VarDecl where
-    bta (VarDeclVar id exp) = undefined
-    bta (VarDeclType t id exp) = Right $ Map.singleton id (ASPLType t)
+-- typeInference2 :: TypeEnv -> SPL -> TI TypeEnv
+-- typeInference2 env e =
+--     do  (s, t) <- ti env e
+--         return (apply s env)
+
+-- hello :: TypeEnv -> SPL -> ExceptT ID (State TIState) TypeEnv
+-- hello env spl = do 
+--                             (s1,t1) <- tiSPL env spl
+--                             -- (s2,t2) <- ti (apply s1 env) (SPL decls)
+--                             -- return (s2 `composeSubst` s1, t1)
+--                             return $ apply s1 env
+
+-- test3 :: SPL -> IO ()
+-- test3 e =
+--     let (res, s) = runTI (hello (TypeEnv Map.empty) e)
+--     in case res of
+--          Left err  ->  putStrLn $ show e ++ "\nerror: " ++ err
+--          Right t   ->  putStrLn $ show e ++ " :: " ++ show t
+         
+-- main3 :: String -> IO()
+-- main3 filename = do
+--        file <- readFile $ splFilePath++filename
+--        case tokeniseAndParse mainSegments file of 
+--               Right (x, _) -> test3 x
+--               Left x -> do print x
+
+
+test1 :: SPL -> IO ()
+test1 e =
+    let (res, s) = runTI (typeInference Map.empty e)
+    in case res of
+         Left err  ->  putStrLn $ show e ++ "\nerror: " ++ err
+         Right t   ->  putStrLn $ show e ++ " :: " ++ show t
+
+-- test2 :: SPL -> IO ()
+-- test2 e =
+--     let (res, s) = runTI (ti (TypeEnv Map.empty) e)
+--     in case res of
+--          Left err  ->  putStrLn $ show e ++ "\nerror: " ++ err
+--          Right t   ->  putStrLn $ show e ++ " :: " ++ show t
+
+main1 :: String -> IO()
+main1 filename = do
+       file <- readFile $ splFilePath++filename
+       case tokeniseAndParse mainSegments file of 
+              Right (x, _) -> test1 x
+              Left x -> do print x
+
+-- main2 :: String -> IO()
+-- main2 filename = do
+--        file <- readFile $ splFilePath++filename
+--        case tokeniseAndParse mainSegments file of 
+--               Right (x, _) -> test2 x
+--               Left x -> do print x
+
+
+
+
+
+
+
+
+
+
+
+
+-- type Context = Map.Map ID AllType 
+
+-- -- freshVariable :: Int -> String
+-- freshVariable x = ASPLType $ IdType $ 'a':show x
+
+
+
+-- test = tokeniseAndParse mainSegments "var hoi = 10;\n var hoi = 11;\n var a = 'a';"
+-- -- funcTest test = 
+
+-- main2 :: String -> IO()
+-- main2 filename = do
+--        file <- readFile $ splFilePath++filename
+--        case tokeniseAndParse mainSegments file of 
+--               Right (x, _) -> do print $ show $ bta x 0 Map.empty
+--               Left x -> do print x
+
+
+
+-- class BTA a where
+--     bta :: a -> Int -> Context -> Either Error Context
+
+-- -- instance BTA (Either Error (SPL, [(Token, Int, Int)])) where
+-- --     bta (Right (x,_)) = bta x 0 Map.empty 
+-- --     bta (Left error) = Left error
+
+
+
+
+-- instance BTA SPL where
+--     bta (SPL x) _ _ = bta x 0 Map.empty
+
+-- instance BTA a => BTA [a] where
+--     bta [] _ c = Right c
+--     bta (x:xs) freshCount c = do
+--         first <- bta x freshCount c
+--         second <- bta xs freshCount first
+--         Right $ first `Map.union` second
+
+-- instance BTA Decl where
+--     bta (VarMain x) c = bta x c
+--     bta (FuncMain x) c = undefined --bta x c
+
+-- instance BTA VarDecl where
+--     bta (VarDeclVar id exp) f c = if Map.member id c then Left (Error 0 0 "duplicate var decl") else Right (Map.insert id (freshVariable f) c)
+--     bta (VarDeclType t id exp) f c = undefined --Right $ Map.singleton id (ASPLType t)
+
+
+
+
+-- -- instance BTA FunDecl where
+-- --     bta (FunDecl funName args funType vars stmt) = 
