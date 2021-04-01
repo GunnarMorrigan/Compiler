@@ -1,4 +1,4 @@
-module BTA where
+module TI where
 
 import Parser
 import AST
@@ -47,6 +47,10 @@ class Types a where
     ftv :: a -> Set ID 
     apply :: Subst -> a -> a
 
+instance Types a => Types [a] where
+    ftv l = Prelude.foldr (Set.union . ftv) Set.empty l
+    apply s = Prelude.map (apply s)
+
 instance Types TypeEnv where
     ftv (TypeEnv env)      =  ftv (Map.elems env)
     apply s (TypeEnv env)  =  TypeEnv (Map.map (apply s) env)
@@ -87,10 +91,6 @@ instance Types RetType where
     apply s (RetSplType st) = RetSplType (apply s st)
     apply _ Void = Void
 
-instance Types a => Types [a] where
-    ftv l = Prelude.foldr (Set.union . ftv) Set.empty l
-    apply s = Prelude.map (apply s)
-
 -- ===================== Substitution ============================
 type Subst = Map.Map ID AllType
 
@@ -100,7 +100,7 @@ nullSubst = Map.empty
 composeSubst::Subst -> Subst -> Subst 
 composeSubst s1 s2 = Map.map (apply s1) s2 `Map.union` s1
 
--- ===================== Type inference ============================
+-- ===================== Type inference data types ============================
 
 data TIEnv = TIEnv  {}
     deriving(Show)
@@ -140,9 +140,17 @@ instantiate (Scheme vars t) = do  nvars <- mapM (const newASPLVar) vars
                                   let s = Map.fromList (zip vars nvars)
                                   return $ apply s t
 
+
+-- ===================== Most General Unifier ============================
 -- TODO Change TI stuff to Either
 class MGU a where
     mgu :: a -> a -> TI Subst
+
+instance MGU a => MGU [a] where
+    mgu [] [] = return nullSubst
+    mgu (x:xs) (y:ys) = do s1 <- mgu x y
+                           s2 <- mgu xs ys
+                           return (s1 `composeSubst` s2) 
 
 instance MGU AllType where
     mgu (AFunType l) (AFunType r) = do mgu l r
@@ -176,11 +184,15 @@ instance MGU RetType where
     mgu (RetSplType x) (RetSplType y) = do mgu x y
     mgu t1 t2 =  throwError $ "types do not unify: " ++ show t1 ++ " vs. " ++ show t2
 
-instance MGU a => MGU [a] where
-    mgu [] [] = return nullSubst
-    mgu (x:xs) (y:ys) = do s1 <- mgu x y
-                           s2 <- mgu xs ys
-                           return (s1 `composeSubst` s2) 
+varBind :: ID -> AllType -> TI Subst
+varBind id (ASPLType (IdType t)) | id == t  = return nullSubst
+varBind id t | id `Set.member` ftv t = throwError $ "occurs check fails: " ++ id ++ " vs. " ++ show t
+varBind id t = return (Map.singleton id t)
+
+-- ===================== getParamType ============================
+-- Meaning the type of a parameter used through out a function.
+-- Not sure if this is needed maybe we could just add the parameters at the start to the env and then check as we go.
+-- This will also be more efficient, as we dont go through all statements for each param but for all params through each statements at once.
 
 
 class GetParamType a where
@@ -192,28 +204,11 @@ instance GetParamType Stmt where
 
 instance GetParamType Exp where
     getParamType env id (ExpId id' (Field fields)) | id == id' = do
-        return undefined 
+        tv <- newASPLVar
+        (s1, t, ret) <- getType tv fields
+        return (s1, t)
 
-getType :: TypeEnv -> AllType -> [StandardFunction] -> TI (Subst, AllType)
-getType env t [x] = do
-    tv <- fieldType x
-    let AFunType (FunType [idtype] (RetSplType retType)) = tv
-    s1 <- mgu t (ASPLType idtype)
-    return (s1, ASPLType idtype)
-getType env t (x:xs) = do
-    tv <- fieldType x
-    let AFunType (FunType [idtype] (RetSplType retType)) = tv
-    s1 <- mgu t (ASPLType idtype)
-    (s2,t2) <- getType (apply s1 env) t xs
-    let cs1 = s2 `composeSubst` s1
-    
-    return undefined
-
-
-varBind :: ID -> AllType -> TI Subst
-varBind id (ASPLType (IdType t)) | id == t  = return nullSubst
-varBind id t | id `Set.member` ftv t = throwError $ "occurs check fails: " ++ id ++ " vs. " ++ show t
-varBind id t = return (Map.singleton id t)
+-- ===================== Type inference ============================
 
 tiSPL :: TypeEnv -> SPL -> TI TypeEnv
 tiSPL env (SPL [decl]) = do tiDecl env decl
@@ -226,19 +221,23 @@ tiDecl env (VarMain x) = tiVarDecl env x
 tiDecl env (FuncMain x) = tiFunDecl env x
 
 tiVarDecl :: TypeEnv -> VarDecl -> TI TypeEnv
-tiVarDecl (TypeEnv env) (VarDeclVar id e) = do
-    --tv <- newASPLVar
-    (s1, t1) <- tiExp (TypeEnv env) e
-    let t' = generalize (apply s1 (TypeEnv env)) t1
-    let env' = TypeEnv (Map.insert id t' env)
-    -- s2 <- mgu (apply s1 t1) (ASPLType $ IdType id)
-    return env'
-tiVarDecl (TypeEnv env) (VarDeclType t id e) = do
-    (s1, t1) <- tiExp (TypeEnv env) e
-    s2 <- mgu (apply s1 (ASPLType t)) t1
-    let t' = generalize (apply (s2 `composeSubst` s1) (TypeEnv env)) t1
-    let env' = TypeEnv (Map.insert id t' env)
-    return env'
+tiVarDecl (TypeEnv env) (VarDeclVar id e) = case Map.lookup id env of
+    Just x -> throwError $ "Variable with name: '" ++ id ++ "', already exist in the type environment: (i.e. double decleration)"
+    Nothing -> do
+        --tv <- newASPLVar
+        (s1, t1) <- tiExp (TypeEnv env) e
+        let t' = generalize (apply s1 (TypeEnv env)) t1
+        let env' = TypeEnv (Map.insert id t' env)
+        -- s2 <- mgu (apply s1 t1) (ASPLType $ IdType id)
+        return env'
+tiVarDecl (TypeEnv env) (VarDeclType t id e) = case Map.lookup id env of
+    Just x -> throwError $ "Variable with name: '" ++ id ++ "', already exist in the type environment: (i.e. double decleration)"
+    Nothing -> do
+        (s1, t1) <- tiExp (TypeEnv env) e
+        s2 <- mgu (apply s1 (ASPLType t)) t1
+        let t' = generalize (apply (s2 `composeSubst` s1) (TypeEnv env)) t1
+        let env' = TypeEnv (Map.insert id t' env)
+        return env'
 
 tiFunDecl :: TypeEnv -> FunDecl -> TI TypeEnv
 tiFunDecl env (FunDecl funName params (Just funType) vars stmts) = undefined  
@@ -268,15 +267,23 @@ tiExp :: TypeEnv -> Exp -> TI (Subst, AllType)
 tiExp env (ExpId id (Field [])) = do
     case find id env of
         Just t -> return (nullSubst, t)
-        Nothing -> throwError $ "id: '" ++ id ++ "', does not exist in the type environment"
-tiExp env (ExpId id field) = undefined
+        Nothing -> throwError $ "id: '" ++ id ++ "', does not exist in the type environment: (i.e. reference before decleration)"
+tiExp (TypeEnv env) (ExpId id (Field fields)) = case Map.lookup id env of
+    Just (Scheme ids t) -> do 
+        (s1, t', ret) <- getType t fields
+        return (s1,t')
+    Nothing -> throwError $ "id: '" ++ id ++ "', does not exist in the type environment: (i.e. reference before decleration)"
+    -- Nothing -> do
+    --     t <- newASPLVar
+    --     (s1, t', ret) <- getType t fields
+    --     return (s1, t') 
 tiExp _ (ExpInt i) = return (nullSubst, ASPLType (TypeBasic BasicInt))
 tiExp _ (ExpBool b) = return (nullSubst, ASPLType (TypeBasic BasicBool))
 tiExp _ (ExpChar c) = return (nullSubst, ASPLType (TypeBasic BasicChar))
 tiExp env (ExpBracket e) = tiExp env e
 tiExp env x | x == ExpList [] || x == ExpEmptyList = do 
-      tv <- newASPLVar
-      return (nullSubst, tv)
+      tv <- newSPLVar
+      return (nullSubst, ASPLType $ ArrayType tv)
 tiExp env (ExpList (x:xs)) = do
       (s1, t1) <- tiExp env x
       (s2, t2) <- tiExp (apply s1 env) (ExpList xs)
@@ -292,26 +299,57 @@ tiExp env (ExpOp2 e1 op e2) = do
     s4 <- mgu (apply cs2 t2') (apply cs2 (ASPLType t2))
     let cs3 = s4 `composeSubst` cs2 
     return (cs3, apply cs3 (ASPLType t3))
-tiExp env (ExpOp1 e op) = undefined
+tiExp env (ExpOp1 op e) = case op of
+    Neg -> do 
+        (s1, t1) <- tiExp env e
+        s2 <- mgu t1 (ASPLType $ TypeBasic BasicInt)
+        return (s2 `composeSubst` s1, t1)
+    Not -> do 
+        (s1, t1) <- tiExp env e
+        s2 <- mgu t1 (ASPLType $ TypeBasic BasicBool)
+        return (s2 `composeSubst` s1, t1)
 
-fieldType :: StandardFunction -> TI AllType
-fieldType Head = do 
+
+getType :: AllType -> [StandardFunction] -> TI (Subst, AllType, AllType)
+getType t [Head] = do
     tv <- newSPLVar
-    return $ AFunType $ FunType [ArrayType tv] (RetSplType tv)
-fieldType Tail = do
+    let t' = ArrayType tv
+    let retType = RetSplType tv
+    s1 <- mgu t (ASPLType t')
+    return (s1, apply s1 (ASPLType t'), ARetType retType)
+getType t [Tail] = do
     tv <- newSPLVar
-    return $ AFunType $ FunType [ArrayType tv] (RetSplType $ ArrayType tv)
-fieldType First = do
+    let t' = ArrayType tv
+    let retType = RetSplType $ ArrayType tv
+    s1 <- mgu t (ASPLType t')
+    return (s1, apply s1 (ASPLType t'), ARetType retType)
+getType t [First] = do
     a <- newSPLVar
     b <- newSPLVar
-    return $ AFunType $ FunType [TupleType (a, b)] (RetSplType a)
-fieldType Second = do
+    let t' = TupleType (a, b)
+    let retType = RetSplType  a
+    s1 <- mgu t (ASPLType t')
+    return (s1, apply s1 (ASPLType t'), ARetType retType)
+getType t [Second] = do
     a <- newSPLVar
     b <- newSPLVar
-    return $ AFunType $ FunType [TupleType (a, b)] (RetSplType b)
-fieldType IsEmpty = do
+    let t' = TupleType (a, b)
+    let retType = RetSplType b
+    s1 <- mgu t (ASPLType t')
+    return (s1, apply s1 (ASPLType t'), ARetType retType)
+getType t [IsEmpty] = do
     tv <- newSPLVar
-    return $ AFunType $ FunType [ArrayType tv] (RetSplType $ TypeBasic BasicBool)
+    let t' = ArrayType tv
+    let retType = RetSplType $ TypeBasic BasicBool
+    s1 <- mgu t (ASPLType t')
+    return (s1, apply s1 (ASPLType t'), ARetType retType)
+getType t (x:xs) = do
+    (s1, t', ret) <- getType t [x]
+    let ARetType (RetSplType retType) = ret
+    (s2, t'', ret') <- getType (ASPLType retType) xs
+    let cs1 = s2 `composeSubst` s1
+    return (cs1, apply cs1 t, ret')
+
 
 op2Type :: Op2 -> TI AllType
 op2Type x | x == Plus || x == Min || x == Mult || x == Div || x == Mod = 
@@ -361,19 +399,56 @@ typeInference env e =
 --               Left x -> do print x
 
 
+
+
+-- ===================== Tests ============================
 test1 :: SPL -> IO ()
 test1 e =
     let (res, s) = runTI (typeInference Map.empty e)
     in case res of
          Left err  ->  putStrLn $ show e ++ "\nerror: " ++ err
-         Right t   ->  putStrLn $ show e ++ " :: " ++ show t
+         Right t   ->  putStrLn $ show e ++ "\n\n" ++ show t
 
--- test2 :: SPL -> IO ()
--- test2 e =
---     let (res, s) = runTI (ti (TypeEnv Map.empty) e)
---     in case res of
---          Left err  ->  putStrLn $ show e ++ "\nerror: " ++ err
---          Right t   ->  putStrLn $ show e ++ " :: " ++ show t
+-- ====== Tests regarding tiExp ======
+test2 :: IO ()
+test2 =
+    let (res, s) = runTI (getType (ASPLType $ IdType "hoi") [Head, Second, Head] )
+    in case res of
+         Left err  ->  putStrLn $ "error: " ++ err
+         Right (subst, t, ret)   ->  putStrLn $ show subst ++ "\n\n" ++ show t ++ "\n\n" ++ show ret
+
+test3 :: IO ()
+test3 =
+    let (res, s) = runTI (tiExp (TypeEnv Map.empty) (ExpId "hoi" (Field [Head, Second, Head])))
+    in case res of
+         Left err  ->  putStrLn $ "error: " ++ err
+         Right (subst, t)   ->  putStrLn $ show subst ++ "\n\n" ++ show t
+
+test4 :: IO ()
+test4 =
+    let (res, s) = runTI (tiExp (TypeEnv (Map.fromList [("hoi" :: ID, Scheme [] (ASPLType (ArrayType (TupleType (IdType "z",ArrayType (IdType "x"))))) )] )) (ExpId "hoi" (Field [Head, Second, Head])))
+    in case res of
+         Left err  ->  putStrLn $ "error: " ++ err
+         Right (subst, t)   ->  putStrLn $ show subst ++ "\n\n" ++ show t
+
+test5 :: IO ()
+test5 =
+    let (res, s) = runTI (tiExp (TypeEnv Map.empty) ExpEmptyList)
+    in case res of
+         Left err  ->  putStrLn $ "error: " ++ err
+         Right (subst, t)   ->  putStrLn $ show subst ++ "\n\n" ++ show t
+
+test6 =
+    let (res, s) = runTI (tiExp (TypeEnv Map.empty) (ExpOp1 Neg $ ExpInt 10))
+    in case res of
+         Left err ->  putStrLn $ "error: " ++ err
+         Right (subst, t) ->  putStrLn $ show subst ++ "\n\n" ++ show t
+
+test7 =
+    let (res, s) = runTI (tiExp (TypeEnv (Map.fromList [("hoi" :: ID, Scheme [] (ASPLType $ TypeBasic BasicBool) )])) (ExpOp1 Not $ ExpId "hoi" (Field [])))
+    in case res of
+         Left err ->  putStrLn $ "error: " ++ err
+         Right (subst, t) ->  putStrLn $ show subst ++ "\n\n" ++ show t
 
 main1 :: String -> IO()
 main1 filename = do
@@ -388,67 +463,3 @@ main1 filename = do
 --        case tokeniseAndParse mainSegments file of 
 --               Right (x, _) -> test2 x
 --               Left x -> do print x
-
-
-
-
-
-
-
-
-
-
-
-
--- type Context = Map.Map ID AllType 
-
--- -- freshVariable :: Int -> String
--- freshVariable x = ASPLType $ IdType $ 'a':show x
-
-
-
--- test = tokeniseAndParse mainSegments "var hoi = 10;\n var hoi = 11;\n var a = 'a';"
--- -- funcTest test = 
-
--- main2 :: String -> IO()
--- main2 filename = do
---        file <- readFile $ splFilePath++filename
---        case tokeniseAndParse mainSegments file of 
---               Right (x, _) -> do print $ show $ bta x 0 Map.empty
---               Left x -> do print x
-
-
-
--- class BTA a where
---     bta :: a -> Int -> Context -> Either Error Context
-
--- -- instance BTA (Either Error (SPL, [(Token, Int, Int)])) where
--- --     bta (Right (x,_)) = bta x 0 Map.empty 
--- --     bta (Left error) = Left error
-
-
-
-
--- instance BTA SPL where
---     bta (SPL x) _ _ = bta x 0 Map.empty
-
--- instance BTA a => BTA [a] where
---     bta [] _ c = Right c
---     bta (x:xs) freshCount c = do
---         first <- bta x freshCount c
---         second <- bta xs freshCount first
---         Right $ first `Map.union` second
-
--- instance BTA Decl where
---     bta (VarMain x) c = bta x c
---     bta (FuncMain x) c = undefined --bta x c
-
--- instance BTA VarDecl where
---     bta (VarDeclVar id exp) f c = if Map.member id c then Left (Error 0 0 "duplicate var decl") else Right (Map.insert id (freshVariable f) c)
---     bta (VarDeclType t id exp) f c = undefined --Right $ Map.singleton id (ASPLType t)
-
-
-
-
--- -- instance BTA FunDecl where
--- --     bta (FunDecl funName args funType vars stmt) = 

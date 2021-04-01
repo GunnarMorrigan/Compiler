@@ -1,10 +1,10 @@
-//var hoi = 10==9;
-var hello = 10;
+var hoi = !10==9;
+var hello = -10;
 
 var doei = 10 + 10;
 var lalal = doei:[doei];
 
-//var hoi = 11;
+var hoi = 11;
 //var hoi = 11;
 //var a = 10&&7;
 
