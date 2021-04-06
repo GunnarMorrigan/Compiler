@@ -222,6 +222,9 @@ tiSPL env (SPL (decl:decls)) = do
 tiDecl :: TypeEnv -> Decl -> TI TypeEnv
 tiDecl env (VarMain x) = tiVarDecl env x
 tiDecl env (FuncMain x) = tiFunDecl env x
+-- TODO
+tiDecl env (MutRec []) = undefined 
+tiDecl env (MutRec (x:xs)) = undefined 
 
 tiVarDecl :: TypeEnv -> VarDecl -> TI  TypeEnv
 tiVarDecl (TypeEnv env) (VarDeclVar id e) = case Map.lookup id env of
@@ -253,7 +256,7 @@ tiFunDecl env (FunDecl funName params Nothing vars stmts) = do
     s1 <- mgu (apply s1 $ ARetType $ RetSplType retType) t1
     return undefined
 
-getReturnType :: TypeEnv -> [Stmt]-> TI (Subst, AllType)
+getReturnType :: TypeEnv -> [Stmt] -> TI (Subst, AllType)
 getReturnType env ((StmtReturn (Just e)):xs) = do 
     (s1, t1) <- tiExp env e
     (s2, t2) <- getReturnType (apply s1 env) xs
