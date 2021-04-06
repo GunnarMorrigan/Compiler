@@ -1,10 +1,30 @@
-var hoi = !10==9;
-var hello = -10;
+var hoi = (1,'c');
 
-var doei = 10 + 10;
-var lalal = doei:[doei];
+swap (tuple) :: (a,a) -> (a,a) {
+	var tmp = tuple.fst;
+	tuple = (tuple.snd, tmp);
+	return tuple;
+}
 
-var hoi = 11;
+var doei = swap(hoi);
+
+
+callA (i) :: Int -> Void {
+	callB(i-1);
+}
+
+callB (i) :: Int -> Void {
+	callA(i-1);
+}
+
+callC (i) :: Int -> Void {
+	callC(i-1);
+}
+
+//var doei = 10 + 10;
+//var lalal = doei:[doei];
+
+//var hoi = 11;
 //var hoi = 11;
 //var a = 10&&7;
 
