@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 module MutRec where
 
 import Data.Graph as Graph
@@ -7,17 +8,22 @@ import Data.Tree
 import Parser
 import AST
  
+import System.Exit
+
+
 class SPLGraph a where
     toGraph :: a -> [(Decl, String, [String])]
-    fromGraph :: [(Decl, String, [String])] -> a
+
+class Callees a where 
     getCallees :: a -> [ID]
 
 instance SPLGraph a => SPLGraph [a] where
     toGraph [] = []
     toGraph (x:xs) = toGraph x ++ toGraph xs
+
+instance Callees a => Callees [a] where
     getCallees [] = []
     getCallees (x:xs) = getCallees x ++ getCallees xs
-    
 
 instance SPLGraph SPL where
     toGraph (SPL []) = []
@@ -27,17 +33,19 @@ instance SPLGraph Decl where
     toGraph (VarMain (VarDeclVar id e)) = [(VarMain  $ VarDeclVar id e, id, getCallees e)]
     toGraph (VarMain (VarDeclType t id e)) = [(VarMain $ VarDeclType t id e, id, getCallees e)]
     toGraph (FuncMain (FunDecl id args t d s)) = let fd = FunDecl id args t d s in [(FuncMain fd, id, getCallees fd)]
+
+instance Callees Decl where
     getCallees (VarMain e) = getCallees e
     getCallees (FuncMain e) = getCallees e 
 
-instance SPLGraph FunDecl where
+instance Callees FunDecl where
     getCallees (FunDecl _ _ _ vs stmts) = getCallees vs ++ getCallees stmts
 
-instance SPLGraph VarDecl where
+instance Callees VarDecl where
     getCallees (VarDeclVar _ e) = getCallees e 
     getCallees (VarDeclType _ _ e) = getCallees e
     
-instance SPLGraph Stmt where
+instance Callees Stmt where
     getCallees (StmtIf e xs (Just ys)) = getCallees xs ++ getCallees ys
     getCallees (StmtIf e xs Nothing) = getCallees xs
     getCallees (StmtWhile e xs) = getCallees xs
@@ -46,13 +54,14 @@ instance SPLGraph Stmt where
     getCallees (StmtReturn (Just e)) = getCallees e
     getCallees (StmtReturn Nothing) = []
 
-instance SPLGraph Exp where
+instance Callees Exp where
     getCallees (ExpFunCall (FunCall id e)) = id : getCallees e
     getCallees (ExpOp2 e1 op e2) = getCallees e1 ++ getCallees e2
     getCallees (ExpOp1 op e) = getCallees e
     getCallees (ExpBracket e) = getCallees e
     getCallees (ExpList e) = getCallees e
     getCallees (ExpTuple (e1, e2)) = getCallees e1 ++ getCallees e2
+    getCallees (ExpId id fields) = [id]
     getCallees _ = []
 
 
@@ -68,13 +77,40 @@ mainMutRec1 filename = do
        file <- readFile $ "../SPL_code/"++filename
        case tokeniseAndParse mainSegments file of
         --    Right (x,xs) -> let (g, v, f) = graphFromEdges $ toGraph x in print $ scc g
-           Right (x,xs) -> showSCC $ stronglyConnCompR $ toGraph x
+           Right (x,xs) -> putStr $ pp $ fromGraph $ stronglyConnCompR $ toGraph x
            Left x -> print x
 
-showSCC :: [SCC] -> IO()
-showSCC ((AcyclicSCC x):xs) = print (AcyclicSCC x)
-showSCC ((CyclicSCC x):xs) = do
-    putStr "\n\n"
-    print ys
 
- --graphFromEdges :: Ord key => [(node, key, [key])] -> (Graph, Vertex -> (node, key, [key]), key -> Maybe Vertex)
+mainMutRec2 :: String -> IO()
+mainMutRec2 filename = do
+       file <- readFile $ splFilePath++filename
+       case tokeniseAndParse mainSegments file of 
+              Right (x, _) -> do
+                    writeFile "../SPL_code/out.spl" $ pp $ fromGraph $ stronglyConnCompR $ toGraph x
+              Left x -> do
+                    print x
+                    exitFailure
+
+showSCC :: [SCC (Decl, String, [String])] -> IO()
+-- showSCC ((AcyclicSCC x):xs) = do
+--     print (AcyclicSCC x)
+--     showSCC xs
+showSCC [x] = print x
+showSCC (x:xs) = do
+    print x
+    showSCC xs
+
+getCyclics :: [SCC (Decl, String, [String])] -> [SCC (Decl, String, [String])]
+getCyclics ((CyclicSCC x):xs) = CyclicSCC x : getCyclics xs
+getCyclics (_:xs) = getCyclics xs
+getCyclics [] = []
+
+fromGraph :: [SCC (Decl, String, [String])]  -> SPL
+fromGraph x = SPL (f x)
+    where 
+        f [] = []
+        f ((AcyclicSCC (x,_,_)):xs)  = x : f xs
+        f ((CyclicSCC ys):xs)  = MutRec (map (\(FuncMain f,_,_) -> f) ys) : f xs
+        
+-- castCyclicToMutRec :: SCC (Decl, String, [String]) -> Decl
+-- castCyclicToMutRec (CyclicSCC ys):xs)

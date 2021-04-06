@@ -16,6 +16,7 @@ data Line = Line Int Int
 
 data Decl = VarMain VarDecl
           | FuncMain FunDecl
+          | MutRec [FunDecl]
           deriving (Eq, Show)
 -- instance Show Decl where
 --   show (VarMain x) = show x
@@ -205,11 +206,12 @@ instance PrettyPrinter Line where
   pp (Line ln col) = "Line " ++ show ln ++ ", Col "++ show col
 
 instance PrettyPrinter a => PrettyPrinter [a] where
-    pp xs = "["++ intercalate "," (map pp xs)  ++ "]"
+    pp xs = intercalate "\n" (map pp xs)
 
 instance PrettyPrinter Decl where
   pp (VarMain x) = pp x
   pp (FuncMain x) = pp x  
+  pp (MutRec x) = "//MutRec" ++ prettyPrinter x
 
 instance PrettyPrinter VarDecl where
   pp (VarDeclVar i e) = "var " ++ i ++ " = "++ pp e ++ ";"
@@ -217,11 +219,11 @@ instance PrettyPrinter VarDecl where
 
 instance PrettyPrinter FunDecl where
   pp (FunDecl fName fArgs fType fVard fStmts) = 
-    fName ++ " (" ++ unwords fArgs ++ ") " ++ (case fType of 
+    "\n" ++ fName ++ " (" ++ unwords fArgs ++ ") " ++ (case fType of 
                                                               Just x -> ":: "++ pp x
                                                               Nothing -> "") ++ " {\n"++ 
-    pp fVard ++ "\n" ++
-    pp fStmts ++
+    prettyPrinter fVard ++ (if not (null fVard) then "\n" else "") ++
+    prettyPrinter fStmts ++ 
     "}"
 
 instance PrettyPrinter RetType where
@@ -230,7 +232,7 @@ instance PrettyPrinter RetType where
 
 instance PrettyPrinter FunType where
   pp (FunType [] x) = pp x
-  pp (FunType l x) = concatMap ((++" ") . pp) l ++ "->" ++ pp x
+  pp (FunType l x) = concatMap ((++" ") . pp) l ++ "-> " ++ pp x
 
 instance PrettyPrinter SPLType where
   pp (TypeBasic x) = pp x
@@ -245,14 +247,14 @@ instance PrettyPrinter BasicType where
 
 instance PrettyPrinter Stmt where
   pp (StmtIf e ifS elseS) = 
-    "if (" ++ pp e ++ ") {\n" ++ 
+    "if (" ++ pp e ++ ") {" ++ 
       prettyPrinter ifS ++"}" ++ 
       case elseS of
-        Just x -> " else {\n" ++ 
+        Just x -> " else {" ++ 
           prettyPrinter x ++"}" 
         Nothing -> ""
   pp (StmtWhile e s) = 
-    "while (" ++ pp e ++ ") {\n" ++ unlines (map pp s) ++"}"
+    "while (" ++ pp e ++ ") {" ++ unlines (map pp s) ++"}"
   pp (StmtDeclareVar id f e) = id ++ pp f ++ " = " ++ pp e ++ ";"
   pp (StmtFuncCall c) = pp c ++ ";"
   pp (StmtReturn e) = "return" ++ maybe "" ((" "++) . pp) e ++ ";"
@@ -266,7 +268,7 @@ instance PrettyPrinter Exp where
   pp (ExpOp2 e1 op e2) = "("++ pp e1  ++" "++ pp op++" " ++ pp e2++")"
   pp (ExpOp1 op e) = pp op ++ pp e
   pp (ExpFunCall c) = pp c;
-  pp (ExpList xs) =  pp xs
+  pp (ExpList xs) =  "["++ intercalate "," (map pp xs)  ++ "]"
   pp (ExpTuple (a,b)) =  "(" ++ pp a ++ "," ++ pp b ++")"
   pp ExpEmptyList = "[]"
 
