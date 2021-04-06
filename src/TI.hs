@@ -97,6 +97,9 @@ type Subst = Map.Map ID AllType
 nullSubst :: Subst
 nullSubst = Map.empty 
 
+applySubst :: Subst -> Subst -> Subst
+applySubst s1 = Map.map $ apply s1
+
 composeSubst::Subst -> Subst -> Subst 
 composeSubst s1 s2 = Map.map (apply s1) s2 `Map.union` s1
 
@@ -220,24 +223,27 @@ tiDecl :: TypeEnv -> Decl -> TI TypeEnv
 tiDecl env (VarMain x) = tiVarDecl env x
 tiDecl env (FuncMain x) = tiFunDecl env x
 
-tiVarDecl :: TypeEnv -> VarDecl -> TI TypeEnv
+tiVarDecl :: TypeEnv -> VarDecl -> TI  TypeEnv
 tiVarDecl (TypeEnv env) (VarDeclVar id e) = case Map.lookup id env of
     Just x -> throwError $ "Variable with name: '" ++ id ++ "', already exist in the type environment: (i.e. double decleration)"
     Nothing -> do
         --tv <- newASPLVar
         (s1, t1) <- tiExp (TypeEnv env) e
-        let t' = generalize (apply s1 (TypeEnv env)) t1
+        -- let t' = generalize (apply s1 (TypeEnv env)) t1
+        let t' = Scheme [] t1
         let env' = TypeEnv (Map.insert id t' env)
         -- s2 <- mgu (apply s1 t1) (ASPLType $ IdType id)
-        return env'
+        return $ apply s1 env'
 tiVarDecl (TypeEnv env) (VarDeclType t id e) = case Map.lookup id env of
     Just x -> throwError $ "Variable with name: '" ++ id ++ "', already exist in the type environment: (i.e. double decleration)"
     Nothing -> do
         (s1, t1) <- tiExp (TypeEnv env) e
         s2 <- mgu (apply s1 (ASPLType t)) t1
-        let t' = generalize (apply (s2 `composeSubst` s1) (TypeEnv env)) t1
+        let cs1 = s2 `composeSubst` s1
+        --let t' = generalize (apply cs1 (TypeEnv env)) t1
+        let t' = Scheme [] t1
         let env' = TypeEnv (Map.insert id t' env)
-        return env'
+        return $ apply cs1 env'
 
 tiFunDecl :: TypeEnv -> FunDecl -> TI TypeEnv
 tiFunDecl env (FunDecl funName params (Just funType) vars stmts) = undefined  
@@ -245,7 +251,7 @@ tiFunDecl env (FunDecl funName params Nothing vars stmts) = do
     retType <- newSPLVar
     (s1,t1) <- getReturnType env stmts
     s1 <- mgu (apply s1 $ ARetType $ RetSplType retType) t1
-    return undefined 
+    return undefined
 
 getReturnType :: TypeEnv -> [Stmt]-> TI (Subst, AllType)
 getReturnType env ((StmtReturn (Just e)):xs) = do 
@@ -261,7 +267,7 @@ getReturnType env ((StmtReturn Nothing):xs) = do
     let cs2 = s2 `composeSubst` s1
     return (cs2, ARetType Void)
 getReturnType env [] = return (nullSubst, ARetType Void)
-getReturnType env (x:xs) = getReturnType env xs  
+getReturnType env (x:xs) = getReturnType env xs
 
 tiExp :: TypeEnv -> Exp -> TI (Subst, AllType)    
 tiExp env (ExpId id (Field [])) = do
@@ -348,7 +354,10 @@ getType t (x:xs) = do
     let ARetType (RetSplType retType) = ret
     (s2, t'', ret') <- getType (ASPLType retType) xs
     let cs1 = s2 `composeSubst` s1
-    return (cs1, apply cs1 t, ret')
+    let s3 = applySubst s2 s1
+    return (s3, apply cs1 t, ret')
+
+
 
 
 op2Type :: Op2 -> TI AllType
