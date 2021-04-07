@@ -29,7 +29,7 @@ data VarDecl = VarDeclVar ID Exp
 --   show (VarDeclVar i e) = "var " ++ i ++ " = "++ show e ++ ";"
 --   show (VarDeclType t i e ) = show t ++ " " ++ i ++ " = "++ show e ++ ";"
 
-data FunDecl = FunDecl ID [ID] (Maybe FunType) [VarDecl] [Stmt] --Line
+data FunDecl = FunDecl ID [ID] (Maybe SPLType) [VarDecl] [Stmt] --Line
              deriving (Eq, Show)
 -- instance Show FunDecl where
 --   show (FunDecl fName fArgs fType fVard fStmts) = 
@@ -40,23 +40,27 @@ data FunDecl = FunDecl ID [ID] (Maybe FunType) [VarDecl] [Stmt] --Line
 --     prettyPrinter fStmts ++
 --     "}"
 
-data RetType = Void | RetSplType SPLType
-  deriving (Eq)
-instance Show RetType where
-  show Void = "Void"
-  show (RetSplType t) = show t
+-- data RetType = Void | RetSplType SPLType
+--   deriving (Eq)
+-- instance Show RetType where
+--   show Void = "Void"
+--   show (RetSplType t) = show t
 
-data FunType = FunType [SPLType] RetType 
-  deriving (Eq, Show)
+-- data FunType = FunType [SPLType] SPLType
+--   deriving (Eq, Show)
 -- instance Show FunType where
 --   show (FunType [] x) = show x
 --   show (FunType l x) = concatMap ((++" ") . show) l ++ "->" ++ show x
+
+data Class = OrdClass | EqClass deriving (Show, Eq)
 
 data SPLType 
   = TypeBasic BasicType
   | TupleType (SPLType, SPLType)
   | ArrayType SPLType
-  | IdType ID
+  | IdType ID (Maybe Class)
+  | FunType SPLType SPLType
+  | Void
   deriving (Eq, Show)
 -- instance Show SPLType where
 --   show (TypeBasic x) = show x
@@ -98,8 +102,11 @@ data Stmt = StmtIf Exp [Stmt] (Maybe [Stmt]) --Line
 data Exp 
   = ExpId ID Field
   | ExpInt Integer
+  | ExpIntLine Integer Line
   | ExpChar Char
+  | ExpCharLine Char Line
   | ExpBool Bool
+  | ExpBoolLine Bool Line
   | ExpBracket Exp
   | ExpOp2 Exp Op2 Exp
   | ExpOp1 Op1 Exp
@@ -138,6 +145,7 @@ data StandardFunction
 --   show IsEmpty = ".isEmpty"
 
 type ID = String
+data IDLine = ID String Line
 
 -- data ID = ID String Line
 --   deriving (Eq)
@@ -226,19 +234,26 @@ instance PrettyPrinter FunDecl where
     prettyPrinter fStmts ++ 
     "}"
 
-instance PrettyPrinter RetType where
-  pp Void = "Void"
-  pp (RetSplType t) = pp t
+-- instance PrettyPrinter RetType where
+--   pp Void = "Void"
+--   pp (RetSplType t) = pp t
 
-instance PrettyPrinter FunType where
-  pp (FunType [] x) = pp x
-  pp (FunType l x) = concatMap ((++" ") . pp) l ++ "-> " ++ pp x
+-- instance PrettyPrinter FunType where
+--   pp (FunType [] x) = pp x
+--   pp (FunType l x) = concatMap ((++" ") . pp) l ++ "-> " ++ pp x
 
 instance PrettyPrinter SPLType where
   pp (TypeBasic x) = pp x
   pp (TupleType (a, b)) = "(" ++ pp a ++ ","++pp b ++ ")"
   pp (ArrayType x) = "["++pp x++"]"
-  pp (IdType id) = id
+  pp (IdType id Nothing) = id
+  pp (IdType id (Just EqClass)) = "Eq "++ id ++ " =>" ++ id
+  pp (IdType id (Just OrdClass)) = "Ord "++ id ++ " =>" ++ id
+  pp (FunType args ret) = undefined 
+  pp Void = "Void"
+
+instance PrettyPrinter Class where
+  pp EqClass = "Eq =>"
 
 instance PrettyPrinter BasicType where
   pp BasicInt = "Int"

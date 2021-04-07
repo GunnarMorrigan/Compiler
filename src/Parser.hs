@@ -71,6 +71,13 @@ pToken t = Parser $
               (x, line, col):xs -> Left $ Error line col ("Expected: '"++show t++"' but found: " ++ show x)
               [] -> Left $ Error (-1) (-1) ("Unexpected EOF, expected: '"++show t++"'")
 
+pTokenGen :: Token -> (Line -> b) -> Parser (Token, Int, Int) b
+pTokenGen t f = Parser $ 
+       \case 
+              (x, line, col):xs | x == t -> Right (f (Line line col),xs)
+              (x, line, col):xs -> Left $ Error line col ("Expected: '"++show t++"' but found: " ++ show x)
+              [] -> Left $ Error (-1) (-1) ("Unexpected EOF, expected: '"++show t++"'")
+
 -- ===================== VarDecl ============================
 varDecl :: Parser (Token, Int, Int) VarDecl 
 varDecl = VarDeclType <$> splType <*> idP <*> varAss <|>
@@ -94,12 +101,12 @@ funDecl = FunDecl <$>
 
 -- ===================== Types ============================
 -- ===== FunType =====
-funType :: Parser (Token, Int, Int) FunType 
-funType = FunType <$> many splType <*> (pToken ArrowToken *> retType)
+funType :: Parser (Token, Int, Int) SPLType  
+funType = FunType <$> splType <*> (pToken ArrowToken *> retType)
 
 -- ===== RetType =====
-retType :: Parser (Token, Int, Int) RetType
-retType = RetSplType <$> splType <|> Void <$ pToken VoidToken
+retType :: Parser (Token, Int, Int) SPLType
+retType = splType <|> Void <$ pToken VoidToken
 
 -- ===== Type =====
 splType :: Parser (Token, Int, Int) SPLType 
@@ -112,7 +119,7 @@ arrayType :: Parser (Token, Int, Int) SPLType
 arrayType = ArrayType <$> (pToken SBrackOToken *> splType <* pToken SBrackCToken)
 
 idType :: Parser (Token, Int, Int) SPLType 
-idType = IdType <$> idP
+idType = IdType <$> idP <*> pure Nothing
 
 -- ===== BasicType =====
 basicType :: Parser (Token, Int, Int) BasicType
@@ -180,19 +187,38 @@ expId = ExpId <$> idP <*> fieldP
 expInt :: Parser (Token, Int, Int) Exp
 expInt = ExpInt <$> Parser 
        (\case
-              (IntToken c,line,col):xs -> Right (c,xs)
+              (IntToken c, line, col):xs -> Right (c,xs)
+              (x, line, col):xs -> Left $ Error line col ("Expected Integer but got token: " ++ show x)
+              _ -> Left $ Error 0 0 "Expected Integer but got invalid token" )
+
+expIntLine :: Parser (Token, Int, Int) Exp
+expIntLine = Parser 
+       (\case
+              (IntToken c, line, col):xs -> Right (ExpIntLine c (Line line col),xs)
               (x, line, col):xs -> Left $ Error line col ("Expected Integer but got token: " ++ show x)
               _ -> Left $ Error 0 0 "Expected Integer but got invalid token" )
 
 expChar :: Parser (Token, Int, Int) Exp
 expChar = ExpChar <$> Parser (\case
-       (CharToken c,line,col):xs -> Right (c,xs)
+       (CharToken c, line, col):xs -> Right (c,xs)
        (x, line, col):xs -> Left $ Error line col ("Expected Char but got token: " ++ show x)
        _ -> Left $ Error 0 0 "Expected Char but got invalid token" )
+
+expCharLine :: Parser (Token, Int, Int) Exp
+expCharLine = Parser (\case
+       (CharToken c, line, col):xs -> Right (ExpCharLine c (Line line col),xs)
+       (x, line, col):xs -> Left $ Error line col ("Expected Char but got token: " ++ show x)
+       _ -> Left $ Error 0 0 "Expected Char but got invalid token")
 
 expBool :: Parser (Token, Int, Int) Exp
 expBool = ExpBool <$> Parser (\case
        (BoolToken b, line, col):xs -> Right (b,xs)
+       (x, line, col):xs -> Left $ Error line col ("Expected Bool but got token: " ++ show x)
+       _ -> Left $ Error 0 0 "Expected Bool but got invalid token" )
+
+expBoolLine :: Parser (Token, Int, Int) Exp
+expBoolLine = Parser (\case
+       (BoolToken b, line, col):xs -> Right (ExpBoolLine b (Line line col),xs)
        (x, line, col):xs -> Left $ Error line col ("Expected Bool but got token: " ++ show x)
        _ -> Left $ Error 0 0 "Expected Bool but got invalid token" )
 
@@ -283,17 +309,19 @@ actArgs = sepBy (pToken CommaToken) expParser
 -- actArgs = (:) <$> expParser <*> many' ( pToken CommaToken *> expParser)
 
 -- ===================== ID ============================
-idP :: Parser (Token, Int, Int) ID
-idP =   Parser $ \case
-       (IdToken id, line, col):xs -> Right(id, xs)
+
+idPLine :: Parser (Token, Int, Int) IDLine
+idPLine =  Parser $ \case
+       (IdToken id, line, col):xs -> Right(ID id (Line line col), xs)
        (x, line, col):xs -> Left $ Error line col ("Expected Id but got token: " ++ show x)
        _ -> Left $ Error 0 0 "Expected Id but got invalid token"
 
--- idP :: Parser (Token, Int, Int) ID
--- idP =   Parser $ \case
---        (IdToken id, line, col):xs -> Right( ID id (Line line col), xs)
---        (x, line, col):xs -> Left $ Error line col ("Expected Id but got token: " ++ show x)
---        _ -> Left $ Error 0 0 "Expected Id but got invalid token"
+
+idP :: Parser (Token, Int, Int) ID
+idP =  Parser $ \case
+       (IdToken id, line, col):xs -> Right(id, xs)
+       (x, line, col):xs -> Left $ Error line col ("Expected Id but got token: " ++ show x)
+       _ -> Left $ Error 0 0 "Expected Id but got invalid token"
 
 -- =====================================================
 mainSegments :: Parser (Token, Int, Int) SPL
