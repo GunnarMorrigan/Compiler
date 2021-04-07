@@ -1,8 +1,28 @@
-swap () :: (a,a) ->(a,a) {
+
+swap (tuple) :: (a,a) -> (a,a) {
 	var tmp = tuple.fst;
 
-	tuple.fst = swap();
-	tuple.fst = tuple.snd;
-	tuple.snd = tmp;
+	tuple = (tuple.snd,tmp);
 	return tuple;
 }
+var hoi = (1,'c');
+var hoi2 = hoi;
+var doei = swap(hoi);
+//MutRec	
+	callD (i) :: Int -> Void {
+		callD((i - 1));
+	}
+
+//MutRec	
+	callA (i) :: Int -> Void {
+		callB((i - 1));
+	}
+	
+	callB (i) :: Int -> Void {
+		callC((i - 1));
+	}
+	
+	callC (i) :: Int -> Void {
+		callA((i - 1));
+	}
+

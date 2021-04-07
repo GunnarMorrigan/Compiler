@@ -1,4 +1,6 @@
+var hoi2 = hoi;
 var hoi = (1,'c');
+var doei = swap(hoi);
 
 swap (tuple) :: (a,a) -> (a,a) {
 	var tmp = tuple.fst;
@@ -6,19 +8,21 @@ swap (tuple) :: (a,a) -> (a,a) {
 	return tuple;
 }
 
-var doei = swap(hoi);
-
 
 callA (i) :: Int -> Void {
 	callB(i-1);
 }
 
 callB (i) :: Int -> Void {
-	callA(i-1);
+	callC(i-1);
 }
 
 callC (i) :: Int -> Void {
-	callC(i-1);
+	callA(i-1);
+}
+
+callD (i) :: Int -> Void {
+	callD(i-1);
 }
 
 //var doei = 10 + 10;
