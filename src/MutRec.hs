@@ -105,6 +105,10 @@ getCyclics ((CyclicSCC x):xs) = CyclicSCC x : getCyclics xs
 getCyclics (_:xs) = getCyclics xs
 getCyclics [] = []
 
+-- TODO CyclicSCC can also container VarDecls and should then throw and error
+-- because variables cant be Cyclic
+-- var hoi = hoi2;
+-- var hoi2 = hoi;
 fromGraph :: [SCC (Decl, String, [String])]  -> SPL
 fromGraph x = SPL (f x)
     where 
