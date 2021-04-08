@@ -102,8 +102,8 @@ tokenise ('/' : '*' : xs) line col = gulp xs line col
     gulp [] line col = Right []
 tokenise ('/' : '/' : xs) line col = tokenise (dropWhile (/= '\n') xs) (line + 1) 0
 tokenise (' ' : xs) line col = tokenise xs line (col + 1)
-tokenise ('\t' : xs) line col = tokenise xs line (col + 2)
-tokenise ('\n' : xs) line col = tokenise xs (line + 1) 0
+tokenise ('\t' : xs) line col = tokenise xs line (col + 4)
+tokenise ('\n' : xs) line col = tokenise xs (line + 1) 1
 tokenise ('\'' : x : '\'' : xs) line col = ((CharToken x, line, col) :) <$> tokenise xs line (col + 3)
 tokenise input line col = tokenise2 acTokens tokens input line col
 
