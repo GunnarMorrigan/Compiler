@@ -101,8 +101,8 @@ tokenise ('/' : '*' : xs) line col = gulp xs line col
     gulp [] line col = Right []
 tokenise ('/' : '/' : xs) line col = tokenise (dropWhile (/= '\n') xs) (line + 1) 0
 tokenise (' ' : xs) line col = tokenise xs line (col + 1)
-tokenise ('\t' : xs) line col = tokenise xs line (col + 2)
-tokenise ('\n' : xs) line col = tokenise xs (line + 1) 0
+tokenise ('\t' : xs) line col = tokenise xs line (col + 4)
+tokenise ('\n' : xs) line col = tokenise xs (line + 1) 1
 tokenise ('\'' : x : '\'' : xs) line col = ((CharToken x, line, col) :) <$> tokenise xs line (col + 3)
 tokenise input line col = tokenise2 acTokens tokens input line col
 
@@ -123,7 +123,7 @@ tokenise2 _ _ [] line col = Right []
 stringToCode x = Code <$> concat $ zipWith (\s line -> zip3 s (repeat line) [1 ..]) (lines x) [1 ..]
 
 runTokenise :: String -> Either Error [(Token, Int, Int)]
-runTokenise x = tokenise x 0 0
+runTokenise x = tokenise x 1 1
 
 spanToken ::  (Char -> Bool) -> Int -> Int -> ([Char] -> Token) -> [Char] -> Either Error [(Token, Int, Int)]
 spanToken p line col t = (\(ds, rest) -> ((t ds, line, col) :) <$> tokenise rest line (col + length ds)) . span p
