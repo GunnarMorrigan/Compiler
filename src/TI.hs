@@ -6,6 +6,7 @@ import Lexer
 
 import Data.Map as Map
 import Data.Set as Set
+import Data.Maybe
 
 import Control.Applicative
 import Control.Monad.Reader
@@ -13,6 +14,8 @@ import Control.Monad.Except
 import Control.Monad.State
 import System.Exit
 import System.Directory
+
+import Debug.Trace
 
 -- ===================== TypeEnv ============================
 newtype TypeEnv = TypeEnv (Map ID Scheme)
@@ -226,15 +229,22 @@ tiDecl env (FuncMain x) = tiFunDecl env x
 tiDecl env (MutRec []) = undefined 
 tiDecl env (MutRec (x:xs)) = undefined 
 
-tiVarDecl :: TypeEnv -> VarDecl -> TI  TypeEnv
+tiVarDecls :: TypeEnv -> [VarDecl] -> TI TypeEnv
+tiVarDecls env [] = return env
+tiVarDecls env [decl] = do tiVarDecl env decl
+tiVarDecls env (varDecl:varDecls) = do 
+    env' <- tiVarDecl env varDecl
+    tiVarDecls env' varDecls
+
+tiVarDecl :: TypeEnv -> VarDecl -> TI TypeEnv
 tiVarDecl (TypeEnv env) (VarDeclVar id e) = case Map.lookup id env of
     Just x -> throwError $ "Variable with name: '" ++ id ++ "', already exist in the type environment: (i.e. double decleration)"
     Nothing -> do
         --tv <- newASPLVar
         (s1, t1) <- tiExp (TypeEnv env) e
         -- let t' = generalize (apply s1 (TypeEnv env)) t1
-        let t' = Scheme [] t1
-        let env' = TypeEnv (Map.insert id t' env)
+        let scheme = Scheme [] t1
+        let env' = TypeEnv (Map.insert id scheme env)
         -- s2 <- mgu (apply s1 t1) (ASPLType $ IdType id)
         return $ apply s1 env'
 tiVarDecl (TypeEnv env) (VarDeclType t id e) = case Map.lookup id env of
@@ -249,55 +259,76 @@ tiVarDecl (TypeEnv env) (VarDeclType t id e) = case Map.lookup id env of
         return $ apply cs1 env'
 
 -- Create new types for the variables add them to a TEMPORARY env and then go through the statements.
--- 
+
+
+tiFunDeclTest :: TypeEnv -> FunDecl -> TI (Subst, Subst, Maybe SPLType, TypeEnv)
+tiFunDeclTest env (FunDecl funName args (Just funType) vars stmts) = undefined
+tiFunDeclTest env (FunDecl funName args Nothing vars stmts) = do
+    argTypes <- replicateM (length args) newSPLVar
+    retType <- newSPLVar
+    let fType = if not (Prelude.null argTypes) then foldr1 FunType (argTypes ++ [retType]) else retType
+    let env' = TI.insert env funName fType -- With only this function inserted
+    let env'' = insertMore env' (zip args argTypes) -- With this function + args inserted
+    env''' <- tiVarDecls env'' vars -- With this function + args + local varDecls inserted
+
+    -- let (l,r) = Prelude.splitAt 2 stmts
+
+    (s1,t1) <- tiStmts env''' stmts
+    -- (s4,t4) <- tiStmts env''' r
+
+
+    let t1' = fromMaybe Void t1
+
+    s2 <- mgu retType (apply s1 t1')
+    let cs1 = s2 `composeSubst` s1
+    return (s1, s2, t1, apply cs1 env')
+    -- return (cs1, apply cs1 env''')
+    -- return (cs1,env'
+
+
+
 tiFunDecl :: TypeEnv -> FunDecl -> TI TypeEnv
 tiFunDecl env (FunDecl funName args (Just funType) vars stmts) = undefined
 tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
     argTypes <- replicateM (length args) newSPLVar
     retType <- newSPLVar
     let fType = if not (Prelude.null argTypes) then foldr1 FunType (argTypes ++ [retType]) else retType
-    let env' = TI.insert env funName fType
-    let env'' = insertMore env' (zip args argTypes)
+    let env' = TI.insert env funName fType -- With only this function inserted
+    let env'' = insertMore env' (zip args argTypes) -- With this function + args inserted
+    env''' <- tiVarDecls env'' vars -- With this function + args + local varDecls inserted
+
+    (s1,t1) <- tiStmts env''' stmts
+
+    let t1' = fromMaybe Void t1
+
+    s2 <- mgu (apply s1 t1') retType
+    let cs1 = s2 `composeSubst` s1
+    return $ apply cs1 env'
+    -- return env'
 
 
+-- tiStmtsTest :: TypeEnv -> [Stmt] -> TI (Subst, Maybe SPLType, TypeEnv)
+-- tiStmtsTest env [e] = do 
+--     (s1, t1) <- tiStmt env e
+--     return (s1, t1, apply s1 env)
+-- tiStmtsTest env (e:es) = do
+--     (s1, t1) <- tiStmt env e
+--     (s2, retType, env') <- tiStmtsTest env es
+--     let cs1 = s2 `composeSubst` s1
+--     s3 <- mgu t1 retType
+--     let cs2 = s3 `composeSubst` cs1
+--     return (cs2, retType, apply cs2 env)
 
-    -- (s1,t1) <- getReturnType env stmts
-    -- s1 <- mgu (apply s1 retType) t1
-    return undefined
 
 tiStmts :: TypeEnv -> [Stmt] -> TI (Subst, Maybe SPLType)
-tiStmts env [e] = tiStmt env e
-tiStmts env (e:es) = do
-    (s1, t1) <- tiStmt env e
-    (s2, retType) <- tiStmts (apply s1 env) es
+tiStmts env [e] = trace ("Calling tiStmts with: \n\t" ++ show env ++ "\n\n\t" ++ show e ++ "\n") $ tiStmt env e
+tiStmts env (e:es) = trace ("Calling tiStmts with: \n\t" ++ show env ++ "\n\n\t" ++ show (e:es) ++ "\n") $ do
+    (s1, retType) <- tiStmts env es
+    (s2, t1) <- tiStmt (apply s1 env) e
     let cs1 = s2 `composeSubst` s1
     s3 <- mgu (apply cs1 t1) retType
     let cs2 = s3 `composeSubst` cs1
-    return (cs2, apply cs2 retType)
-
--- tiStmts env (e:es) = do
---         (s1, t) <- tiStmt env e
---         case t of
---             Just t1 -> do
---                 (s2, t') <- tiStmts (apply s1 env) es
---                 case t' of
---                     Just retType -> do
---                         let cs1 = s2 `composeSubst` s1
---                         s3 <- mgu (apply cs1 t1) retType
---                         let cs2 = s3 `composeSubst` cs1
---                         return (cs2, Just $ apply cs2 retType)
---                     Nothing -> do
---                         let cs1 = s2 `composeSubst` s1
---                         return (cs1, Just $ apply cs1 t1)
---             Nothing -> do
---                 (s2, t') <- tiStmts (apply s1 env) es
---                 case t' of
---                     Just retType -> do
---                         let cs1 = s2 `composeSubst` s1
---                         return (cs1, Just $ apply cs1 retType)
---                     Nothing -> do
---                         return (s2 `composeSubst` s1, Nothing)
-
+    return (cs2, retType)
 
 tiStmt :: TypeEnv -> Stmt -> TI (Subst, Maybe SPLType)
 tiStmt env (StmtIf e stmts (Just els)) = do
@@ -329,22 +360,24 @@ tiStmt env (StmtReturn Nothing) = return (nullSubst, Just Void)
 tiStmt env (StmtReturn (Just exp)) = do 
     (s1,t1) <- tiExp env exp
     return (s1, Just t1)
-tiStmt (TypeEnv env) (StmtDeclareVar id (Field fields) e) = case Map.lookup id env of
-    Just (Scheme ids t) -> case fields of
-        [] -> do 
-            (s1, t1) <- tiExp (TypeEnv env) e
-            s2 <- mgu (apply s1 t) t1
-            let cs1 = s2 `composeSubst` s1
-            return (cs1, Nothing)
-        (x:xs) -> do 
-            (s1, t', ret) <- getType t fields
-            (s2, t1) <- tiExp (apply s1 (TypeEnv env)) e
-            let cs1 = s2 `composeSubst` s1
-            s3 <- mgu (apply cs1 ret) t1
-            let cs2 = s3 `composeSubst` cs1
-            return (cs2, Nothing)
+tiStmt (TypeEnv env) (StmtDeclareVar id (Field []) e) = case Map.lookup id env of
+    Just (Scheme ids t) -> do
+        (s1, t1) <- tiExp (TypeEnv env) e
+        s2 <- mgu (apply s1 t) t1
+        let cs1 = s2 `composeSubst` s1
+        return (cs1, Nothing)
     Nothing -> throwError $ "id: '" ++ id ++ "', does not exist in the type environment: (i.e. reference before declaration)"
-
+tiStmt (TypeEnv env) (StmtDeclareVar id (Field fields) e) = case Map.lookup id env of
+    Just (Scheme ids t) -> do
+        (s1, t1) <- tiExp (TypeEnv env) e
+        (s2, t', ret) <- getType t fields
+        let cs1 = s2 `composeSubst` s1
+        s3 <- mgu (apply cs1 ret) t1
+        let cs2 = s3 `composeSubst` cs1
+        s4 <- mgu (apply cs2 t') t
+        let cs3 = s4 `composeSubst` cs2
+        return (cs3, Nothing)
+    Nothing -> throwError $ "id: '" ++ id ++ "', does not exist in the type environment: (i.e. reference before declaration)"
 
 tiExp :: TypeEnv -> Exp -> TI (Subst, SPLType)    
 tiExp env (ExpId id (Field [])) = do
@@ -403,18 +436,24 @@ getType t [Head] = do
     let t' = ArrayType tv
     s1 <- mgu t t'
     return (s1, apply s1  t', tv)
-getType t [Tail] = do
-    tv <- newSPLVar
-    let t' = ArrayType tv
-    let retType = ArrayType tv
-    s1 <- mgu t t'
-    return (s1, apply s1  t', ArrayType tv)
-getType t [First] = do
-    a <- newSPLVar
-    b <- newSPLVar
-    let t' = TupleType (a, b)
-    s1 <- mgu t t'
-    return (s1, apply s1 t', a)
+getType t [Tail] = case t of
+    TupleType (a, b) -> do 
+        return(nullSubst, t, b)
+    _ ->do
+        tv <- newSPLVar
+        let t' = ArrayType tv
+        let retType = ArrayType tv
+        s1 <- mgu t t'
+        return (s1, apply s1  t', ArrayType tv)
+getType t [First] = case t of
+    TupleType (a, b) -> do 
+        return(nullSubst, t, a)
+    _ ->do
+        a <- newSPLVar
+        b <- newSPLVar
+        let t' = TupleType (a, b)
+        s1 <- mgu t t'
+        return (s1, apply s1 t', apply s1 a)
 getType t [Second] = do
     a <- newSPLVar
     b <- newSPLVar
@@ -497,6 +536,15 @@ expTest2 =
          Left err  ->  putStrLn $ "error: " ++ err
          Right (subst, t, ret)   ->  putStrLn $ show subst ++ "\n\n" ++ show t ++ "\n\n" ++ show ret
 
+expTest2' :: IO ()
+expTest2' =
+    let (res, s) = runTI (getType (IdType "hoi" Nothing) [Head, Second, Head] )
+    in case res of
+         Left err  ->  putStrLn $ "error: " ++ err
+         Right (subst, t, ret)   ->  putStrLn $ show subst ++ "\n\n" ++ show t ++ "\n\n" ++ show ret
+
+
+
 expTest3 :: IO ()
 expTest3 =
     let (res, s) = runTI (tiExp (TypeEnv Map.empty) (ExpId "hoi" (Field [Head, Second, Head])))
@@ -550,33 +598,93 @@ expTest8 =
          Right (subst, t) ->  putStrLn $ show subst ++ "\n\n" ++ show t
 
 
--- ====== Tests regarding tiExp ======
+-- ====== Tests regarding tiStmts ======
 
-env' = 
-    [("flip" :: ID, Scheme [] (TypeBasic BasicBool)),
-    ("returnVar" :: ID, Scheme [] (IdType "z" Nothing)),
-    ("tuple" :: ID, Scheme [] (IdType "x" Nothing))
+-- ("flip" :: ID, Scheme [] (TypeBasic BasicBool)),
+
+
+env'' = 
+    [("tuple" :: ID, Scheme [] (IdType "z" Nothing))
     ]
 
-stmtsTest1 :: [Stmt] -> IO()
-stmtsTest1 stmts = let (res, s) = runTI (tiStmts (TypeEnv (Map.fromList env')) stmts )
+
+-- stmtsTest1 :: [Stmt] -> IO()
+-- stmtsTest1 stmts = let (res, s) = runTI (tiStmtTest (TypeEnv (Map.fromList env'')) (head stmts) )
+--     in case res of
+--          Left err ->  putStrLn $ "error: " ++ err
+--          Right (subst, t1, t2, env) ->  putStrLn $ show subst 
+--             ++ "\n\n" ++ show t1 
+--             ++ "\n\n" ++ show t2
+--             ++ "\n\n" ++ show env
+
+
+
+
+
+
+env' = 
+    [
+    ("first" :: ID, Scheme [] (IdType "x" Nothing)),
+    ("sec" :: ID, Scheme [] (IdType "y" Nothing)),
+    ("tuple" :: ID, Scheme [] (IdType "z" Nothing))
+    ]
+
+
+
+-- stmtsTest2 :: [Stmt] -> IO()
+-- stmtsTest2 stmts = let (res, s) = runTI (tiStmtsTest (TypeEnv (Map.fromList env')) stmts )
+--     in case res of
+--          Left err ->  putStrLn $ "error: " ++ err
+--          Right (subst, t, env) ->  putStrLn $ show subst ++ "\n\n" ++ show t ++ "\n\n" ++ show env
+
+-- runStmtsTest :: ([Stmt] -> IO()) -> String -> IO()
+-- runStmtsTest test filename = do
+--        file <- readFile $ splFilePath++filename
+--        case tokeniseAndParse (some stmt) file of 
+--               Right (x, _) -> do
+--                     print x
+--                     putStr "\n\n"
+--                     test x
+
+--               Left x -> do print x
+
+-- ====== Tests regarding tiVarDecl ======
+
+
+
+-- ====== Tests regarding tiFunDecl ======
+fundecl = FunDecl "swap" ["tuple"] Nothing [] [StmtDeclareVar "tuple" (Field [First]) (ExpId "tuple" (Field [First])),StmtDeclareVar "tuple" (Field [Second]) (ExpId "tuple" (Field [Second])),StmtReturn (Just (ExpId "tuple" (Field [])))]
+fundecl' = FunDecl "swap" ["tuple"] Nothing [] [StmtDeclareVar "tuple" (Field [First]) (ExpId "tuple" (Field [Second])),StmtDeclareVar "tuple" (Field [Second]) (ExpId "tuple" (Field [First]))]
+fundecl'' = FunDecl "swap" ["tuple"] Nothing [VarDeclVar "tmp" (ExpId "tuple" (Field [First]))] [StmtDeclareVar "tuple" (Field [First]) (ExpId "tuple" (Field [Second])),StmtDeclareVar "tuple" (Field [Second]) (ExpId "tmp" (Field []))]
+
+fundecl''' = FunDecl "swap" ["tuple"] Nothing [VarDeclVar "tmp" (ExpId "tuple" (Field [First]))] [StmtDeclareVar "tuple" (Field [First]) (ExpId "tuple" (Field [Second])),StmtDeclareVar "tuple" (Field [Second]) (ExpId "tmp" (Field [])),StmtReturn (Just (ExpId "tuple" (Field [])))]
+
+
+funDeclTest1 ::  IO()
+funDeclTest1 = let (res, s) = runTI (tiFunDeclTest (TypeEnv Map.empty) fundecl )
     in case res of
          Left err ->  putStrLn $ "error: " ++ err
-         Right (subst, t) ->  putStrLn $ show subst ++ "\n\n" ++ show t
+         Right (s1,s2,t,  TypeEnv env) ->
+                putStrLn $ "\n\nOutput: \n" ++ show s1 ++ "\n\n" ++ 
+                show s2 ++ "\n\n" ++
+                show t ++ "\n\n" ++
+                show env
 
-runStmtsTest :: ([Stmt] -> IO()) -> String -> IO()
-runStmtsTest test filename = do
-       file <- readFile $ splFilePath++filename
-       case tokeniseAndParse (some stmt) file of 
-              Right (x, _) -> test x
-              Left x -> do print x
+
+splTest1:: SPL -> IO()
+splTest1 code = let (res, s) = runTI (tiSPL (TypeEnv Map.empty) code )
+    in case res of
+         Left err ->  putStrLn $ "error: " ++ err
+         Right (TypeEnv env) -> print env
+
+swap (a,b) = (b,a)
 
 
 main1 :: String -> IO()
 main1 filename = do
        file <- readFile $ splFilePath++filename
        case tokeniseAndParse mainSegments file of 
-              Right (x, _) -> test1 x
+              Right (x, _) -> splTest1 x
               Left x -> do print x
 
 -- main2 :: String -> IO()
