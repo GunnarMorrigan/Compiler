@@ -1,6 +1,6 @@
 module AST where
 
-
+import Data.Map as Map
 import Data.List ( intercalate )
 
 newtype SPL =  SPL [Decl] 
@@ -203,7 +203,7 @@ data Op2 = Plus|Min
 
 
 prettyPrinter :: PrettyPrinter a => [a] -> String
-prettyPrinter (x:xs) = concatMap (\x -> unlines $ map ("\t"++) (lines $ pp x)) (x:xs)
+prettyPrinter (x:xs) = concatMap (\x -> unlines $ Prelude.map ("\t"++) (lines $ pp x)) (x:xs)
 prettyPrinter [] = ""
 
 class PrettyPrinter a where
@@ -214,13 +214,13 @@ class PrettyPrinter a where
 --   pp (x,y) = "("++ pp x ++ "," ++ pp y ++ ")"
 
 instance PrettyPrinter SPL where
-  pp (SPL decls) = unlines $ map pp decls
+  pp (SPL decls) = unlines $ Prelude.map pp decls
 
 instance PrettyPrinter Line where
   pp (Line ln col) = "Line " ++ show ln ++ ", Col "++ show col
 
 instance PrettyPrinter a => PrettyPrinter [a] where
-    pp xs = intercalate "\n" (map pp xs)
+    pp xs = intercalate "\n" (Prelude.map pp xs)
 
 instance PrettyPrinter Decl where
   pp (VarMain x) = pp x
@@ -236,7 +236,7 @@ instance PrettyPrinter FunDecl where
     "\n" ++ fName ++ " (" ++ intercalate ", " fArgs ++ ") " ++ (case fType of 
                                                               Just x -> ":: "++ pp x
                                                               Nothing -> "") ++ " {\n"++ 
-    prettyPrinter fVard ++ (if not (null fVard) then "\n" else "") ++
+    prettyPrinter fVard ++ (if not (Prelude.null fVard) then "\n" else "") ++
     prettyPrinter fStmts ++ 
     "}"
 
@@ -255,16 +255,31 @@ instance PrettyPrinter SPLType where
   pp (IdType id Nothing) = id
   pp (IdType id (Just EqClass)) = "Eq "++ id ++ " =>" ++ id
   pp (IdType id (Just OrdClass)) = "Ord "++ id ++ " =>" ++ id
-  pp (FunType args ret) =  ppArgs args ++ " -> " ++ pp ret
+  pp (FunType args ret) = ppClasses (FunType args ret) ++ " => " ++ ppArgs args ++ " -> " ++ pp ret
   pp Void = "Void"
 
-ppClasses :: SPLType -> [SPLType]
-ppClasses (IdType id (Just t)) = [IdType id (Just t)]
-ppClasses (TupleType (a,b)) = ppClasses a ++ ppClasses b
-ppClasses (ArrayType x) = ppClasses x
-ppClasses (FunType args ret) = let list = ppClasses args ++ ppClasses ret [x | x <- list , ]
-ppClasses Void = []
 
+-- instance PrettyPrinter (ID, Class) where
+--   pp (id, EqClass) = "Eq " ++ pp id 
+--   pp (id, OrdClass) = "Ord " ++ pp id 
+
+
+ppClasses :: SPLType -> String
+ppClasses t = unwords (Prelude.map printClass $ Map.toList (getClasses t Map.empty))
+  where printClass (a, EqClass) = "Eq " ++ show a
+        printClass (a, OrdClass) = "Ord " ++ show a
+
+
+getClasses :: SPLType -> Map.Map ID Class -> Map.Map ID Class
+getClasses (IdType id Nothing) map = map
+getClasses (IdType id (Just EqClass)) map = 
+  case Map.lookup id map of
+    Just c -> map
+    Nothing -> Map.insert id EqClass map
+getClasses (IdType id (Just OrdClass)) map = Map.insert id OrdClass map
+getClasses (TupleType (a,b)) map = getClasses a map `Map.union` getClasses b map
+getClasses (ArrayType x) map = getClasses x map
+getClasses (FunType args ret) map = getClasses args map `Map.union` getClasses ret map
 
 
 -- a a -> Bool /*Eq a*/
@@ -304,7 +319,7 @@ instance PrettyPrinter Exp where
   pp (ExpOp2 e1 op e2) = "("++ pp e1  ++" "++ pp op++" " ++ pp e2++")"
   pp (ExpOp1 op e) = pp op ++ pp e
   pp (ExpFunCall c) = pp c;
-  pp (ExpList xs) =  "["++ intercalate "," (map pp xs)  ++ "]"
+  pp (ExpList xs) =  "["++ intercalate "," (Prelude.map pp xs)  ++ "]"
   pp (ExpTuple (a,b)) =  "(" ++ pp a ++ ", " ++ pp b ++")"
   pp ExpEmptyList = "[]"
 
@@ -319,7 +334,7 @@ instance PrettyPrinter StandardFunction where
   pp IsEmpty = ".isEmpty"
 
 instance PrettyPrinter FunCall where
-  pp (FunCall i eS) = i ++ "("++ intercalate "," (map pp eS) ++")"
+  pp (FunCall i eS) = i ++ "("++ intercalate "," (Prelude.map pp eS) ++")"
 
 instance PrettyPrinter Op1 where
   pp Neg = "-"
