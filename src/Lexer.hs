@@ -97,10 +97,11 @@ tokenise:: String -> Int -> Int -> Either Error [(Token, Int, Int)]
 tokenise ('/' : '*' : xs) line col = gulp xs line col
   where
     gulp ('*' : '/' : rest) line col = tokenise rest line (col + 2)
-    gulp ('\n' : rest) line col = gulp rest (line + 1) 0
+    gulp ('\n' : rest) line col = gulp rest (line + 1) 1
+    gulp ('\t' : rest) line col = gulp rest line (col+ 4)
     gulp (c : rest) line col = gulp rest line (col + 1)
     gulp [] line col = Right []
-tokenise ('/' : '/' : xs) line col = tokenise (dropWhile (/= '\n') xs) (line + 1) 0
+tokenise ('/' : '/' : xs) line col = tokenise (dropWhile (/= '\n') xs) (line + 1) 1
 tokenise (' ' : xs) line col = tokenise xs line (col + 1)
 tokenise ('\t' : xs) line col = tokenise xs line (col + 4)
 tokenise ('\n' : xs) line col = tokenise xs (line + 1) 1
