@@ -95,22 +95,25 @@ funDecl = FunDecl <$>
        <* pToken CBrackCToken
  where funTypeOptional = Parser $ \case
                      (FunTypeToken, line, col): xs -> do
-                            (ys, rest) <- run funType xs
-                            Right (Just ys, rest)
+                            (ys, rest) <- run (many splType) xs
+                            -- (ys, rest) <- run funType xs
+                            let ret = if length ys > 1 then foldr1 FunType ys else head ys
+                            Right (Just ret, rest)
                      x -> Right (Nothing, x)
 
 -- ===================== Types ============================
 -- ===== FunType =====
-funType :: Parser (Token, Int, Int) SPLType  
-funType = FunType <$> splType <*> (pToken ArrowToken *> retType)
+retType :: Parser (Token, Int, Int) SPLType  
+-- funType = FunType <$> splType <*> (pToken ArrowToken *> splType)
+retType = pToken ArrowToken *> splType
 
 -- ===== RetType =====
-retType :: Parser (Token, Int, Int) SPLType
-retType = splType <|> Void <$ pToken VoidToken
+voidType :: Parser (Token, Int, Int) SPLType
+voidType = Void <$ pToken VoidToken
 
 -- ===== Type =====
 splType :: Parser (Token, Int, Int) SPLType 
-splType = (TypeBasic <$> basicType) <|> tupleType <|> arrayType <|> idType
+splType = (TypeBasic <$> basicType) <|> tupleType <|> arrayType <|> idType <|> voidType <|> retType
 
 tupleType :: Parser (Token, Int, Int) SPLType 
 tupleType = TupleType <$> ( pToken BrackOToken *> ((,) <$> splType <* pToken CommaToken  <*> splType) <* pToken BrackCToken)
@@ -382,9 +385,9 @@ main filename = do
        file <- readFile $ splFilePath++filename
        case tokeniseAndParse mainSegments file of 
               Right (x, _) -> do
-                     exists <- doesFileExist "SPL_code/out.spl"
-                     when exists $ removeFile "SPL_code/out.spl"
-                     writeFile "SPL_code/out.spl"$ pp x
+                     exists <- doesFileExist "../SPL_code/out.spl"
+                     when exists $ removeFile "../SPL_code/out.spl"
+                     writeFile "../SPL_code/out.spl"$ pp x
               Left x -> do
                      print x
                      exitFailure
