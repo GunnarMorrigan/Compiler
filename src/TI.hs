@@ -262,7 +262,6 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
 
 getReturnType :: TypeEnv -> [Stmt] -> TI (Subst, SPLType)
 getReturnType = undefined 
-
 -- getReturnType env ((StmtReturn (Just e)):xs) = do 
 --     (s1, t1) <- tiExp env e
 --     (s2, t2) <- getReturnType (apply s1 env) xs
@@ -278,21 +277,63 @@ getReturnType = undefined
 -- getReturnType env [] = return (nullSubst, Void)
 -- getReturnType env (x:xs) = getReturnType env xs
 
+tiStmts :: TypeEnv -> [Stmt] -> TI (Subst, SPLType)
+tiStmts env [e] = tiStmt env e
+tiStmts env (e:es) = do 
+    (s1, t1) <- tiStmt env e
+    return undefined 
+
+tiStmt :: TypeEnv -> Stmt -> TI (Subst, SPLType)
+tiStmt env (StmtIf e stmts (Just els)) = do
+    (s1, t1) <- tiExp env e
+    s2 <- mgu t1 (TypeBasic BasicBool)
+    let cs1 = s2 `composeSubst` s1
+    (s3, t2) <- tiStmts (apply cs1 env) stmts
+    let cs2 = s3 `composeSubst` s2
+    (s4, t3) <- tiStmts (apply cs2 env) els
+    let cs3 = s4 `composeSubst`s3
+    return (cs3, Void)
+tiStmt env (StmtIf e stmts Nothing) = do
+    (s1, t1) <- tiExp env e
+    s2 <- mgu t1 (TypeBasic BasicBool)
+    let cs1 = s2 `composeSubst` s1
+    (s3, t2) <- tiStmts (apply cs1 env) stmts
+    let cs2 = s3 `composeSubst` s2
+    return (cs2, Void)
+tiStmt env (StmtWhile e stmts) = do
+    (s1, t1) <- tiExp env e 
+    s2 <- mgu t1 (TypeBasic BasicBool)
+    let cs1 = s2 `composeSubst` s1
+    (s3, t3) <- tiStmts (apply cs1 env) stmts
+    let cs2 = s3 `composeSubst` s2
+    return (cs2, Void)
+tiStmt env (StmtReturn Nothing) = return (nullSubst, Void)
+tiStmt env (StmtReturn (Just exp)) = tiExp env exp
+tiStmt (TypeEnv env) (StmtDeclareVar id (Field fields) e) = case Map.lookup id env of
+    Just (Scheme ids t) -> do 
+        (s1, t', ret) <- getType t fields
+        (s2, t1) <- tiExp (apply s1 (TypeEnv env)) e
+        let cs1 = s2 `composeSubst` s1
+        s3 <- mgu (apply cs1 ret) t1
+        let cs2 = s3 `composeSubst` cs1
+        return (cs2, apply cs2 ret)
+    Nothing -> throwError $ "id: '" ++ id ++ "', does not exist in the type environment: (i.e. reference before declaration)"
+
+
 tiExp :: TypeEnv -> Exp -> TI (Subst, SPLType)    
 tiExp env (ExpId id (Field [])) = do
     case find id env of
         Just t -> return (nullSubst, t)
-        Nothing -> throwError $ "id: '" ++ id ++ "', does not exist in the type environment: (i.e. reference before decleration)"
+        Nothing -> throwError $ "id: '" ++ id ++ "', does not exist in the type environment: (i.e. reference before declaration)"
 tiExp (TypeEnv env) (ExpId id (Field fields)) = case Map.lookup id env of
     Just (Scheme ids t) -> do 
         (s1, t', ret) <- getType t fields
         return (s1,t')
-    Nothing -> throwError $ "id: '" ++ id ++ "', does not exist in the type environment: (i.e. reference before decleration)"
+    Nothing -> throwError $ "id: '" ++ id ++ "', does not exist in the type environment: (i.e. reference before declaration)"
     -- Nothing -> do
     --     t <- newASPLVar
     --     (s1, t', ret) <- getType t fields
     --     return (s1, t') 
-
 tiExp _ (ExpInt i)  = return (nullSubst, TypeBasic BasicInt)
 tiExp _ (ExpBool b) = return (nullSubst, TypeBasic BasicBool)
 tiExp _ (ExpChar c) = return (nullSubst, TypeBasic BasicChar)

@@ -103,10 +103,10 @@ data Exp
   = ExpId ID Field
   | ExpInt Integer
   | ExpIntLine Integer Line
-  | ExpChar Char
-  | ExpCharLine Char Line
   | ExpBool Bool
   | ExpBoolLine Bool Line
+  | ExpChar Char
+  | ExpCharLine Char Line
   | ExpBracket Exp
   | ExpOp2 Exp Op2 Exp
   | ExpOp1 Op1 Exp
