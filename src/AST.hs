@@ -54,6 +54,11 @@ data FunDecl = FunDecl ID [ID] (Maybe SPLType) [VarDecl] [Stmt] --Line
 
 data Class = OrdClass | EqClass deriving (Show, Eq)
 
+-- data FunType = 
+--   FunType SPLType FunType
+--   | Void
+--   | FunType SplType
+
 data SPLType 
   = TypeBasic BasicType
   | TupleType (SPLType, SPLType)
@@ -67,6 +72,7 @@ data SPLType
 --   show (TupleType (a, b)) = "(" ++ show a ++ ","++show b ++ ")"
 --   show (ArrayType x) = "["++show x++"]"
 --   show (IdType id) = id
+
 
 data BasicType
   = BasicInt
@@ -227,7 +233,7 @@ instance PrettyPrinter VarDecl where
 
 instance PrettyPrinter FunDecl where
   pp (FunDecl fName fArgs fType fVard fStmts) = 
-    "\n" ++ fName ++ " (" ++ unwords fArgs ++ ") " ++ (case fType of 
+    "\n" ++ fName ++ " (" ++ intercalate ", " fArgs ++ ") " ++ (case fType of 
                                                               Just x -> ":: "++ pp x
                                                               Nothing -> "") ++ " {\n"++ 
     prettyPrinter fVard ++ (if not (null fVard) then "\n" else "") ++
@@ -244,13 +250,28 @@ instance PrettyPrinter FunDecl where
 
 instance PrettyPrinter SPLType where
   pp (TypeBasic x) = pp x
-  pp (TupleType (a, b)) = "(" ++ pp a ++ ","++pp b ++ ")"
+  pp (TupleType (a, b)) = "(" ++ pp a ++ ", "++pp b ++ ")"
   pp (ArrayType x) = "["++pp x++"]"
   pp (IdType id Nothing) = id
   pp (IdType id (Just EqClass)) = "Eq "++ id ++ " =>" ++ id
   pp (IdType id (Just OrdClass)) = "Ord "++ id ++ " =>" ++ id
-  pp (FunType args ret) = undefined 
+  pp (FunType args ret) =  ppArgs args ++ " -> " ++ pp ret
   pp Void = "Void"
+
+ppClasses :: SPLType -> [SPLType]
+ppClasses (IdType id (Just t)) = [IdType id (Just t)]
+ppClasses (TupleType (a,b)) = ppClasses a ++ ppClasses b
+ppClasses (ArrayType x) = ppClasses x
+ppClasses (FunType args ret) = let list = ppClasses args ++ ppClasses ret [x | x <- list , ]
+ppClasses Void = []
+
+
+
+-- a a -> Bool /*Eq a*/
+
+ppArgs :: SPLType -> String
+ppArgs (FunType args ret) = ppArgs args ++ " " ++ pp ret
+ppArgs x = pp x
 
 instance PrettyPrinter Class where
   pp EqClass = "Eq =>"
@@ -262,14 +283,14 @@ instance PrettyPrinter BasicType where
 
 instance PrettyPrinter Stmt where
   pp (StmtIf e ifS elseS) = 
-    "if (" ++ pp e ++ ") {" ++ 
+    "if (" ++ pp e ++ ") {\n" ++ 
       prettyPrinter ifS ++"}" ++ 
       case elseS of
-        Just x -> " else {" ++ 
+        Just x -> " else {\n" ++ 
           prettyPrinter x ++"}" 
         Nothing -> ""
   pp (StmtWhile e s) = 
-    "while (" ++ pp e ++ ") {" ++ unlines (map pp s) ++"}"
+    "while (" ++ pp e ++ ") {\n" ++  prettyPrinter s ++"}"
   pp (StmtDeclareVar id f e) = id ++ pp f ++ " = " ++ pp e ++ ";"
   pp (StmtFuncCall c) = pp c ++ ";"
   pp (StmtReturn e) = "return" ++ maybe "" ((" "++) . pp) e ++ ";"
@@ -284,7 +305,7 @@ instance PrettyPrinter Exp where
   pp (ExpOp1 op e) = pp op ++ pp e
   pp (ExpFunCall c) = pp c;
   pp (ExpList xs) =  "["++ intercalate "," (map pp xs)  ++ "]"
-  pp (ExpTuple (a,b)) =  "(" ++ pp a ++ "," ++ pp b ++")"
+  pp (ExpTuple (a,b)) =  "(" ++ pp a ++ ", " ++ pp b ++")"
   pp ExpEmptyList = "[]"
 
 instance PrettyPrinter Field where

@@ -97,6 +97,7 @@ tokenise:: String -> Int -> Int -> Either Error [(Token, Int, Int)]
 tokenise ('/' : '*' : xs) line col = gulp xs line col
   where
     gulp ('*' : '/' : rest) line col = tokenise rest line (col + 2)
+    gulp ('\n' : rest) line col = gulp rest (line + 1) 0
     gulp (c : rest) line col = gulp rest line (col + 1)
     gulp [] line col = Right []
 tokenise ('/' : '/' : xs) line col = tokenise (dropWhile (/= '\n') xs) (line + 1) 0
@@ -123,7 +124,7 @@ tokenise2 _ _ [] line col = Right []
 stringToCode x = Code <$> concat $ zipWith (\s line -> zip3 s (repeat line) [1 ..]) (lines x) [1 ..]
 
 runTokenise :: String -> Either Error [(Token, Int, Int)]
-runTokenise x = tokenise x 0 0
+runTokenise x = tokenise x 1 1
 
 spanToken ::  (Char -> Bool) -> Int -> Int -> ([Char] -> Token) -> [Char] -> Either Error [(Token, Int, Int)]
 spanToken p line col t = (\(ds, rest) -> ((t ds, line, col) :) <$> tokenise rest line (col + length ds)) . span p
