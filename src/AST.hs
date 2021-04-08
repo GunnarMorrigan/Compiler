@@ -128,7 +128,7 @@ data Exp
 --       show (ExpTuple t) =  "Tuple"++show t
 --       show ExpEmptyList = "[]"
       
-newtype Field 
+newtype Field
   = Field [StandardFunction]
   deriving (Eq, Show)
 -- instance Show Field where
@@ -152,7 +152,7 @@ data IDLine = ID String Line
 -- instance Show ID where
 --   show (ID s l) = s
 
-data FunCall 
+data FunCall
     = FunCall ID [Exp]
     deriving (Show, Eq)
 -- instance Show FunCall where
