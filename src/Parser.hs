@@ -349,7 +349,7 @@ all' p = (:) <$> p <*> all p
 tokeniseAndParse :: Parser (Token, Int, Int) a -> [Char] -> Either Error (a, [(Token, Int, Int)])
 tokeniseAndParse parser x  = runTokenise x >>= run parser
 
-splFilePath = "../SPL_code/"
+splFilePath = "../SPL_test_code/"
 
 
 -- main :: String -> IO()
@@ -358,9 +358,9 @@ splFilePath = "../SPL_code/"
 --        bta (tokeniseAndParse mainSegments file) 0 empty
        
               -- Right (x, _) -> do
-              --        exists <- doesFileExist "SPL_code/out.spl"
-              --        when exists $ removeFile "SPL_code/out.spl"
-              --        writeFile "SPL_code/out.spl"$ show x
+              --        exists <- doesFileExist "SPL_test_code/out.spl"
+              --        when exists $ removeFile "SPL_test_code/out.spl"
+              --        writeFile "SPL_test_code/out.spl"$ show x
               -- Left x -> do
               --        print x
               --        exitFailure
@@ -385,9 +385,9 @@ main filename = do
        file <- readFile $ splFilePath++filename
        case tokeniseAndParse mainSegments file of 
               Right (x, _) -> do
-                     exists <- doesFileExist "../SPL_code/out.spl"
-                     when exists $ removeFile "../SPL_code/out.spl"
-                     writeFile "../SPL_code/out.spl"$ pp x
+                     exists <- doesFileExist "../SPL_test_code/out.spl"
+                     when exists $ removeFile "../SPL_test_code/out.spl"
+                     writeFile "../SPL_test_code/out.spl"$ pp x
               Left x -> do
                      print x
                      exitFailure

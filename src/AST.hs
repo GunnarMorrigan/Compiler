@@ -5,59 +5,23 @@ import Data.List ( intercalate )
 
 newtype SPL =  SPL [Decl] 
   deriving (Show, Eq)
--- instance Show SPL where
---   show (SPL decls) = unlines $ map show decls
-    -- unlines $ map show decls
 
 data Line = Line Int Int
   deriving (Eq, Show)
--- instance Show Line where
---   show (Line ln col) = "Line " ++ show ln ++ ", Col "++ show col
 
 data Decl = VarMain VarDecl
           | FuncMain FunDecl
           | MutRec [FunDecl]
           deriving (Eq, Show)
--- instance Show Decl where
---   show (VarMain x) = show x
---   show (FuncMain x) = show x  
 
 data VarDecl = VarDeclVar ID Exp
              | VarDeclType SPLType ID Exp --Line
              deriving (Eq, Show)
--- instance Show VarDecl where
---   show (VarDeclVar i e) = "var " ++ i ++ " = "++ show e ++ ";"
---   show (VarDeclType t i e ) = show t ++ " " ++ i ++ " = "++ show e ++ ";"
 
 data FunDecl = FunDecl ID [ID] (Maybe SPLType) [VarDecl] [Stmt] --Line
              deriving (Eq, Show)
--- instance Show FunDecl where
---   show (FunDecl fName fArgs fType fVard fStmts) = 
---     fName ++ " (" ++ unwords fArgs ++ ") " ++ (case fType of 
---                                                               Just x -> ":: "++ show x
---                                                               Nothing -> "") ++ " {\n"++ 
---     prettyPrinter fVard ++ "\n" ++
---     prettyPrinter fStmts ++
---     "}"
-
--- data RetType = Void | RetSplType SPLType
---   deriving (Eq)
--- instance Show RetType where
---   show Void = "Void"
---   show (RetSplType t) = show t
-
--- data FunType = FunType [SPLType] SPLType
---   deriving (Eq, Show)
--- instance Show FunType where
---   show (FunType [] x) = show x
---   show (FunType l x) = concatMap ((++" ") . show) l ++ "->" ++ show x
 
 data Class = OrdClass | EqClass deriving (Show, Eq)
-
--- data FunType = 
---   FunType SPLType FunType
---   | Void
---   | FunType SplType
 
 data SPLType 
   = TypeBasic BasicType
@@ -67,23 +31,12 @@ data SPLType
   | FunType SPLType SPLType
   | Void
   deriving (Eq, Show)
--- instance Show SPLType where
---   show (TypeBasic x) = show x
---   show (TupleType (a, b)) = "(" ++ show a ++ ","++show b ++ ")"
---   show (ArrayType x) = "["++show x++"]"
---   show (IdType id) = id
-
 
 data BasicType
   = BasicInt
   | BasicBool
   | BasicChar
   deriving (Eq, Show)
--- instance Show BasicType where
---   show BasicInt = "Int"
---   show BasicBool = "Bool"
---   show BasicChar = "Char"
-
 
 data Stmt = StmtIf Exp [Stmt] (Maybe [Stmt]) --Line
           | StmtWhile Exp [Stmt] --Line
@@ -91,19 +44,6 @@ data Stmt = StmtIf Exp [Stmt] (Maybe [Stmt]) --Line
           | StmtFuncCall FunCall --Line
           | StmtReturn (Maybe Exp) --Line
           deriving (Eq, Show)
--- instance Show Stmt where
---     show (StmtIf e ifS elseS) = 
---       "if (" ++ show e ++ ") {\n" ++ 
---         prettyPrinter ifS ++"}" ++ 
---         case elseS of
---           Just x -> " else {\n" ++ 
---             prettyPrinter x ++"}" 
---           Nothing -> ""
---     show (StmtWhile e s) = 
---       "while (" ++ show e ++ ") {\n" ++ unlines (map show s) ++"}"
---     show (StmtDeclareVar id f e) = id ++ show f ++ " = " ++ show e ++ ";"
---     show (StmtFuncCall c) = show c ++ ";"
---     show (StmtReturn e) = "return" ++ maybe "" ((" "++) . show) e ++ ";"
 
 data Exp 
   = ExpId ID Field
@@ -121,62 +61,25 @@ data Exp
   | ExpList [Exp]
   | ExpTuple (Exp, Exp)
   deriving(Eq, Show)
--- instance Show Exp where
---       show (ExpId s f) = s ++ show f
---       show (ExpInt i) = show i
---       show (ExpChar c) = show c
---       show (ExpBool b) = show b
---       show (ExpBracket e) = "("++show e++")"
---       show (ExpOp2 e1 op e2) = "("++show e1  ++" "++show op++" " ++ show e2++")"
---       show (ExpOp1 op e) = show op ++ show e
---       show (ExpFunCall c) = show c;
---       show (ExpList xs) =  show xs
---       show (ExpTuple t) =  "Tuple"++show t
---       show ExpEmptyList = "[]"
-      
+
 newtype Field
   = Field [StandardFunction]
   deriving (Eq, Show)
--- instance Show Field where
---     show (Field xs) = concatMap show xs
 
 data StandardFunction
     = Head | Tail | First | Second | IsEmpty
     deriving (Eq, Show)
--- instance Show StandardFunction where
---   show Head = ".hd"
---   show Tail = ".tl"
---   show First = ".fst"
---   show Second = ".snd"
---   show IsEmpty = ".isEmpty"
 
 type ID = String
 data IDLine = ID String Line
 
--- data ID = ID String Line
---   deriving (Eq)
--- instance Show ID where
---   show (ID s l) = s
-
 data FunCall
     = FunCall ID [Exp]
     deriving (Show, Eq)
--- instance Show FunCall where
---   show (FunCall i eS) = i ++ "("++ intercalate "," (map show eS) ++")"
-
--- data FunCall 
---     = FunCall String ActArgs
---     deriving (Show, Eq)
-
--- newtype ActArgs 
---     = ActArgs [Exp]
---     deriving (Show, Eq)
 
 -- ==== Op1 ====
 data Op1 = Neg | Not deriving (Eq, Show)
--- instance Show Op1 where
---   show Neg = "-"
---   show Not = "!"
+
 
 -- ==== Op2 ====
 data Op2 = Plus|Min
@@ -184,23 +87,9 @@ data Op2 = Plus|Min
          |Le|Ge|Leq|Geq|Eq|Neq
          |And|Or|Con
         deriving (Show, Eq)
--- instance Show Op2 where
---   show Plus = "+" -- Int->Int->Int
---   show Min = "-" -- Int->Int->Int
---   show Mult = "*" -- Int->Int->Int
---   show Div = "/" -- Int->Int->Int
---   show Mod = "%" -- Int->Int->Int
---   show Eq = "==" -- a->a->Bool
---   show Le = "<" -- a->a->Bool
---   show Ge = ">" -- a->a->Bool
---   show Leq = "<=" -- a->a->Bool
---   show Geq = ">=" -- a->a->Bool
---   show Neq = "!=" -- a->a->Bool
---   show And = "&&" -- Bool -> Bool -> Bool
---   show Or = "||" -- Bool -> Bool -> Bool
---   show Con = ":" -- a -> [a] -> [a]
 
 
+-- ===================== prettyPrinter ============================
 
 prettyPrinter :: PrettyPrinter a => [a] -> String
 prettyPrinter (x:xs) = concatMap (\x -> unlines $ Prelude.map ("\t"++) (lines $ pp x)) (x:xs)
@@ -208,10 +97,6 @@ prettyPrinter [] = ""
 
 class PrettyPrinter a where
   pp :: a -> String
-
-
--- instance PrettyPrinter a, PrettyPrinter b => PrettyPrinter (a,b) where
---   pp (x,y) = "("++ pp x ++ "," ++ pp y ++ ")"
 
 instance PrettyPrinter SPL where
   pp (SPL decls) = unlines $ Prelude.map pp decls
@@ -240,14 +125,6 @@ instance PrettyPrinter FunDecl where
     prettyPrinter fStmts ++ 
     "}"
 
--- instance PrettyPrinter RetType where
---   pp Void = "Void"
---   pp (RetSplType t) = pp t
-
--- instance PrettyPrinter FunType where
---   pp (FunType [] x) = pp x
---   pp (FunType l x) = concatMap ((++" ") . pp) l ++ "-> " ++ pp x
-
 instance PrettyPrinter SPLType where
   pp (TypeBasic x) = pp x
   pp (TupleType (a, b)) = "(" ++ pp a ++ ", "++pp b ++ ")"
@@ -258,17 +135,10 @@ instance PrettyPrinter SPLType where
   pp (FunType args ret) = ppClasses (FunType args ret) ++ " => " ++ ppArgs args ++ " -> " ++ pp ret
   pp Void = "Void"
 
-
--- instance PrettyPrinter (ID, Class) where
---   pp (id, EqClass) = "Eq " ++ pp id 
---   pp (id, OrdClass) = "Ord " ++ pp id 
-
-
 ppClasses :: SPLType -> String
 ppClasses t = unwords (Prelude.map printClass $ Map.toList (getClasses t Map.empty))
   where printClass (a, EqClass) = "Eq " ++ show a
         printClass (a, OrdClass) = "Ord " ++ show a
-
 
 getClasses :: SPLType -> Map.Map ID Class -> Map.Map ID Class
 getClasses (IdType id Nothing) map = map
@@ -280,9 +150,6 @@ getClasses (IdType id (Just OrdClass)) map = Map.insert id OrdClass map
 getClasses (TupleType (a,b)) map = getClasses a map `Map.union` getClasses b map
 getClasses (ArrayType x) map = getClasses x map
 getClasses (FunType args ret) map = getClasses args map `Map.union` getClasses ret map
-
-
--- a a -> Bool /*Eq a*/
 
 ppArgs :: SPLType -> String
 ppArgs (FunType args ret) = ppArgs args ++ " " ++ pp ret

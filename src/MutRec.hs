@@ -67,14 +67,14 @@ instance Callees Exp where
 
 mainMutRec :: String -> IO()
 mainMutRec filename = do
-       file <- readFile $ "../SPL_code/"++filename
+       file <- readFile $ "../SPL_test_code/"++filename
        case tokeniseAndParse mainSegments file of
            Right (x,xs) -> print $ toGraph x
            Left x -> print x
 
 mainMutRec1 :: String -> IO()
 mainMutRec1 filename = do
-       file <- readFile $ "../SPL_code/"++filename
+       file <- readFile $ "../SPL_test_code/"++filename
        case tokeniseAndParse mainSegments file of
         --    Right (x,xs) -> let (g, v, f) = graphFromEdges $ toGraph x in print $ scc g
            Right (x,xs) -> putStr $ pp $ fromGraph $ stronglyConnCompR $ toGraph x
@@ -86,7 +86,7 @@ mainMutRec2 filename = do
        file <- readFile $ splFilePath++filename
        case tokeniseAndParse mainSegments file of 
               Right (x, _) -> do
-                    writeFile "../SPL_code/out.spl" $ pp $ fromGraph $ stronglyConnCompR $ toGraph x
+                    writeFile "../SPL_test_code/out.spl" $ pp $ fromGraph $ stronglyConnCompR $ toGraph x
               Left x -> do
                     print x
                     exitFailure
