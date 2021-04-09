@@ -18,22 +18,22 @@ import System.Directory
 import Debug.Trace
 
 -- ===================== TypeEnv ============================
-newtype TypeEnv = TypeEnv (Map ID Scheme)
+newtype TypeEnv = TypeEnv (Map IDLoc Scheme)
     deriving (Show)
 
 
 
-insert :: TypeEnv -> ID -> SPLType -> TypeEnv
+insert :: TypeEnv -> IDLoc -> SPLType -> TypeEnv
 insert (TypeEnv env) id t = TypeEnv (Map.insert id (Scheme [] t) env)
 
-insertMore :: TypeEnv -> [(ID,SPLType)] -> TypeEnv
+insertMore :: TypeEnv -> [(IDLoc,SPLType)] -> TypeEnv
 insertMore (TypeEnv env) [(id,t)] =TypeEnv (Map.insert id (Scheme [] t) env)
 insertMore (TypeEnv env) ((id,t):xs) = insertMore (TypeEnv (Map.insert id (Scheme [] t) env)) xs
 
-remove :: TypeEnv -> ID -> TypeEnv
+remove :: TypeEnv -> IDLoc -> TypeEnv
 remove (TypeEnv env) var = TypeEnv (Map.delete var env)
 
-find :: ID -> TypeEnv -> Maybe SPLType
+find :: IDLoc -> TypeEnv -> Maybe SPLType
 find id (TypeEnv env) = do 
     (Scheme _ t) <- Map.lookup id env
     return t
@@ -43,22 +43,26 @@ generalize env t  =   Scheme vars t
   where vars = Set.toList (ftv t Set.\\ ftv env)
 
 -- ===================== Scheme ============================
-data Scheme = Scheme [ID] SPLType
+data Scheme = Scheme [IDLoc] SPLType
     deriving (Show, Eq)
 
+-- ===================== Substitution ============================
+type Subst = Map.Map IDLoc SPLType
 
--- ===================== ASPLType ============================
--- data ASPLType = ASPLType SPLType  
---              | AFunType FunType
---              | ARetType RetType
---              deriving (Eq, Show)
--- instance PrettyPrinter SPLType where
---     pp (ASPLType x) = pp x 
---     pp (AFunType x) = pp x
---     pp (ARetType x) = pp x
-    
+nullSubst :: Subst
+nullSubst = Map.empty 
+
+applySubst :: Subst -> Subst -> Subst
+applySubst s1 = Map.map $ apply s1
+
+composeSubst::Subst -> Subst -> Subst 
+composeSubst s1 s2 = Map.map (apply s1) s2 `Map.union` s1
+
+
+
+-- ===================== ftv and apply implementations ============================
 class Types a where
-    ftv :: a -> Set ID 
+    ftv :: a -> Set IDLoc 
     apply :: Subst -> a -> a
 
 instance Types a => Types [a] where
@@ -94,18 +98,6 @@ instance Types a =>  Types (Maybe a) where
     apply s (Just a) = Just $ apply s a
     apply s Nothing = Nothing
 
--- ===================== Substitution ============================
-type Subst = Map.Map ID SPLType
-
-nullSubst :: Subst
-nullSubst = Map.empty 
-
-applySubst :: Subst -> Subst -> Subst
-applySubst s1 = Map.map $ apply s1
-
-composeSubst::Subst -> Subst -> Subst 
-composeSubst s1 s2 = Map.map (apply s1) s2 `Map.union` s1
-
 -- ===================== Type inference data types ============================
 
 data TIEnv = TIEnv  {}
@@ -134,7 +126,7 @@ newSPLVarWithClass :: Class -> TI SPLType
 newSPLVarWithClass c =
     do  s <- get
         put (s + 1)
-        return $ IdType (reverse (toTyVar s)) (Just c)
+        return $ IdType (idLocCreator (reverse (toTyVar s))) (Just c)
   where 
     toTyVar :: Int -> String
     toTyVar c | c < 26    =  [toEnum (97+c)]
@@ -146,7 +138,7 @@ newSPLVar :: TI SPLType
 newSPLVar =
     do  s <- get
         put (s + 1)
-        return $ IdType (reverse (toTyVar s)) Nothing
+        return $ IdType (idLocCreator (reverse (toTyVar s))) Nothing
   where 
     toTyVar :: Int -> String
     toTyVar c | c < 26    =  [toEnum (97+c)]
@@ -214,10 +206,10 @@ instance MGU BasicType where
 --     mgu (RetSplType x) (RetSplType y) = mgu x y
 --     mgu t1 t2 =  throwError $ "types do not unify: " ++ show t1 ++ " vs. " ++ show t2
 
-varBind :: ID -> Maybe Class -> SPLType -> TI Subst
+varBind :: IDLoc -> Maybe Class -> SPLType -> TI Subst
 varBind id _ (IdType t _) | id == t = return nullSubst
 varBind id c (IdType t c') = return $ Map.singleton id (IdType t (composeClass c c'))
-varBind id _ t | id `Set.member` ftv t = throwError $ "occurs check fails: " ++ id ++ " vs. " ++ show t
+varBind id _ t | id `Set.member` ftv t = throwError $ "occurs check fails: " ++ pp id ++ " vs. " ++ show t
 varBind id _ t = return $ Map.singleton id t
 
 composeClass :: Maybe Class -> Maybe Class -> Maybe Class
@@ -251,7 +243,7 @@ tiVarDecls env (varDecl:varDecls) = do
 
 tiVarDecl :: TypeEnv -> VarDecl -> TI TypeEnv
 tiVarDecl (TypeEnv env) (VarDeclVar id e) = case Map.lookup id env of
-    Just x -> throwError $ "Variable with name: '" ++ id ++ "', already exist in the type environment: (i.e. double decleration)"
+    Just x -> throwError $ "Variable with name: '" ++ showIDLoc id ++ "', already exists in the type environment: (i.e. double decleration)"
     Nothing -> do
         --tv <- newASPLVar
         (s1, t1) <- tiExp (TypeEnv env) e
@@ -261,7 +253,7 @@ tiVarDecl (TypeEnv env) (VarDeclVar id e) = case Map.lookup id env of
         -- s2 <- mgu (apply s1 t1) (ASPLType $ IdType id)
         return $ apply s1 env'
 tiVarDecl (TypeEnv env) (VarDeclType t id e) = case Map.lookup id env of
-    Just x -> throwError $ "Variable with name: '" ++ id ++ "', already exist in the type environment: (i.e. double decleration)"
+    Just x -> throwError $ "Variable with name: '" ++ showIDLoc id ++ "', already exists in the type environment: (i.e. double decleration)"
     Nothing -> do
         (s1, t1) <- tiExp (TypeEnv env) e
         s2 <- mgu (apply s1  t) t1
@@ -303,8 +295,8 @@ tiFunDecl env (FunDecl funName args (Just funType) vars stmts) = do
 
 
     case length args `compare` length argTypes of
-        LT -> throwError $ "Function: '" ++ funName ++ "'  has less arguments than it has types"
-        GT -> throwError $ "Function: '" ++ funName ++ "'  has more arguments than it has types"
+        LT -> throwError $ "Function: '" ++ showIDLoc funName ++ "'  has less arguments than it has types"
+        GT -> throwError $ "Function: '" ++ showIDLoc funName ++ "'  has more arguments than it has types"
         EQ -> do 
             let env' = TI.insert env funName funType -- With only this function inserted
             let env'' = insertMore env' (zip args argTypes) -- With this function + args inserted
@@ -317,7 +309,6 @@ tiFunDecl env (FunDecl funName args (Just funType) vars stmts) = do
             s2 <- mgu (apply s1 t1') retType
             let cs1 = s2 `composeSubst` s1
             return $ apply s1 env'
-
 tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
     argTypes <- replicateM (length args) newSPLVar
     retType <- newSPLVar
@@ -334,10 +325,6 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
     let cs1 = s2 `composeSubst` s1
     return $ apply cs1 env'
 
-
-getArgsTypes :: SPLType -> [SPLType]
-getArgsTypes (FunType args ret) = getArgsTypes args ++ getArgsTypes ret
-getArgsTypes x = [x]
 
 -- tiStmtsTest :: TypeEnv -> [Stmt] -> TI (Subst, Maybe SPLType, TypeEnv)
 -- tiStmtsTest env [e] = do 
@@ -401,7 +388,7 @@ tiStmt (TypeEnv env) (StmtDeclareVar id (Field []) e) = case Map.lookup id env o
         s2 <- mgu (apply s1 t) t1
         let cs1 = s2 `composeSubst` s1
         return (cs1, Nothing)
-    Nothing -> throwError $ "id: '" ++ id ++ "', does not exist in the type environment: (i.e. reference before declaration)"
+    Nothing -> throwError $ "id: '" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)"
 tiStmt (TypeEnv env) (StmtDeclareVar id (Field fields) e) = case Map.lookup id env of
     Just (Scheme ids t) -> do
         (s1, t1) <- tiExp (TypeEnv env) e
@@ -412,18 +399,18 @@ tiStmt (TypeEnv env) (StmtDeclareVar id (Field fields) e) = case Map.lookup id e
         s4 <- mgu (apply cs2 t') t
         let cs3 = s4 `composeSubst` cs2
         return (cs3, Nothing)
-    Nothing -> throwError $ "id: '" ++ id ++ "', does not exist in the type environment: (i.e. reference before declaration)"
+    Nothing -> throwError $ "id: '" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)"
 
 tiExp :: TypeEnv -> Exp -> TI (Subst, SPLType)    
 tiExp env (ExpId id (Field [])) = do
     case find id env of
         Just t -> return (nullSubst, t)
-        Nothing -> throwError $ "id: '" ++ id ++ "', does not exist in the type environment: (i.e. reference before declaration)"
+        Nothing -> throwError $ "id: '" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)"
 tiExp (TypeEnv env) (ExpId id (Field fields)) = case Map.lookup id env of
     Just (Scheme ids t) -> do 
         (s1, t', ret) <- getType t fields
         return (s1, ret)
-    Nothing -> throwError $ "id: '" ++ id ++ "', does not exist in the type environment: (i.e. reference before declaration)"
+    Nothing -> throwError $ "id: '" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)"
 tiExp _ (ExpInt i)  = return (nullSubst, TypeBasic BasicInt)
 tiExp _ (ExpBool b) = return (nullSubst, TypeBasic BasicBool)
 tiExp _ (ExpChar c) = return (nullSubst, TypeBasic BasicChar)
@@ -463,7 +450,7 @@ tiExp (TypeEnv env) (ExpFunCall (FunCall name args)) = case Map.lookup name env 
     Just (Scheme ids t) -> do 
         let FunType arg ret = t
         return (nullSubst, ret)
-    Nothing -> throwError $ "Function: '" ++ name ++ "', does not exist in the type environment: (i.e. reference before decleration)"
+    Nothing -> throwError $ "Function: '" ++ pp name ++ "', " ++ showLoc name ++ " does not exist in the type environment: (i.e. reference before decleration)"
 
 getType :: SPLType -> [StandardFunction] -> TI (Subst, SPLType, SPLType)
 getType t [] = do
@@ -529,7 +516,7 @@ op2Type Con = do
 
 -- ===================== Binding time analysis ============================
 
-typeInference :: Map.Map ID Scheme -> SPL -> TI TypeEnv
+typeInference :: Map.Map IDLoc Scheme -> SPL -> TI TypeEnv
 typeInference env e = do tiSPL (TypeEnv env) e
 
 -- typeInference2 :: TypeEnv -> SPL -> TI TypeEnv
@@ -572,11 +559,11 @@ test1 e =
 
 env = 
     [
-    ("tuple" :: ID, Scheme [] (IdType "x" Nothing))
+    (idLocCreator "tuple", Scheme [] (IdType (idLocCreator "x") Nothing))
     ]
 
 expTest8 =
-    let (res, s) = runTI (tiExp (TypeEnv (Map.fromList env))  (ExpTuple (ExpId "tuple" (Field [Second]), ExpId "tuple" (Field [First]) )) )
+    let (res, s) = runTI (tiExp (TypeEnv (Map.fromList env))  (ExpTuple (ExpId (idLocCreator "tuple") (Field [Second]), ExpId (idLocCreator "tuple") (Field [First]) )) )
     in case res of
          Left err ->  putStrLn $ "error: " ++ err
          Right (subst, t) ->  putStrLn $ show subst ++ "\n\n" ++ show t
@@ -588,7 +575,7 @@ expTest8 =
 
 
 env'' = 
-    [("tuple" :: ID, Scheme [] (IdType "z" Nothing))
+    [("tuple" :: ID, Scheme [] (IdType (idLocCreator "z") Nothing))
     ]
 
 
@@ -608,9 +595,9 @@ env'' =
 
 env' = 
     [
-    ("first" :: ID, Scheme [] (IdType "x" Nothing)),
-    ("sec" :: ID, Scheme [] (IdType "y" Nothing)),
-    ("tuple" :: ID, Scheme [] (IdType "z" Nothing))
+    ("first" :: ID, Scheme [] (IdType (idLocCreator "x") Nothing)),
+    ("sec" :: ID, Scheme [] (IdType (idLocCreator "y") Nothing)),
+    ("tuple" :: ID, Scheme [] (IdType (idLocCreator "z") Nothing))
     ]
 
 
@@ -634,11 +621,11 @@ env' =
 
 
 -- ====== Tests regarding tiFunDecl ======
-fundecl = FunDecl "swap" ["tuple"] Nothing [] [StmtDeclareVar "tuple" (Field [First]) (ExpId "tuple" (Field [First])),StmtDeclareVar "tuple" (Field [Second]) (ExpId "tuple" (Field [Second])),StmtReturn (Just (ExpId "tuple" (Field [])))]
-fundecl' = FunDecl "swap" ["tuple"] Nothing [] [StmtDeclareVar "tuple" (Field [First]) (ExpId "tuple" (Field [Second])),StmtDeclareVar "tuple" (Field [Second]) (ExpId "tuple" (Field [First]))]
-fundecl'' = FunDecl "swap" ["tuple"] Nothing [VarDeclVar "tmp" (ExpId "tuple" (Field [First]))] [StmtDeclareVar "tuple" (Field [First]) (ExpId "tuple" (Field [Second])),StmtDeclareVar "tuple" (Field [Second]) (ExpId "tmp" (Field []))]
+fundecl = FunDecl (idLocCreator "swap") [(idLocCreator "tuple")] Nothing [] [StmtDeclareVar (idLocCreator "tuple") (Field [First]) (ExpId (idLocCreator "tuple") (Field [First])),StmtDeclareVar (idLocCreator "tuple") (Field [Second]) (ExpId (idLocCreator "tuple") (Field [Second])),StmtReturn (Just (ExpId (idLocCreator "tuple") (Field [])))]
+fundecl' = FunDecl (idLocCreator "swap") [(idLocCreator "tuple")] Nothing [] [StmtDeclareVar (idLocCreator "tuple") (Field [First]) (ExpId (idLocCreator "tuple") (Field [Second])),StmtDeclareVar (idLocCreator "tuple") (Field [Second]) (ExpId (idLocCreator "tuple") (Field [First]))]
+fundecl'' = FunDecl (idLocCreator "swap") [(idLocCreator "tuple")] Nothing [VarDeclVar (idLocCreator "tmp") (ExpId (idLocCreator "tuple") (Field [First]))] [StmtDeclareVar (idLocCreator "tuple") (Field [First]) (ExpId (idLocCreator "tuple") (Field [Second])),StmtDeclareVar (idLocCreator "tuple") (Field [Second]) (ExpId (idLocCreator "tmp") (Field []))]
 
-fundecl''' = FunDecl "swap" ["tuple"] Nothing [VarDeclVar "tmp" (ExpId "tuple" (Field [First]))] [StmtDeclareVar "tuple" (Field [First]) (ExpId "tuple" (Field [Second])),StmtDeclareVar "tuple" (Field [Second]) (ExpId "tmp" (Field [])),StmtReturn (Just (ExpId "tuple" (Field [])))]
+fundecl''' = FunDecl (idLocCreator "swap") [(idLocCreator "tuple")] Nothing [VarDeclVar (idLocCreator "tmp") (ExpId (idLocCreator "tuple") (Field [First]))] [StmtDeclareVar (idLocCreator "tuple") (Field [First]) (ExpId (idLocCreator "tuple") (Field [Second])),StmtDeclareVar (idLocCreator "tuple") (Field [Second]) (ExpId (idLocCreator "tmp") (Field [])),StmtReturn (Just (ExpId (idLocCreator "tuple") (Field [])))]
 
 
 funDeclTest1 ::  IO()

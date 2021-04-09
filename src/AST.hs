@@ -3,10 +3,12 @@ module AST where
 import Data.Map as Map
 import Data.List ( intercalate )
 
+import Debug.Trace
+
 newtype SPL =  SPL [Decl] 
   deriving (Show, Eq)
 
-data Line = Line Int Int
+data Loc = Loc Int Int
   deriving (Eq, Show)
 
 data Decl = VarMain VarDecl
@@ -14,11 +16,11 @@ data Decl = VarMain VarDecl
           | MutRec [FunDecl]
           deriving (Eq, Show)
 
-data VarDecl = VarDeclVar ID Exp
-             | VarDeclType SPLType ID Exp --Line
+data VarDecl = VarDeclVar IDLoc Exp
+             | VarDeclType SPLType IDLoc Exp --Line
              deriving (Eq, Show)
 
-data FunDecl = FunDecl ID [ID] (Maybe SPLType) [VarDecl] [Stmt] --Line
+data FunDecl = FunDecl IDLoc [IDLoc] (Maybe SPLType) [VarDecl] [Stmt] --Line
              deriving (Eq, Show)
 
 data Class = OrdClass | EqClass deriving (Show, Eq)
@@ -27,7 +29,7 @@ data SPLType
   = TypeBasic BasicType
   | TupleType (SPLType, SPLType)
   | ArrayType SPLType
-  | IdType ID (Maybe Class)
+  | IdType IDLoc (Maybe Class)
   | FunType SPLType SPLType
   | Void
   deriving (Eq, Show)
@@ -50,19 +52,19 @@ data BasicType
 
 data Stmt = StmtIf Exp [Stmt] (Maybe [Stmt]) --Line
           | StmtWhile Exp [Stmt] --Line
-          | StmtDeclareVar ID Field Exp --Line
+          | StmtDeclareVar IDLoc Field Exp --Line
           | StmtFuncCall FunCall --Line
           | StmtReturn (Maybe Exp) --Line
           deriving (Eq, Show)
 
 data Exp 
-  = ExpId ID Field
+  = ExpId IDLoc Field
   | ExpInt Integer
-  | ExpIntLine Integer Line
+  | ExpIntLine Integer Loc
   | ExpBool Bool
-  | ExpBoolLine Bool Line
+  | ExpBoolLine Bool Loc
   | ExpChar Char
-  | ExpCharLine Char Line
+  | ExpCharLine Char Loc
   | ExpBracket Exp
   | ExpOp2 Exp Op2 Exp
   | ExpOp1 Op1 Exp
@@ -81,10 +83,32 @@ data StandardFunction
     deriving (Eq, Show)
 
 type ID = String
-data IDLine = ID String Line
+data IDLoc = ID String Loc
+  deriving (Show, Eq)
+instance Ord IDLoc where
+  compare (ID id loc) (ID id' loc') = id `compare` id'
+
+showIDLoc :: IDLoc -> String
+showIDLoc (ID id (Loc line col)) | line > 0 && col > 0 = id ++ " on Line " ++ show line ++ " and, Col "++ show col++"."
+showIDLoc (ID id (Loc line col)) = id
+
+showLoc :: IDLoc -> String
+showLoc (ID id (Loc line col)) = "on Line " ++ show line ++ " and, Col "++ show col
+
+getLoc :: IDLoc -> (Int,Int)
+getLoc (ID id (Loc line col)) = (line, col)
+
+getLine:: IDLoc -> String
+getLine (ID id (Loc line col)) = show line
+
+getCol:: IDLoc -> String
+getCol (ID id (Loc line col)) = show col
+
+idLocCreator :: String -> IDLoc
+idLocCreator s = ID s (Loc (-1) (-1))
 
 data FunCall
-    = FunCall ID [Exp]
+    = FunCall IDLoc [Exp]
     deriving (Show, Eq)
 
 -- ==== Op1 ====
@@ -111,8 +135,8 @@ class PrettyPrinter a where
 instance PrettyPrinter SPL where
   pp (SPL decls) = unlines $ Prelude.map pp decls
 
-instance PrettyPrinter Line where
-  pp (Line ln col) = "Line " ++ show ln ++ ", Col "++ show col
+instance PrettyPrinter Loc where
+  pp (Loc ln col) = "Line " ++ show ln ++ ", Col "++ show col
 
 instance PrettyPrinter a => PrettyPrinter [a] where
     pp xs = intercalate "\n" (Prelude.map pp xs)
@@ -123,12 +147,12 @@ instance PrettyPrinter Decl where
   pp (MutRec x) = "//MutRec" ++ prettyPrinter x
 
 instance PrettyPrinter VarDecl where
-  pp (VarDeclVar i e) = "var " ++ i ++ " = "++ pp e ++ ";"
-  pp (VarDeclType t i e ) = pp t ++ " " ++ i ++ " = "++ pp e ++ ";"
+  pp (VarDeclVar i e) = "var " ++ pp i ++ " = "++ pp e ++ ";"
+  pp (VarDeclType t i e ) = pp t ++ " " ++ pp i ++ " = "++ pp e ++ ";"
 
 instance PrettyPrinter FunDecl where
   pp (FunDecl fName fArgs fType fVard fStmts) = 
-    "\n" ++ fName ++ " (" ++ intercalate ", " fArgs ++ ") " ++ (case fType of 
+    "\n" ++ pp fName ++ " (" ++ intercalate ", " (Prelude.map pp fArgs) ++ ") " ++ (case fType of 
                                                               Just x -> ":: "++ pp x
                                                               Nothing -> "") ++ " {\n"++ 
     prettyPrinter fVard ++ (if not (Prelude.null fVard) then "\n" else "") ++
@@ -139,18 +163,24 @@ instance PrettyPrinter SPLType where
   pp (TypeBasic x) = pp x
   pp (TupleType (a, b)) = "(" ++ pp a ++ ", "++pp b ++ ")"
   pp (ArrayType x) = "["++pp x++"]"
-  pp (IdType id Nothing) = id
-  pp (IdType id (Just EqClass)) = "Eq "++ id ++ " =>" ++ id
-  pp (IdType id (Just OrdClass)) = "Ord "++ id ++ " =>" ++ id
-  pp (FunType args ret) = ppClasses (FunType args ret) ++ " => " ++ ppArgs args ++ " -> " ++ pp ret
+  pp (IdType id Nothing) = pp id
+  pp (IdType id (Just EqClass)) = "Eq "++ pp id ++ " =>" ++ pp id
+  pp (IdType id (Just OrdClass)) = "Ord "++ pp id ++ " =>" ++ pp id
+  -- Prints function types haskell style:
+  -- pp (FunType arg ret) = ppClasses (FunType arg ret) ++ pp arg ++ " -> " ++ pp ret
+  pp (FunType args ret) = 
+    let types = getArgsTypes (FunType args ret) 
+    in ppClasses (FunType args ret) ++ unwords (Prelude.map pp (init types)) ++ " -> " ++ pp (last types)
   pp Void = "Void"
 
 ppClasses :: SPLType -> String
-ppClasses t = unwords (Prelude.map printClass $ Map.toList (getClasses t Map.empty))
+ppClasses t = let c = Map.toList (getClasses t Map.empty) in if Prelude.null c then "" else unwords (Prelude.map printClass c) ++ "=>"
   where printClass (a, EqClass) = "Eq " ++ show a
         printClass (a, OrdClass) = "Ord " ++ show a
 
-getClasses :: SPLType -> Map.Map ID Class -> Map.Map ID Class
+getClasses :: SPLType -> Map.Map IDLoc Class -> Map.Map IDLoc Class
+getClasses Void map = map
+getClasses (TypeBasic _) map = map
 getClasses (IdType id Nothing) map = map
 getClasses (IdType id (Just EqClass)) map = 
   case Map.lookup id map of
@@ -161,9 +191,13 @@ getClasses (TupleType (a,b)) map = getClasses a map `Map.union` getClasses b map
 getClasses (ArrayType x) map = getClasses x map
 getClasses (FunType args ret) map = getClasses args map `Map.union` getClasses ret map
 
-ppArgs :: SPLType -> String
-ppArgs (FunType args ret) = ppArgs args ++ " " ++ ppArgs ret
-ppArgs x = pp x
+-- ppArgs :: SPLType -> String
+-- ppArgs (FunType args ret) = ppArgs args ++ " " ++ ppArgs ret
+-- ppArgs x = pp x
+
+getArgsTypes :: SPLType -> [SPLType]
+getArgsTypes (FunType args ret) = getArgsTypes args ++ getArgsTypes ret
+getArgsTypes x = [x]
 
 instance PrettyPrinter Class where
   pp EqClass = "Eq =>"
@@ -183,12 +217,12 @@ instance PrettyPrinter Stmt where
         Nothing -> ""
   pp (StmtWhile e s) = 
     "while (" ++ pp e ++ ") {\n" ++  prettyPrinter s ++"}"
-  pp (StmtDeclareVar id f e) = id ++ pp f ++ " = " ++ pp e ++ ";"
+  pp (StmtDeclareVar id f e) = pp id ++ pp f ++ " = " ++ pp e ++ ";"
   pp (StmtFuncCall c) = pp c ++ ";"
   pp (StmtReturn e) = "return" ++ maybe "" ((" "++) . pp) e ++ ";"
 
 instance PrettyPrinter Exp where
-  pp (ExpId s f) = s ++ pp f
+  pp (ExpId s f) = pp s ++ pp f
   pp (ExpInt i) = show i
   pp (ExpChar c) = show c
   pp (ExpBool b) = show b
@@ -210,8 +244,11 @@ instance PrettyPrinter StandardFunction where
   pp Second = ".snd"
   pp IsEmpty = ".isEmpty"
 
+instance PrettyPrinter IDLoc where
+  pp (ID  id (Loc line col)) = id
+
 instance PrettyPrinter FunCall where
-  pp (FunCall i eS) = i ++ "("++ intercalate "," (Prelude.map pp eS) ++")"
+  pp (FunCall i eS) = pp i ++ "("++ intercalate "," (Prelude.map pp eS) ++")"
 
 instance PrettyPrinter Op1 where
   pp Neg = "-"
