@@ -130,6 +130,18 @@ runTI t = runState (runExceptT t) initTIState
 --               | otherwise = let (n, r) = c `divMod` 26
 --                             in toEnum (97+r) : toTyVar (n-1)
 
+newSPLVarWithClass :: Class -> TI SPLType
+newSPLVarWithClass c =
+    do  s <- get
+        put (s + 1)
+        return $ IdType (reverse (toTyVar s)) (Just c)
+  where 
+    toTyVar :: Int -> String
+    toTyVar c | c < 26    =  [toEnum (97+c)]
+              | otherwise = let (n, r) = c `divMod` 26
+                            in toEnum (97+r) : toTyVar (n-1)
+
+
 newSPLVar :: TI SPLType
 newSPLVar =
     do  s <- get
@@ -180,8 +192,8 @@ instance MGU SPLType where
                                                      return (s1 `composeSubst` s2)
     mgu (ArrayType x) (ArrayType y) = mgu x y
     mgu (TypeBasic x) (TypeBasic y) = mgu x y
-    mgu (IdType l _) r = varBind l r
-    mgu l (IdType r _) = varBind r l
+    mgu (IdType id c) r = varBind id c r
+    mgu l (IdType id c) = varBind id c l
 
     mgu Void Void = return nullSubst
     mgu (FunType args ret) (FunType args' ret') = do 
@@ -202,16 +214,19 @@ instance MGU BasicType where
 --     mgu (RetSplType x) (RetSplType y) = mgu x y
 --     mgu t1 t2 =  throwError $ "types do not unify: " ++ show t1 ++ " vs. " ++ show t2
 
-varBind :: ID -> SPLType -> TI Subst
-varBind id (IdType t _) | id == t  = return nullSubst
-varBind id t | id `Set.member` ftv t = throwError $ "occurs check fails: " ++ id ++ " vs. " ++ show t
-varBind id t = return (Map.singleton id t)
+varBind :: ID -> Maybe Class -> SPLType -> TI Subst
+varBind id _ (IdType t _) | id == t = return nullSubst
 
+varBind id c (IdType t c') = return $ Map.singleton id (IdType t (composeClass c c'))
 
--- ===================== getParamType ============================
--- Meaning the type of a parameter used through out a function.
--- Not sure if this is needed maybe we could just add the parameters at the start to the env and then check as we go.
--- This will also be more efficient, as we dont go through all statements for each param but for all params through each statements at once.
+varBind id _ t | id `Set.member` ftv t = throwError $ "occurs check fails: " ++ id ++ " vs. " ++ show t
+varBind id _ t = return $ Map.singleton id t
+
+composeClass :: Maybe Class -> Maybe Class -> Maybe Class
+composeClass Nothing c = c
+composeClass c Nothing = c
+composeClass c c' | c == c' = c
+composeClass c c' | c /= c' = Just OrdClass
 
 
 -- ===================== Type inference ============================
@@ -225,7 +240,7 @@ tiSPL env (SPL (decl:decls)) = do
 tiDecl :: TypeEnv -> Decl -> TI TypeEnv
 tiDecl env (VarMain x) = tiVarDecl env x
 tiDecl env (FuncMain x) = tiFunDecl env x
--- TODO
+-- TODO implement MutRec
 tiDecl env (MutRec []) = undefined 
 tiDecl env (MutRec (x:xs)) = undefined 
 
@@ -258,8 +273,6 @@ tiVarDecl (TypeEnv env) (VarDeclType t id e) = case Map.lookup id env of
         let env' = TypeEnv (Map.insert id t' env)
         return $ apply cs1 env'
 
--- Create new types for the variables add them to a TEMPORARY env and then go through the statements.
-
 
 tiFunDeclTest :: TypeEnv -> FunDecl -> TI (Subst, Subst, Maybe SPLType, TypeEnv)
 tiFunDeclTest env (FunDecl funName args (Just funType) vars stmts) = undefined
@@ -285,8 +298,6 @@ tiFunDeclTest env (FunDecl funName args Nothing vars stmts) = do
     -- return (cs1, apply cs1 env''')
     -- return (cs1,env'
 
-
-
 tiFunDecl :: TypeEnv -> FunDecl -> TI TypeEnv
 tiFunDecl env (FunDecl funName args (Just funType) vars stmts) = undefined
 tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
@@ -304,7 +315,6 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
     s2 <- mgu (apply s1 t1') retType
     let cs1 = s2 `composeSubst` s1
     return $ apply cs1 env'
-    -- return env'
 
 
 -- tiStmtsTest :: TypeEnv -> [Stmt] -> TI (Subst, Maybe SPLType, TypeEnv)
@@ -349,6 +359,7 @@ tiStmt env (StmtIf e stmts Nothing) = do
     (s3, t2) <- tiStmts (apply cs1 env) stmts
     let cs2 = s3 `composeSubst` cs1
     return (cs2, apply cs2 t2)
+
 tiStmt env (StmtWhile e stmts) = do
     (s1, conditionType) <- tiExp env e 
     s2 <- mgu conditionType (TypeBasic BasicBool)
@@ -356,10 +367,12 @@ tiStmt env (StmtWhile e stmts) = do
     (s3, t3) <- tiStmts (apply cs1 env) stmts
     let cs2 = s3 `composeSubst` cs1
     return (cs2, apply cs2 t3)
+
 tiStmt env (StmtReturn Nothing) = return (nullSubst, Just Void)
 tiStmt env (StmtReturn (Just exp)) = do 
     (s1,t1) <- tiExp env exp
     return (s1, Just t1)
+
 tiStmt (TypeEnv env) (StmtDeclareVar id (Field []) e) = case Map.lookup id env of
     Just (Scheme ids t) -> do
         (s1, t1) <- tiExp (TypeEnv env) e
@@ -479,8 +492,12 @@ getType t (x:xs) = do
 op2Type :: Op2 -> TI (SPLType,SPLType,SPLType)
 op2Type x | x == Plus || x == Min || x == Mult || x == Div || x == Mod = 
     return (TypeBasic BasicInt, TypeBasic BasicInt, TypeBasic BasicInt)
-op2Type x | x == Eq || x == Le || x == Ge || x == Leq || x == Geq || x == Neq = do
-    tv <- newSPLVar
+op2Type x | x == Eq || x == Neq = do
+    tv <- newSPLVarWithClass EqClass 
+    return (tv, tv, TypeBasic BasicBool)
+
+op2Type x | x == Le || x == Ge || x == Leq || x == Geq  = do
+    tv <- newSPLVarWithClass OrdClass 
     return (tv, tv, TypeBasic BasicBool)
 op2Type x | x== And || x == Or = 
     return (TypeBasic BasicBool, TypeBasic BasicBool, TypeBasic BasicBool)
@@ -489,9 +506,6 @@ op2Type Con = do
     return (tv, ArrayType tv, ArrayType tv)
 
 -- ===================== Binding time analysis ============================
-
-help :: TypeEnv
-help = TypeEnv Map.empty
 
 typeInference :: Map.Map ID Scheme -> SPL -> TI TypeEnv
 typeInference env e = do tiSPL (TypeEnv env) e
@@ -595,8 +609,6 @@ env' =
 --                     test x
 
 --               Left x -> do print x
-
--- ====== Tests regarding tiVarDecl ======
 
 
 -- ====== Tests regarding tiFunDecl ======
