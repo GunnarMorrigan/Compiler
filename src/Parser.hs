@@ -89,11 +89,11 @@ funDecl :: Parser (Token, Int, Int) FunDecl
 funDecl = FunDecl <$> 
        idP <*> 
        (pToken BrackOToken *> sepBy (pToken CommaToken ) idP <* pToken BrackCToken) <*>
-       funTypeOptional <*>
+       funType <*>
        (pToken CBrackOToken*> many varDecl) <*>
        some stmt 
        <* pToken CBrackCToken
- where funTypeOptional = Parser $ \case
+ where funType = Parser $ \case
                      (FunTypeToken, line, col): xs -> do
                             (ys, rest) <- run (many splType) xs
                             -- (ys, rest) <- run funType xs
@@ -351,6 +351,16 @@ tokeniseAndParse parser x  = runTokenise x >>= run parser
 
 splFilePath = "../SPL_test_code/"
 
+
+funTypeParser = Parser $ \case
+                     (FunTypeToken, line, col): xs -> do
+                            (ys, rest) <- run (many splType) xs
+                            -- (ys, rest) <- run funType xs
+                            let ret = if length ys > 1 then foldr1 FunType ys else head ys
+                            Right (Just ret, rest)
+                     x -> Right (Nothing, x)
+
+funTypeTest = tokeniseAndParse funTypeParser ":: Int Bool -> Char"
 
 -- main :: String -> IO()
 -- tokeniseAndParseFile2 filename = do

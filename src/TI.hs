@@ -216,9 +216,7 @@ instance MGU BasicType where
 
 varBind :: ID -> Maybe Class -> SPLType -> TI Subst
 varBind id _ (IdType t _) | id == t = return nullSubst
-
 varBind id c (IdType t c') = return $ Map.singleton id (IdType t (composeClass c c'))
-
 varBind id _ t | id `Set.member` ftv t = throwError $ "occurs check fails: " ++ id ++ " vs. " ++ show t
 varBind id _ t = return $ Map.singleton id t
 
@@ -299,7 +297,27 @@ tiFunDeclTest env (FunDecl funName args Nothing vars stmts) = do
     -- return (cs1,env'
 
 tiFunDecl :: TypeEnv -> FunDecl -> TI TypeEnv
-tiFunDecl env (FunDecl funName args (Just funType) vars stmts) = undefined
+tiFunDecl env (FunDecl funName args (Just funType) vars stmts) = do
+
+    let (argTypes, retType) = let a = getArgsTypes funType in (init a, last a)
+
+
+    case length args `compare` length argTypes of
+        LT -> throwError $ "Function: '" ++ funName ++ "'  has less arguments than it has types"
+        GT -> throwError $ "Function: '" ++ funName ++ "'  has more arguments than it has types"
+        EQ -> do 
+            let env' = TI.insert env funName funType -- With only this function inserted
+            let env'' = insertMore env' (zip args argTypes) -- With this function + args inserted
+            env''' <- tiVarDecls env'' vars -- With this function + args + local varDecls inserted
+
+            (s1,t1) <- tiStmts env''' stmts
+
+            let t1' = fromMaybe Void t1
+
+            s2 <- mgu (apply s1 t1') retType
+            let cs1 = s2 `composeSubst` s1
+            return $ apply s1 env'
+
 tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
     argTypes <- replicateM (length args) newSPLVar
     retType <- newSPLVar
@@ -316,6 +334,10 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
     let cs1 = s2 `composeSubst` s1
     return $ apply cs1 env'
 
+
+getArgsTypes :: SPLType -> [SPLType]
+getArgsTypes (FunType args ret) = getArgsTypes args ++ getArgsTypes ret
+getArgsTypes x = [x]
 
 -- tiStmtsTest :: TypeEnv -> [Stmt] -> TI (Subst, Maybe SPLType, TypeEnv)
 -- tiStmtsTest env [e] = do 
