@@ -32,7 +32,6 @@ data SPLType
   | Void
   deriving (Eq, Show)
 
-
 eqType :: SPLType -> SPLType -> Bool
 eqType (TypeBasic l) (TypeBasic r) = l == r
 eqType (TupleType (a,b)) (TupleType (c,d)) = eqType a c && eqType b d
@@ -41,8 +40,6 @@ eqType (IdType l c) (IdType r c') = True
 eqType (FunType arg ret) (FunType arg' ret') = eqType arg arg' && eqType ret ret'
 eqType Void Void = True
 eqType _ _ = False
-
-
 
 
 data BasicType
@@ -165,7 +162,7 @@ getClasses (ArrayType x) map = getClasses x map
 getClasses (FunType args ret) map = getClasses args map `Map.union` getClasses ret map
 
 ppArgs :: SPLType -> String
-ppArgs (FunType args ret) = ppArgs args ++ " " ++ pp ret
+ppArgs (FunType args ret) = ppArgs args ++ " " ++ ppArgs ret
 ppArgs x = pp x
 
 instance PrettyPrinter Class where
