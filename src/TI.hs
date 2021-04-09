@@ -431,6 +431,9 @@ tiExp (TypeEnv env) (ExpFunCall (FunCall name args)) = case Map.lookup name env 
     Nothing -> throwError $ "Function: '" ++ name ++ "', does not exist in the type environment: (i.e. reference before decleration)"
 
 getType :: SPLType -> [StandardFunction] -> TI (Subst, SPLType, SPLType)
+getType t [] = do
+    tv <- newSPLVar
+    return (nullSubst, tv, tv)
 getType t [Head] = do
     tv <- newSPLVar
     let t' = ArrayType tv
@@ -528,62 +531,7 @@ test1 e =
          Left err  ->  putStrLn $ show e ++ "\nerror: " ++ err
          Right t   ->  putStrLn $ show e ++ "\n\n" ++ show t
 
--- ====== Tests regarding tiExp ======
-expTest2 :: IO ()
-expTest2 =
-    let (res, s) = runTI (getType (IdType "hoi" Nothing) [Head, Second, Head] )
-    in case res of
-         Left err  ->  putStrLn $ "error: " ++ err
-         Right (subst, t, ret)   ->  putStrLn $ show subst ++ "\n\n" ++ show t ++ "\n\n" ++ show ret
 
-expTest2' :: IO ()
-expTest2' =
-    let (res, s) = runTI (getType (IdType "hoi" Nothing) [Head, Second, Head] )
-    in case res of
-         Left err  ->  putStrLn $ "error: " ++ err
-         Right (subst, t, ret)   ->  putStrLn $ show subst ++ "\n\n" ++ show t ++ "\n\n" ++ show ret
-
-
-
-expTest3 :: IO ()
-expTest3 =
-    let (res, s) = runTI (tiExp (TypeEnv Map.empty) (ExpId "hoi" (Field [Head, Second, Head])))
-    in case res of
-         Left err  ->  putStrLn $ "error: " ++ err
-         Right (subst, t)   ->  putStrLn $ show subst ++ "\n\n" ++ show t
-
-expTest4 :: IO ()
-expTest4 =
-    let (res, s) = runTI (tiExp (TypeEnv (Map.fromList [("hoi" :: ID, Scheme [] (IdType "z" Nothing) )] )) (ExpId "hoi" (Field [Head, Second, Head])))
-    in case res of
-         Left err  ->  putStrLn $ "error: " ++ err
-         Right (subst, t)   ->  putStrLn $ show subst ++ "\n\n" ++ show t
-
-expTest4' :: IO ()
-expTest4' =
-    let (res, s) = runTI (tiExp (TypeEnv (Map.fromList [("hoi" :: ID, Scheme [] (ArrayType (TupleType (IdType "z" Nothing ,ArrayType (IdType "x" Nothing)))) )] )) (ExpId "hoi" (Field [Head, Second, Head])))
-    in case res of
-         Left err  ->  putStrLn $ "error: " ++ err
-         Right (subst, t)   ->  putStrLn $ show subst ++ "\n\n" ++ show t
-
-expTest5 :: IO ()
-expTest5 =
-    let (res, s) = runTI (tiExp (TypeEnv Map.empty) ExpEmptyList)
-    in case res of
-         Left err  ->  putStrLn $ "error: " ++ err
-         Right (subst, t)   ->  putStrLn $ show subst ++ "\n\n" ++ show t
-
-expTest6 =
-    let (res, s) = runTI (tiExp (TypeEnv Map.empty) (ExpOp1 Neg $ ExpInt 10))
-    in case res of
-         Left err ->  putStrLn $ "error: " ++ err
-         Right (subst, t) ->  putStrLn $ show subst ++ "\n\n" ++ show t
-
-expTest7 =
-    let (res, s) = runTI (tiExp (TypeEnv (Map.fromList [("hoi" :: ID, Scheme [] (TypeBasic BasicBool) )])) (ExpOp1 Not $ ExpId "hoi" (Field [])))
-    in case res of
-         Left err ->  putStrLn $ "error: " ++ err
-         Right (subst, t) ->  putStrLn $ show subst ++ "\n\n" ++ show t
 
 
 env = 
@@ -649,7 +597,6 @@ env' =
 --               Left x -> do print x
 
 -- ====== Tests regarding tiVarDecl ======
-
 
 
 -- ====== Tests regarding tiFunDecl ======

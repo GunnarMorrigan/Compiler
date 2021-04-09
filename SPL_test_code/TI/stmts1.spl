@@ -1,0 +1,11 @@
+tuple = ('c', 'a');
+returnVar = (0, 0);
+if (flip) {
+    returnVar = (tuple.snd, tuple.fst);
+    return returnVar;
+} else {
+    if ((returnVar.fst == returnVar.snd)) {
+        return returnVar;
+    }
+}
+return tuple;

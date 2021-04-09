@@ -32,6 +32,19 @@ data SPLType
   | Void
   deriving (Eq, Show)
 
+
+eqType :: SPLType -> SPLType -> Bool
+eqType (TypeBasic l) (TypeBasic r) = l == r
+eqType (TupleType (a,b)) (TupleType (c,d)) = eqType a c && eqType b d
+eqType (ArrayType l) (ArrayType r) = eqType l r
+eqType (IdType l c) (IdType r c') = True
+eqType (FunType arg ret) (FunType arg' ret') = eqType arg arg' && eqType ret ret'
+eqType Void Void = True
+eqType _ _ = False
+
+
+
+
 data BasicType
   = BasicInt
   | BasicBool
