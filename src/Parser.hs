@@ -88,7 +88,7 @@ varDecl = VarDeclType <$> splType <*> idPLoc <*> varAss <|>
 funDecl :: Parser (Token, Int, Int) FunDecl
 funDecl = FunDecl <$> 
        idPLoc <*> 
-       (pToken BrackOToken *> sepBy (pToken CommaToken ) idPLoc <* pToken BrackCToken) <*>
+       (pToken BrackOToken *> customSepBy CommaToken (pToken CommaToken ) idPLoc <* pToken BrackCToken) <*>
        funType <*>
        (pToken CBrackOToken*> many varDecl) <*>
        some stmt 
@@ -332,6 +332,18 @@ mainSegments = SPL <$> all' (FuncMain <$> funDecl <|> VarMain <$> varDecl)
 
 sepBy :: Parser (Token, Int, Int) a -> Parser (Token, Int, Int) b -> Parser (Token, Int, Int) [b]
 sepBy sep elem = ((:) <$> elem <*> many (sep *> elem)) <|> pure []
+
+customSepBy :: Token -> Parser (Token, Int, Int) a -> Parser (Token, Int, Int) b -> Parser (Token, Int, Int) [b]
+customSepBy sepToken sep elem = Parser $ \input -> 
+       case run elem input of
+         Right(b, input') -> 
+           case run sep input' of
+              Right(a, input'') -> run ((b:) <$> customSepBy sepToken sep elem) input''
+              Left x -> 
+                case run elem input' of
+                  Right(b', (token, _, _):xs) -> let ((token', line, col):xs) = input' in Left $ Error line col ("Expected seperator '"++ show sepToken ++ "' but found " ++ show token')
+                  Left x -> Right ([b], input')
+         Left x -> Right([], input)
 
 many' :: Parser (Token, Int, Int) a -> Parser (Token, Int, Int) [a]
 many' p = ((:) <$> p <*> many' p) <<|> pure []

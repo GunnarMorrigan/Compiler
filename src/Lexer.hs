@@ -80,7 +80,8 @@ instance Show Token where
   show OrToken = "||"
   show ConstToken = ":"
   show NotToken = "!"
-  show (IdToken x) = "id["++x++"]"
+  -- show (IdToken x) = "id["++x++"]"
+  show (IdToken x) = x
   show IfToken = "if"
   show ElseToken = "else"
   show WhileToken = "while"
