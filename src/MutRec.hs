@@ -12,10 +12,10 @@ import System.Exit
 
 
 class SPLGraph a where
-    toGraph :: a -> [(Decl, String, [String])]
+    toGraph :: a -> [(Decl, IDLoc, [IDLoc])]
 
 class Callees a where 
-    getCallees :: a -> [ID]
+    getCallees :: a -> [IDLoc]
 
 instance SPLGraph a => SPLGraph [a] where
     toGraph [] = []
@@ -109,7 +109,7 @@ getCyclics [] = []
 -- because variables cant be Cyclic
 -- var hoi = hoi2;
 -- var hoi2 = hoi;
-fromGraph :: [SCC (Decl, String, [String])]  -> SPL
+fromGraph :: [SCC (Decl, IDLoc, [IDLoc])]  -> SPL
 fromGraph x = SPL (f x)
     where 
         f [] = []

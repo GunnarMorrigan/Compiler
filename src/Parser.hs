@@ -71,24 +71,24 @@ pToken t = Parser $
               (x, line, col):xs -> Left $ Error line col ("Expected: '"++show t++"' but found: " ++ show x)
               [] -> Left $ Error (-1) (-1) ("Unexpected EOF, expected: '"++show t++"'")
 
-pTokenGen :: Token -> (Line -> b) -> Parser (Token, Int, Int) b
+pTokenGen :: Token -> (Loc -> b) -> Parser (Token, Int, Int) b
 pTokenGen t f = Parser $ 
        \case 
-              (x, line, col):xs | x == t -> Right (f (Line line col),xs)
+              (x, line, col):xs | x == t -> Right (f (Loc line col),xs)
               (x, line, col):xs -> Left $ Error line col ("Expected: '"++show t++"' but found: " ++ show x)
               [] -> Left $ Error (-1) (-1) ("Unexpected EOF, expected: '"++show t++"'")
 
 -- ===================== VarDecl ============================
 varDecl :: Parser (Token, Int, Int) VarDecl 
-varDecl = VarDeclType <$> splType <*> idP <*> varAss <|>
-          (VarDeclVar <$> (pToken VarToken *> idP) <*> varAss)
+varDecl = VarDeclType <$> splType <*> idPLoc <*> varAss <|>
+          (VarDeclVar <$> (pToken VarToken *> idPLoc) <*> varAss)
               where varAss = pToken IsToken *> expParser <* pToken SemiColToken
 
 -- ===================== FunDecl ============================ 
 funDecl :: Parser (Token, Int, Int) FunDecl
 funDecl = FunDecl <$> 
-       idP <*> 
-       (pToken BrackOToken *> sepBy (pToken CommaToken ) idP <* pToken BrackCToken) <*>
+       idPLoc <*> 
+       (pToken BrackOToken *> sepBy (pToken CommaToken ) idPLoc <* pToken BrackCToken) <*>
        funType <*>
        (pToken CBrackOToken*> many varDecl) <*>
        some stmt 
@@ -122,7 +122,7 @@ arrayType :: Parser (Token, Int, Int) SPLType
 arrayType = ArrayType <$> (pToken SBrackOToken *> splType <* pToken SBrackCToken)
 
 idType :: Parser (Token, Int, Int) SPLType 
-idType = IdType <$> idP <*> pure Nothing
+idType = IdType <$> idPLoc <*> pure Nothing
 
 -- ===== BasicType =====
 basicType :: Parser (Token, Int, Int) BasicType
@@ -161,7 +161,7 @@ stmtWhile = StmtWhile <$>
 
 stmtDeclareVar :: Parser (Token, Int, Int) Stmt
 stmtDeclareVar = StmtDeclareVar <$> 
-       idP <*> 
+       idPLoc <*> 
        fieldP <*> 
        (pToken IsToken *> expParser <* pToken SemiColToken)
 
@@ -178,7 +178,7 @@ expParser :: Parser (Token, Int, Int) Exp
 expParser = pOr
 
 expId :: Parser (Token, Int, Int) Exp
-expId = ExpId <$> idP <*> fieldP
+expId = ExpId <$> idPLoc <*> fieldP
 
 -- expInt1 :: Parser (Token, Int, Int) Exp
 -- expInt1 = ExpInt <$> Parser 
@@ -197,7 +197,7 @@ expInt = ExpInt <$> Parser
 expIntLine :: Parser (Token, Int, Int) Exp
 expIntLine = Parser 
        (\case
-              (IntToken c, line, col):xs -> Right (ExpIntLine c (Line line col),xs)
+              (IntToken c, line, col):xs -> Right (ExpIntLine c (Loc line col),xs)
               (x, line, col):xs -> Left $ Error line col ("Expected Integer but got token: " ++ show x)
               _ -> Left $ Error 0 0 "Expected Integer but got invalid token" )
 
@@ -209,7 +209,7 @@ expChar = ExpChar <$> Parser (\case
 
 expCharLine :: Parser (Token, Int, Int) Exp
 expCharLine = Parser (\case
-       (CharToken c, line, col):xs -> Right (ExpCharLine c (Line line col),xs)
+       (CharToken c, line, col):xs -> Right (ExpCharLine c (Loc line col),xs)
        (x, line, col):xs -> Left $ Error line col ("Expected Char but got token: " ++ show x)
        _ -> Left $ Error 0 0 "Expected Char but got invalid token")
 
@@ -221,7 +221,7 @@ expBool = ExpBool <$> Parser (\case
 
 expBoolLine :: Parser (Token, Int, Int) Exp
 expBoolLine = Parser (\case
-       (BoolToken b, line, col):xs -> Right (ExpBoolLine b (Line line col),xs)
+       (BoolToken b, line, col):xs -> Right (ExpBoolLine b (Loc line col),xs)
        (x, line, col):xs -> Left $ Error line col ("Expected Bool but got token: " ++ show x)
        _ -> Left $ Error 0 0 "Expected Bool but got invalid token" )
 
@@ -305,7 +305,7 @@ standardFunctionP =
 
 -- ===================== FunCall ============================
 funCall :: Parser (Token, Int, Int) FunCall 
-funCall = FunCall <$> idP <*> (pToken BrackOToken *> actArgs <* pToken BrackCToken)
+funCall = FunCall <$> idPLoc <*> (pToken BrackOToken *> actArgs <* pToken BrackCToken)
 
 -- ===================== ActArgs ============================
 actArgs = sepBy (pToken CommaToken) expParser
@@ -313,9 +313,9 @@ actArgs = sepBy (pToken CommaToken) expParser
 
 -- ===================== ID ============================
 
-idPLine :: Parser (Token, Int, Int) IDLine
-idPLine =  Parser $ \case
-       (IdToken id, line, col):xs -> Right(ID id (Line line col), xs)
+idPLoc :: Parser (Token, Int, Int) IDLoc
+idPLoc =  Parser $ \case
+       (IdToken id, line, col):xs -> Right(ID id (Loc line col), xs)
        (x, line, col):xs -> Left $ Error line col ("Expected Id but got token: " ++ show x)
        _ -> Left $ Error 0 0 "Expected Id but got invalid token"
 
