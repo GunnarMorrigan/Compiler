@@ -1,25 +1,27 @@
+/*
 get_my_name() :: Bool -> Char {
     return ’m’:’y’:’N’:’a’:’m’:’e’:[];
 }
 
-printTillN(n) :: Int -> Void {
-    Int x = 0;
-    while(x < n) {
-        print (x);
-        Int x = x + 1;
-    }
-    return;
-}
-
-headIsEqualTo(list eq) :: [Int] Int -> Bool {
+headIsEqualTo(list, eq) :: [Int] Int -> Bool {
     if(!list.isEmpty) {
         return list.hd == eq;
     }
     return False;
 }
+*/
+printTillN(n) :: Int -> Void {
+    Int x = 0;
+    while(x < n) {
+        print(x);
+        x = x + 1;
+    }
+    return;
+}
 
-editTuple(tuple flip) :: (Int, Int) Bool -> (Int, Int) {
+editTuple(tuple, flip) :: (Int, Int) Bool -> (Int, Int) {
     (Int, Int) returnVar = (0,0);
+    
     if(flip) {
         returnVar = (tuple.snd, tuple.fst);
         return returnVar;
@@ -34,11 +36,12 @@ editTuple(tuple flip) :: (Int, Int) Bool -> (Int, Int) {
 }
 
 
-niceFunction (a b n) :: [Char] Bool Int -> Void {
+niceFunction (a, b, n) :: [Char] Bool Int -> Void {
+    [Char] c = a.hd;
+    
     if(a.isEmpty) {
         return;
     }
-    [Char] c = a.hd;
     if(c.tl.hd == 'a') {
         return;
     }

@@ -1,0 +1,6 @@
+swap ( tuple ){
+    
+	tuple.fst = tuple.fst;
+	tuple.snd = tuple.snd;
+    return tuple;
+}
