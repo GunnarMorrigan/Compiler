@@ -1,6 +1,6 @@
 var hoi = (10 + 2);
 
-function2 (a, b) :: Bool Int -> Void {
+function2 (a b) :: Bool Int -> Void {
 	while (a) {
 		return 10;
 		return 10;

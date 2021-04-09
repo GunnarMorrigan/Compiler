@@ -5,6 +5,7 @@ import Control.Monad
 import Data.Map as Map
 import System.Directory
 
+import Lexer
 import Parser
 import AST
 
@@ -15,6 +16,17 @@ parserTest1 = TestCase $ do
               Right (x, _) -> do
                     assertEqual "parser test 1" file (pp x)
               Left x -> do
-                    assertFailure $ show x
+                    assertFailure $ show x ++ "\n" ++ showPlaceOfError file x
+
+
+
+
+showPlaceOfError :: String -> Error -> String
+showPlaceOfError code (Error line col msg) =
+    lines code !! (line -1) ++ "\n"
+    ++ replicate (col-1) ' ' ++ "^"
+
+
+
 
 parserTests = [parserTest1]
