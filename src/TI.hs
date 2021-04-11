@@ -455,12 +455,15 @@ tiExp _ (ExpInt i)  = return (nullSubst, TypeBasic BasicInt defaultLoc)
 tiExp _ (ExpBool b) = return (nullSubst, TypeBasic BasicBool defaultLoc)
 tiExp _ (ExpChar c) = return (nullSubst, TypeBasic BasicChar defaultLoc)
 tiExp env (ExpBracket e) = tiExp env e
-tiExp env x | x == ExpList [] || x == ExpEmptyList = do 
+tiExp env (ExpList [] _) = do 
       tv <- newSPLVar
       return (nullSubst, ArrayType tv defaultLoc)
-tiExp env (ExpList (x:xs)) = do
+tiExp env (ExpEmptyList _) = do 
+      tv <- newSPLVar
+      return (nullSubst, ArrayType tv defaultLoc)
+tiExp env (ExpList (x:xs) loc) = do
     (s1, t1) <- tiExp env x
-    (s2, t2) <- tiExp (apply s1 env) (ExpList xs)
+    (s2, t2) <- tiExp (apply s1 env) (ExpList xs loc)
     return (s2 `composeSubst` s1, t2)
 tiExp env (ExpTuple (e1, e2)) = do
     (s1, t1) <- tiExp env e1
