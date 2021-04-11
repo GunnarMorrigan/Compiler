@@ -63,7 +63,7 @@ pChainl :: Parser s (a -> a -> a) -> Parser s a -> Parser s a
 pChainl x p = foldl (&) <$> p <*> many (flip <$> x <*> p)
 
 op :: Parser (Token, Int, Int) Op2 -> Parser (Token, Int, Int) (Exp -> Exp -> Exp)
-op p = flip ExpOp2 <$> p
+op p = (\a b c d -> ExpOp2 c b d a) <$> locParser <*> p
 
 pToken :: Token -> Parser (Token, Int, Int) Token
 pToken t = Parser $ 
@@ -241,14 +241,15 @@ expBoolLine = Parser (\case
 expBracket :: Parser (Token, Int, Int) Exp
 expBracket = pToken BrackOToken  *> expParser <* pToken BrackCToken 
 
-pOr :: Parser (Token, Int, Int) Exp 
+-- pOr :: Parser (Token, Int, Int) Exp
+pOr :: Parser (Token, Int, Int) Exp
 pOr = pChainl (op (Or <$ pToken OrToken)) pAnd
 
-pAnd :: Parser (Token, Int, Int) Exp 
+pAnd :: Parser (Token, Int, Int) Exp
 pAnd = pChainl (op (And <$ pToken AndToken)) pConst
 
 pConst :: Parser (Token, Int, Int) Exp 
-pConst = (ExpOp2 <$> basicExpParser <*> (Con <$ pToken ConstToken) <*> expParser) <|> pComp
+pConst = ((\f a b c d -> f b c d a) ExpOp2 <$> locParser <*> basicExpParser <*> (Con <$ pToken ConstToken) <*> expParser) <|> pComp
 -- pConst = pChainl (op (Con <$ pToken ConstToken)) pComp
 
 pComp :: Parser (Token, Int, Int) Exp 
