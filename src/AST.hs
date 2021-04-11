@@ -1,7 +1,5 @@
 module AST where
 
-import Error
-
 import Data.Map as Map
 import Data.List ( intercalate )
 
@@ -90,6 +88,8 @@ instance Ord IDLoc where
 
 
 -- ===================== Loc ============================
+data Loc = Loc Int Int
+    deriving (Eq, Show)
 
 class LOC a where
   showLoc :: a -> String
