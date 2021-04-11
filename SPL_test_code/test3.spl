@@ -1,3 +1,11 @@
+var a = 10;
+var b = 'L';
+var g = 'L';
+
+equal(x, y) {
+   return x < y;
+}
+
 swap ( tuple ){
 	var tmp = tuple.fst;
 	tuple.fst = tuple.snd;

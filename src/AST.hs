@@ -48,28 +48,25 @@ data BasicType
   | BasicChar
   deriving (Eq, Show)
 
-data Stmt = StmtIf Exp [Stmt] (Maybe [Stmt]) --Line
-          | StmtWhile Exp [Stmt] --Line
-          | StmtDeclareVar IDLoc Field Exp --Line
-          | StmtFuncCall FunCall --Line
-          | StmtReturn (Maybe Exp) --Line
+data Stmt = StmtIf Exp [Stmt] (Maybe [Stmt]) Loc
+          | StmtWhile Exp [Stmt] Loc 
+          | StmtDeclareVar IDLoc Field Exp
+          | StmtFuncCall FunCall Loc
+          | StmtReturn (Maybe Exp) Loc
           deriving (Eq, Show)
 
-data Exp 
+data Exp
   = ExpId IDLoc Field
-  | ExpInt Integer
-  | ExpIntLine Integer Loc
-  | ExpBool Bool
-  | ExpBoolLine Bool Loc
-  | ExpChar Char
-  | ExpCharLine Char Loc
+  | ExpInt Integer Loc
+  | ExpBool Bool Loc
+  | ExpChar Char Loc
   | ExpBracket Exp
-  | ExpOp2 Exp Op2 Exp
-  | ExpOp1 Op1 Exp
-  | ExpFunCall FunCall
-  | ExpEmptyList
-  | ExpList [Exp]
-  | ExpTuple (Exp, Exp)
+  | ExpOp2 Exp Op2 Exp Loc
+  | ExpOp1 Op1 Exp Loc
+  | ExpFunCall FunCall Loc
+  | ExpEmptyList Loc
+  | ExpList [Exp] Loc
+  | ExpTuple (Exp, Exp) Loc
   deriving(Eq, Show)
 
 newtype Field
@@ -77,7 +74,11 @@ newtype Field
   deriving (Eq, Show)
 
 data StandardFunction
-    = Head | Tail | First | Second | IsEmpty
+    = Head Loc
+    | Tail Loc
+    | First Loc
+    | Second Loc
+    | IsEmpty Loc
     deriving (Eq, Show)
 
 type ID = String
@@ -175,7 +176,7 @@ instance PrettyPrinter Loc where
 
 
 instance PrettyPrinter a => PrettyPrinter [a] where
-    pp xs = intercalate "\n" (Prelude.map pp xs)
+  pp xs = intercalate "\n" (Prelude.map pp xs)
 
 instance PrettyPrinter Decl where
   pp (VarMain x) = pp x
@@ -238,41 +239,41 @@ instance PrettyPrinter BasicType where
   pp BasicChar = "Char"
 
 instance PrettyPrinter Stmt where
-  pp (StmtIf e ifS elseS) = 
+  pp (StmtIf e ifS elseS loc) = 
     "if (" ++ pp e ++ ") {\n" ++ 
       prettyPrinter ifS ++"}" ++ 
       case elseS of
         Just x -> " else {\n" ++ 
           prettyPrinter x ++"}" 
         Nothing -> ""
-  pp (StmtWhile e s) = 
+  pp (StmtWhile e s _) = 
     "while (" ++ pp e ++ ") {\n" ++  prettyPrinter s ++"}"
   pp (StmtDeclareVar id f e) = pp id ++ pp f ++ " = " ++ pp e ++ ";"
-  pp (StmtFuncCall c) = pp c ++ ";"
-  pp (StmtReturn e) = "return" ++ maybe "" ((" "++) . pp) e ++ ";"
+  pp (StmtFuncCall c _) = pp c ++ ";"
+  pp (StmtReturn e _) = "return" ++ maybe "" ((" "++) . pp) e ++ ";"
 
 instance PrettyPrinter Exp where
   pp (ExpId s f) = pp s ++ pp f
-  pp (ExpInt i) = show i
-  pp (ExpChar c) = show c
-  pp (ExpBool b) = show b
+  pp (ExpInt i _) = show i
+  pp (ExpChar c _) = show c
+  pp (ExpBool b _) = show b
   pp (ExpBracket e) = "("++ pp e++")"
-  pp (ExpOp2 e1 op e2) = "("++ pp e1  ++" "++ pp op++" " ++ pp e2++")"
-  pp (ExpOp1 op e) = pp op ++ pp e
-  pp (ExpFunCall c) = pp c;
-  pp (ExpList xs) =  "["++ intercalate "," (Prelude.map pp xs)  ++ "]"
-  pp (ExpTuple (a,b)) =  "(" ++ pp a ++ ", " ++ pp b ++")"
-  pp ExpEmptyList = "[]"
+  pp (ExpOp2 e1 op e2 _) = "("++ pp e1  ++" "++ pp op++" " ++ pp e2++")"
+  pp (ExpOp1 op e _) = pp op ++ pp e
+  pp (ExpFunCall c _) = pp c;
+  pp (ExpList xs _) =  "["++ intercalate "," (Prelude.map pp xs)  ++ "]"
+  pp (ExpTuple (a,b) _) =  "(" ++ pp a ++ ", " ++ pp b ++")"
+  pp (ExpEmptyList _) = "[]"
 
 instance PrettyPrinter Field where
   pp (Field xs) = concatMap pp xs
 
 instance PrettyPrinter StandardFunction where
-  pp Head = ".hd"
-  pp Tail = ".tl"
-  pp First = ".fst"
-  pp Second = ".snd"
-  pp IsEmpty = ".isEmpty"
+  pp (Head _) = ".hd"
+  pp (Tail _) = ".tl"
+  pp (First _) = ".fst"
+  pp (Second _) = ".snd"
+  pp (IsEmpty _) = ".isEmpty"
 
 instance PrettyPrinter IDLoc where
   pp (ID  id (Loc line col)) = id
