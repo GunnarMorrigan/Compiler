@@ -91,24 +91,52 @@ data IDLoc = ID String Loc
 instance Ord IDLoc where
   compare (ID id loc) (ID id' loc') = id `compare` id'
 
+
+class LOC a where
+  showLoc :: a -> String
+  getLoc :: a -> Loc
+  getLineNum:: a -> Int
+  getColNum:: a -> Int
+
+instance LOC Loc where
+  showLoc (Loc line col) = "on Line " ++ show line ++ " and, Col "++ show col
+  getLoc x = x
+  getLineNum (Loc line col) = line
+  getColNum (Loc line col) = col
+
+instance LOC IDLoc where
+  showLoc (ID id loc) = showLoc loc
+  getLoc (ID id loc) = getLoc loc
+  getLineNum (ID id loc) = getLineNum loc 
+  getColNum (ID id loc) = getColNum loc 
+
 showIDLoc :: IDLoc -> String
 showIDLoc (ID id (Loc line col)) | line > 0 && col > 0 = id ++ " on Line " ++ show line ++ " and, Col "++ show col++"."
 showIDLoc (ID id (Loc line col)) = id
 
-showLoc :: IDLoc -> String
-showLoc (ID id (Loc line col)) = "on Line " ++ show line ++ " and, Col "++ show col
-
-getLoc :: IDLoc -> (Int,Int)
-getLoc (ID id (Loc line col)) = (line, col)
-
-getLineNum:: IDLoc -> Int
-getLineNum (ID id (Loc line col)) = line
-
-getColNum:: IDLoc -> Int
-getColNum (ID id (Loc line col)) = col
-
 idLocCreator :: String -> IDLoc
 idLocCreator s = ID s (Loc (-1) (-1))
+
+instance LOC SPLType where
+  showLoc x = let Loc line col = getLoc x in "on Line " ++ show line ++ " and, Col "++ show col
+
+  getLoc (TypeBasic _ loc) = loc
+  getLoc (ArrayType _ loc) =  loc
+  getLoc (TupleType _ loc) =  loc
+  getLoc (IdType idloc _) =  getLoc idloc
+  getLoc (Void loc) = loc
+
+  getLineNum (TypeBasic _ loc) = getLineNum loc
+  getLineNum (ArrayType _ loc) = getLineNum loc
+  getLineNum (TupleType _ loc) = getLineNum loc
+  getLineNum (IdType idloc _) = getLineNum idloc
+  getLineNum (Void loc) = getLineNum loc
+
+  getColNum (ArrayType _ loc) = getColNum loc
+  getColNum (TupleType _ loc) = getColNum loc
+  getColNum (TypeBasic _ loc) = getColNum loc
+  getColNum (IdType idloc _) = getColNum idloc
+  getColNum (Void loc) = getColNum loc
 
 data FunCall
     = FunCall IDLoc [Exp]
