@@ -57,7 +57,7 @@ data Stmt = StmtIf Exp [Stmt] (Maybe [Stmt]) --Line
           | StmtReturn (Maybe Exp) Loc --Line
           deriving (Eq, Show)
 
-data Exp 
+data Exp
   = ExpId IDLoc Field
   | ExpInt Integer
   | ExpIntLine Integer Loc -- remove
@@ -66,7 +66,7 @@ data Exp
   | ExpChar Char
   | ExpCharLine Char Loc -- remove
   | ExpBracket Exp
-  | ExpOp2 Exp Op2 Exp -- Loc
+  | ExpOp2 Exp Op2 Exp Loc
   | ExpOp1 Op1 Exp Loc
   | ExpFunCall FunCall Loc
   | ExpEmptyList Loc
@@ -253,7 +253,7 @@ instance PrettyPrinter Exp where
   pp (ExpChar c) = show c
   pp (ExpBool b) = show b
   pp (ExpBracket e) = "("++ pp e++")"
-  pp (ExpOp2 e1 op e2) = "("++ pp e1  ++" "++ pp op++" " ++ pp e2++")"
+  pp (ExpOp2 e1 op e2 _) = "("++ pp e1  ++" "++ pp op++" " ++ pp e2++")"
   pp (ExpOp1 op e _) = pp op ++ pp e
   pp (ExpFunCall c _) = pp c;
   pp (ExpList xs _) =  "["++ intercalate "," (Prelude.map pp xs)  ++ "]"
