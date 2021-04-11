@@ -390,15 +390,15 @@ tiStmt env (StmtWhile e stmts) = do
     let cs2 = s3 `composeSubst` cs1
     return (cs2, apply cs2 t3)
 
-tiStmt (TypeEnv env) (StmtFuncCall (FunCall id e)) = case Map.lookup id env of
+tiStmt (TypeEnv env) (StmtFuncCall (FunCall id e) _) = case Map.lookup id env of
     Just (Scheme ids t) -> do
         let argTypes = init $ getArgsTypes t
         s1 <- typeCheckExps id (TypeEnv env) e argTypes
         return (s1, Nothing)
     Nothing -> throwError $ Error (getLineNum id) (getColNum id) ("Function: '" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)")
 
-tiStmt env (StmtReturn Nothing) = return (nullSubst, Just (Void defaultLoc))
-tiStmt env (StmtReturn (Just exp)) = do 
+tiStmt env (StmtReturn Nothing _) = return (nullSubst, Just (Void defaultLoc))
+tiStmt env (StmtReturn (Just exp) _) = do 
     (s1,t1) <- tiExp env exp
     return (s1, Just t1)
 

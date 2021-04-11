@@ -53,25 +53,25 @@ data BasicType
 data Stmt = StmtIf Exp [Stmt] (Maybe [Stmt]) --Line
           | StmtWhile Exp [Stmt] --Line
           | StmtDeclareVar IDLoc Field Exp --Line
-          | StmtFuncCall FunCall --Line
-          | StmtReturn (Maybe Exp) --Line
+          | StmtFuncCall FunCall Loc --Line
+          | StmtReturn (Maybe Exp) Loc --Line
           deriving (Eq, Show)
 
 data Exp 
   = ExpId IDLoc Field
   | ExpInt Integer
-  | ExpIntLine Integer Loc
+  | ExpIntLine Integer Loc -- remove
   | ExpBool Bool
-  | ExpBoolLine Bool Loc
+  | ExpBoolLine Bool Loc -- remove
   | ExpChar Char
-  | ExpCharLine Char Loc
+  | ExpCharLine Char Loc -- remove
   | ExpBracket Exp
-  | ExpOp2 Exp Op2 Exp
-  | ExpOp1 Op1 Exp
-  | ExpFunCall FunCall
-  | ExpEmptyList
-  | ExpList [Exp]
-  | ExpTuple (Exp, Exp)
+  | ExpOp2 Exp Op2 Exp -- Loc
+  | ExpOp1 Op1 Exp -- Loc 
+  | ExpFunCall FunCall -- Loc
+  | ExpEmptyList -- Loc
+  | ExpList [Exp] Loc -- Loc
+  | ExpTuple (Exp, Exp) -- Loc
   deriving(Eq, Show)
 
 newtype Field
@@ -244,8 +244,8 @@ instance PrettyPrinter Stmt where
   pp (StmtWhile e s) = 
     "while (" ++ pp e ++ ") {\n" ++  prettyPrinter s ++"}"
   pp (StmtDeclareVar id f e) = pp id ++ pp f ++ " = " ++ pp e ++ ";"
-  pp (StmtFuncCall c) = pp c ++ ";"
-  pp (StmtReturn e) = "return" ++ maybe "" ((" "++) . pp) e ++ ";"
+  pp (StmtFuncCall c _) = pp c ++ ";"
+  pp (StmtReturn e _) = "return" ++ maybe "" ((" "++) . pp) e ++ ";"
 
 instance PrettyPrinter Exp where
   pp (ExpId s f) = pp s ++ pp f
@@ -256,7 +256,7 @@ instance PrettyPrinter Exp where
   pp (ExpOp2 e1 op e2) = "("++ pp e1  ++" "++ pp op++" " ++ pp e2++")"
   pp (ExpOp1 op e) = pp op ++ pp e
   pp (ExpFunCall c) = pp c;
-  pp (ExpList xs) =  "["++ intercalate "," (Prelude.map pp xs)  ++ "]"
+  pp (ExpList xs _) =  "["++ intercalate "," (Prelude.map pp xs)  ++ "]"
   pp (ExpTuple (a,b)) =  "(" ++ pp a ++ ", " ++ pp b ++")"
   pp ExpEmptyList = "[]"
 

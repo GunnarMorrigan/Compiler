@@ -6,7 +6,7 @@ import Data.Bifunctor
 import Parser
 import TI
 import Data.Map as Map
-
+import Error
 
 class ReturnGraph a where
     rtga :: a -> Either Error a
@@ -39,12 +39,12 @@ rtgaStmtsForLevel stmts = case Prelude.filter isValidReturn stmts of
             xs -> if allTheSame (Prelude.map isVoidReturn xs) then Right (isVoidReturn $ head xs) else Left $ Error 0 0 "Found void and type return"
 
 isVoidReturn :: Stmt ->  Bool
-isVoidReturn (StmtReturn Nothing) = True
+isVoidReturn (StmtReturn Nothing _) = True
 isVoidReturn (StmtIf a (x:xs) b) = if isValidReturn x then isVoidReturn x else isVoidReturn (StmtIf a xs b)
 isVoidReturn _ = False
 
 isValidReturn :: Stmt  -> Bool
-isValidReturn (StmtReturn _) = True
+isValidReturn (StmtReturn _ _) = True
 isValidReturn (StmtIf _ iStmts els) = case els of
     Nothing -> False 
     Just eStmts -> any isValidReturn iStmts && any isValidReturn eStmts
@@ -66,9 +66,9 @@ checkReturns (x:xs) expect = case x of
                 Nothing -> checkReturns xs expect
                 Just error -> Just error
         Just error -> Just error
-    (StmtReturn e) -> if isVoidReturn x == expect 
+    (StmtReturn e (Loc line col)) -> if isVoidReturn x == expect 
         then checkReturns xs expect 
-        else Just $ Error 0 0 $ "Found invalid return: '" ++ pp x ++ "' expected function to be " ++ if isVoidReturn x then "non Void" else "Void"
+        else Just $ Error line col $ "Found invalid return: '" ++ pp x ++ "' expected function to be " ++ if isVoidReturn x then "non Void" else "Void"
     (StmtWhile e wstmts) -> case checkReturns wstmts expect of
         Nothing -> checkReturns xs expect
         Just error -> Just error

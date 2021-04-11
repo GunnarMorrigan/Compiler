@@ -51,8 +51,8 @@ instance Callees Stmt where
     getCallees (StmtWhile e xs) = getCallees xs
     getCallees (StmtDeclareVar _ _ e) = getCallees e
     getCallees (StmtFuncCall (FunCall id e)) = id:getCallees e
-    getCallees (StmtReturn (Just e)) = getCallees e
-    getCallees (StmtReturn Nothing) = []
+    getCallees (StmtReturn (Just e) _) = getCallees e
+    getCallees (StmtReturn Nothing _) = []
 
 instance Callees Exp where
     getCallees (ExpFunCall (FunCall id e)) = id : getCallees e
