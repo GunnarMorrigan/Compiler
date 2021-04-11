@@ -421,13 +421,10 @@ tiStmt (TypeEnv env) (StmtDeclareVar id (Field fields) e) = case Map.lookup id e
         return (cs3, Nothing)
     Nothing -> throwError $ Error (getLineNum id) (getColNum id) ("id: '" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)")
 
-
 injectErrLoc :: TI a -> Loc -> TI a
 injectErrLoc runable (Loc line col) = case runTI runable of
     (Right x, state) -> return x
     (Left (Error _ _ msg), state) -> throwError $ Error line col msg
-
--- 
 
 typeCheckExps :: IDLoc -> TypeEnv -> [Exp] -> [SPLType] -> TI Subst
 typeCheckExps id env [] [] = return nullSubst
@@ -439,7 +436,6 @@ typeCheckExps id env (e:es) (t:ts) = do
     let cs1 = s2 `composeSubst` s1
     s3 <- typeCheckExps id (apply cs1 env) es ts
     return $ s3 `composeSubst` cs1
-
 
 tiExp :: TypeEnv -> Exp -> TI (Subst, SPLType)    
 tiExp env (ExpId id (Field [])) = do

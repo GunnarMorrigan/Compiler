@@ -277,7 +277,7 @@ expEmptyList = pTokenGen EmptyListToken ExpEmptyList
 
 expList :: Parser (Token, Int, Int) Exp 
 expList = flip ExpList <$> locParser <*> (pToken SBrackOToken *> expList <* pToken SBrackCToken)
-       where expList = sepBy (pToken CommaToken) expParser
+       where expList = customSepBy CommaToken (pToken CommaToken) expParser
        
 expTuple :: Parser (Token, Int, Int) Exp 
 expTuple = flip ExpTuple <$> locParser <*> tuple
@@ -316,7 +316,7 @@ funCall :: Parser (Token, Int, Int) FunCall
 funCall = FunCall <$> idPLoc <*> (pToken BrackOToken *> actArgs <* pToken BrackCToken)
 
 -- ===================== ActArgs ============================
-actArgs = sepBy (pToken CommaToken) expParser
+actArgs = customSepBy CommaToken (pToken CommaToken) expParser
 -- actArgs = (:) <$> expParser <*> many' ( pToken CommaToken *> expParser)
 
 -- ===================== ID ============================
