@@ -1,5 +1,7 @@
 module AST where
 
+import Error
+
 import Data.Map as Map
 import Data.List ( intercalate )
 
@@ -8,11 +10,6 @@ import Debug.Trace
 newtype SPL =  SPL [Decl] 
   deriving (Show, Eq)
 
-data Loc = Loc Int Int
-  deriving (Eq, Show)
-
-defaultLoc :: Loc
-defaultLoc = Loc (-1) (-1)
 
 data Decl = VarMain VarDecl
           | FuncMain FunDecl
@@ -92,6 +89,8 @@ instance Ord IDLoc where
   compare (ID id loc) (ID id' loc') = id `compare` id'
 
 
+-- ===================== Loc ============================
+
 class LOC a where
   showLoc :: a -> String
   getLoc :: a -> Loc
@@ -137,6 +136,8 @@ instance LOC SPLType where
   getColNum (TypeBasic _ loc) = getColNum loc
   getColNum (IdType idloc _) = getColNum idloc
   getColNum (Void loc) = getColNum loc
+
+-- ===================== FunCall and Operators ============================
 
 data FunCall
     = FunCall IDLoc [Exp]
@@ -210,9 +211,6 @@ ppClasses t = let c = Map.toList (getClasses t Map.empty) in if Prelude.null c t
         printClass (a, OrdClass) = "Ord " ++ show a
 
 getClasses :: SPLType -> Map.Map IDLoc Class -> Map.Map IDLoc Class
-getClasses (Void x) map = map
-getClasses (TypeBasic _ loc) map = map
-getClasses (IdType id Nothing) map = map
 getClasses (IdType id (Just EqClass)) map = 
   case Map.lookup id map of
     Just c -> map
@@ -221,10 +219,7 @@ getClasses (IdType id (Just OrdClass)) map = Map.insert id OrdClass map
 getClasses (TupleType (a,b) loc) map = getClasses a map `Map.union` getClasses b map
 getClasses (ArrayType x loc) map = getClasses x map
 getClasses (FunType args ret) map = getClasses args map `Map.union` getClasses ret map
-
--- ppArgs :: SPLType -> String
--- ppArgs (FunType args ret) = ppArgs args ++ " " ++ ppArgs ret
--- ppArgs x = pp x
+getClasses x map = map
 
 getArgsTypes :: SPLType -> [SPLType]
 getArgsTypes (FunType args ret) = getArgsTypes args ++ getArgsTypes ret
