@@ -169,20 +169,20 @@ stmtElse = Parser $ \case
 
 stmtWhile :: Parser (Token, Int, Int) Stmt
 stmtWhile = StmtWhile <$> 
-       (pToken WhileToken *> pToken BrackOToken *> expParser <* pToken BrackCToken) <*>
-       (pToken CBrackOToken *>  many' stmt <* pToken CBrackCToken) 
+       (pToken WhileToken *> pToken BrackOToken *> expParser <* pToken BrackCToken)  <*>
+       (pToken CBrackOToken *>  many' stmt <* pToken CBrackCToken)
 
 stmtDeclareVar :: Parser (Token, Int, Int) Stmt
-stmtDeclareVar = StmtDeclareVar <$> 
+stmtDeclareVar = StmtDeclareVar <$>
        idPLoc <*> 
        fieldP <*> 
        (pToken IsToken *> expParser <* pToken SemiColToken)
 
 stmtFuncCall :: Parser (Token, Int, Int) Stmt
-stmtFuncCall = StmtFuncCall <$> funCall <* pToken SemiColToken
+stmtFuncCall = flip StmtFuncCall <$> locParser <*> funCall <* pToken SemiColToken
 
 stmtReturn :: Parser (Token, Int, Int) Stmt 
-stmtReturn = StmtReturn <$> 
+stmtReturn = flip StmtReturn <$> locParser <*> 
        ((Nothing <$ pToken ReturnToken <* pToken SemiColToken ) <|>
        (Just <$> (pToken ReturnToken *> expParser) <* pToken SemiColToken))
 
@@ -281,7 +281,7 @@ expEmptyList :: Parser (Token, Int, Int) Exp
 expEmptyList = ExpEmptyList <$ pToken EmptyListToken
 
 expList :: Parser (Token, Int, Int) Exp 
-expList = ExpList <$> (pToken SBrackOToken *> expList <* pToken SBrackCToken)
+expList = flip ExpList <$> locParser <*> (pToken SBrackOToken *> expList <* pToken SBrackCToken)
        where expList = sepBy (pToken CommaToken) expParser
        
 expTuple :: Parser (Token, Int, Int) Exp 
