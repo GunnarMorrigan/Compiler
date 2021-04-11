@@ -98,11 +98,11 @@ showLoc (ID id (Loc line col)) = "on Line " ++ show line ++ " and, Col "++ show 
 getLoc :: IDLoc -> (Int,Int)
 getLoc (ID id (Loc line col)) = (line, col)
 
-getLine:: IDLoc -> String
-getLine (ID id (Loc line col)) = show line
+getLineNum:: IDLoc -> Int
+getLineNum (ID id (Loc line col)) = line
 
-getCol:: IDLoc -> String
-getCol (ID id (Loc line col)) = show col
+getColNum:: IDLoc -> Int
+getColNum (ID id (Loc line col)) = col
 
 idLocCreator :: String -> IDLoc
 idLocCreator s = ID s (Loc (-1) (-1))
