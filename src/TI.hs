@@ -41,7 +41,8 @@ insertID :: TypeEnv -> IDLoc -> SPLType -> TypeEnv
 insertID (TypeEnv env) id t = TypeEnv (Map.insert id (Scheme [] t) env)
 
 insertMore :: TypeEnv -> [(IDLoc,SPLType)] -> TypeEnv
-insertMore (TypeEnv env) [(id,t)] =TypeEnv (Map.insert id (Scheme [] t) env)
+insertMore env [] = env
+insertMore (TypeEnv env) [(id,t)] = TypeEnv (Map.insert id (Scheme [] t) env)
 insertMore (TypeEnv env) ((id,t):xs) = insertMore (TypeEnv (Map.insert id (Scheme [] t) env)) xs
 
 remove :: TypeEnv -> IDLoc -> TypeEnv
@@ -90,18 +91,18 @@ instance Types Scheme where
     apply s (Scheme vars t) = Scheme vars (apply (Prelude.foldr Map.delete s vars) t)
 
 instance Types SPLType where
-    ftv Void = Set.empty
-    ftv (TypeBasic x) = Set.empty
-    ftv (TupleType (x,y)) = ftv x `Set.union` ftv y
-    ftv (ArrayType x) = ftv x
+    ftv (Void _) = Set.empty
+    ftv (TypeBasic x _) = Set.empty
+    ftv (TupleType (x,y) _) = ftv x `Set.union` ftv y
+    ftv (ArrayType x _) = ftv x
     ftv (FunType args ret) = ftv args `Set.union` ftv ret
     ftv (IdType x _) = Set.singleton x
     apply s (IdType x t) = case Map.lookup x s of
                         Just t -> t
                         Nothing -> IdType x t
     apply s (FunType args ret) = FunType (apply s args) (apply s ret)
-    apply s (TupleType (x,y)) = TupleType (apply s x, apply s y)
-    apply s (ArrayType x) = ArrayType (apply s x)
+    apply s (TupleType (x,y) loc) = TupleType (apply s x, apply s y) loc
+    apply s (ArrayType x loc) = ArrayType (apply s x) loc
     apply _ x = x
 
 instance Types a =>  Types (Maybe a) where
@@ -109,20 +110,6 @@ instance Types a =>  Types (Maybe a) where
     ftv Nothing = Set.empty 
     apply s (Just a) = Just $ apply s a
     apply s Nothing = Nothing
-
-
-
-
--- newASPLVar :: TI SPLType
--- newASPLVar =
---     do  s <- get
---         put (s + 1)
---         return $ ASPLType (IdType (reverse (toTyVar s)))
---   where 
---     toTyVar :: Int -> String
---     toTyVar c | c < 26    =  [toEnum (97+c)]
---               | otherwise = let (n, r) = c `divMod` 26
---                             in toEnum (97+r) : toTyVar (n-1)
 
 newSPLVarWithClass :: Class -> TI SPLType
 newSPLVarWithClass c =
@@ -169,27 +156,17 @@ instance MGU a => MGU (Maybe a) where
     mgu Nothing _ = return nullSubst
     mgu _ Nothing = return nullSubst
 
--- instance MGU AllType where
---     mgu (AFunType l) (AFunType r) = do mgu l r
---     mgu (ASPLType l) (ASPLType r) = do mgu l r
---     mgu (ARetType l) (ARetType r) = do mgu l r
---     mgu t1 t2 =  throwError $ "types do not unify: " ++ show t1 ++ " vs. " ++ show t2
-
--- instance MGU FunType where
---     mgu (FunType xs retx) (FunType ys rety) = do s1 <- mgu xs ys
---                                                  s2 <- mgu (apply s1 retx) (apply s1 rety)  
---                                                  return (s1 `composeSubst` s2)
-
 instance MGU SPLType where
-    mgu (TupleType (l1,r1)) (TupleType (l2,r2)) = do s1 <- mgu l1 l2
-                                                     s2 <- mgu r1 r2
-                                                     return (s1 `composeSubst` s2)
-    mgu (ArrayType x) (ArrayType y) = mgu x y
-    mgu (TypeBasic x) (TypeBasic y) = mgu x y
+    mgu (TupleType (l1,r1) _) (TupleType (l2,r2) _) = do 
+        s1 <- mgu l1 l2
+        s2 <- mgu r1 r2
+        return (s1 `composeSubst` s2)
+    mgu (ArrayType x _) (ArrayType y _) = mgu x y
+    mgu (TypeBasic x _) (TypeBasic y _) = mgu x y
     mgu (IdType id c) r = varBind id c r
     mgu l (IdType id c) = varBind id c l
 
-    mgu Void Void = return nullSubst
+    mgu (Void _) (Void _) = return nullSubst
     mgu (FunType args ret) (FunType args' ret') = do 
         s1 <- mgu args args'
         s2 <- mgu (apply s1 ret) (apply s1 ret')  
@@ -283,7 +260,7 @@ tiFunDeclTest env (FunDecl funName args Nothing vars stmts) = do
     -- (s4,t4) <- tiStmts env''' r
 
 
-    let t1' = fromMaybe Void t1
+    let t1' = fromMaybe (Void defaultLoc) t1
 
     s2 <- mgu retType (apply s1 t1')
     let cs1 = s2 `composeSubst` s1
@@ -307,7 +284,7 @@ tiFunDecl env (FunDecl funName args (Just funType) vars stmts) = do
 
             (s1,t1) <- tiStmts env''' stmts
 
-            let t1' = fromMaybe Void t1
+            let t1' = fromMaybe (Void defaultLoc) t1
 
             s2 <- mgu (apply s1 t1') retType
             let cs1 = s2 `composeSubst` s1
@@ -326,7 +303,7 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
 
     (s1,t1) <- tiStmts env''' stmts
 
-    let t1' = fromMaybe Void t1
+    let t1' = fromMaybe (Void defaultLoc) t1
 
     s2 <- mgu (apply s1 t1') retType
     let cs1 = s2 `composeSubst` s1
@@ -367,7 +344,7 @@ tiStmts env (e:es) =
 tiStmt :: TypeEnv -> Stmt -> TI (Subst, Maybe SPLType)
 tiStmt env (StmtIf e stmts (Just els)) = do
     (s1, conditionType) <- tiExp env e
-    s2 <- mgu conditionType (TypeBasic BasicBool)
+    s2 <- mgu conditionType (TypeBasic BasicBool defaultLoc)
     let cs1 = s2 `composeSubst` s1
     (s3, retIf) <- tiStmts (apply cs1 env) stmts
     let cs2 = s3 `composeSubst` cs1
@@ -378,7 +355,7 @@ tiStmt env (StmtIf e stmts (Just els)) = do
     return (cs4, apply cs4 retIf)
 tiStmt env (StmtIf e stmts Nothing) = do
     (s1, conditionType) <- tiExp env e
-    s2 <- mgu conditionType (TypeBasic BasicBool)
+    s2 <- mgu conditionType (TypeBasic BasicBool defaultLoc)
     let cs1 = s2 `composeSubst` s1
     (s3, t2) <- tiStmts (apply cs1 env) stmts
     let cs2 = s3 `composeSubst` cs1
@@ -386,13 +363,20 @@ tiStmt env (StmtIf e stmts Nothing) = do
 
 tiStmt env (StmtWhile e stmts) = do
     (s1, conditionType) <- tiExp env e 
-    s2 <- mgu conditionType (TypeBasic BasicBool)
+    s2 <- mgu conditionType (TypeBasic BasicBool defaultLoc)
     let cs1 = s2 `composeSubst` s1
     (s3, t3) <- tiStmts (apply cs1 env) stmts
     let cs2 = s3 `composeSubst` cs1
     return (cs2, apply cs2 t3)
 
-tiStmt env (StmtReturn Nothing) = return (nullSubst, Just Void)
+tiStmt (TypeEnv env) (StmtFuncCall (FunCall id e)) = case Map.lookup id env of
+    Just (Scheme ids t) -> do
+        let argTypes = init $ getArgsTypes t
+        s1 <- typeCheckExps id (TypeEnv env) e argTypes
+        return (s1, Nothing)
+    Nothing -> throwError $ Error (getLineNum id) (getColNum id) ("Function: '" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)")
+
+tiStmt env (StmtReturn Nothing) = return (nullSubst, Just (Void defaultLoc))
 tiStmt env (StmtReturn (Just exp)) = do 
     (s1,t1) <- tiExp env exp
     return (s1, Just t1)
@@ -416,6 +400,20 @@ tiStmt (TypeEnv env) (StmtDeclareVar id (Field fields) e) = case Map.lookup id e
         return (cs3, Nothing)
     Nothing -> throwError $ Error (getLineNum id) (getColNum id) ("id: '" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)")
 
+
+-- The following function should only be called when length of [SPLType] == length [Exp]
+typeCheckExps :: IDLoc -> TypeEnv -> [Exp] -> [SPLType] -> TI Subst
+typeCheckExps id env [] [] = return nullSubst
+typeCheckExps id env [x] [] = throwError $ Error (getLineNum id) (getColNum id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too many arguments.")
+typeCheckExps id env [] [x] = throwError $ Error (getLineNum id) (getColNum id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too few arguments.")
+typeCheckExps id env (e:es) (t:ts) = do 
+    (s1,t1) <- tiExp env e
+    s2 <- mgu (apply s1 t) t1
+    let cs1 = s2 `composeSubst` s1
+    s3 <- typeCheckExps id (apply cs1 env) es ts
+    return $ s3 `composeSubst` cs1
+
+
 tiExp :: TypeEnv -> Exp -> TI (Subst, SPLType)    
 tiExp env (ExpId id (Field [])) = do
     case find id env of
@@ -426,13 +424,13 @@ tiExp (TypeEnv env) (ExpId id (Field fields)) = case Map.lookup id env of
         (s1, t', ret) <- getType t fields
         return (s1, ret)
     Nothing -> throwError $ Error (getLineNum id) (getColNum id) ("id: '" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)")
-tiExp _ (ExpInt i)  = return (nullSubst, TypeBasic BasicInt)
-tiExp _ (ExpBool b) = return (nullSubst, TypeBasic BasicBool)
-tiExp _ (ExpChar c) = return (nullSubst, TypeBasic BasicChar)
+tiExp _ (ExpInt i)  = return (nullSubst, TypeBasic BasicInt defaultLoc)
+tiExp _ (ExpBool b) = return (nullSubst, TypeBasic BasicBool defaultLoc)
+tiExp _ (ExpChar c) = return (nullSubst, TypeBasic BasicChar defaultLoc)
 tiExp env (ExpBracket e) = tiExp env e
 tiExp env x | x == ExpList [] || x == ExpEmptyList = do 
       tv <- newSPLVar
-      return (nullSubst, ArrayType tv)
+      return (nullSubst, ArrayType tv defaultLoc)
 tiExp env (ExpList (x:xs)) = do
     (s1, t1) <- tiExp env x
     (s2, t2) <- tiExp (apply s1 env) (ExpList xs)
@@ -441,7 +439,7 @@ tiExp env (ExpTuple (e1, e2)) = do
     (s1, t1) <- tiExp env e1
     (s2, t2) <- tiExp (apply s1 env) e2
     let cs1 = s2 `composeSubst` s1
-    return (cs1, apply cs1 (TupleType (t1,t2)))
+    return (cs1, apply cs1 (TupleType (t1,t2) defaultLoc))
 tiExp env (ExpOp2 e1 op e2) = do
     (t1,t2,t3) <- op2Type op
     (s1, t1') <- tiExp env e1
@@ -455,11 +453,11 @@ tiExp env (ExpOp2 e1 op e2) = do
 tiExp env (ExpOp1 op e) = case op of
     Neg -> do 
         (s1, t1) <- tiExp env e
-        s2 <- mgu t1 (TypeBasic BasicInt)
+        s2 <- mgu t1 (TypeBasic BasicInt defaultLoc)
         return (s2 `composeSubst` s1, t1)
     Not -> do 
         (s1, t1) <- tiExp env e
-        s2 <- mgu t1 (TypeBasic BasicBool)
+        s2 <- mgu t1 (TypeBasic BasicBool defaultLoc)
         return (s2 `composeSubst` s1, t1)
 tiExp (TypeEnv env) (ExpFunCall (FunCall name args)) = case Map.lookup name env of
     Just (Scheme ids t) -> do 
@@ -473,39 +471,39 @@ getType t [] = do
     return (nullSubst, tv, tv)
 getType t [Head] = do
     tv <- newSPLVar
-    let t' = ArrayType tv
+    let t' = ArrayType tv defaultLoc
     s1 <- mgu t t'
     return (s1, apply s1  t', tv)
 getType t [Tail] = case t of
-    TupleType (a, b) -> do 
+    TupleType (a, b) _ -> do 
         return(nullSubst, t, b)
     _ ->do
         tv <- newSPLVar
-        let t' = ArrayType tv
-        let retType = ArrayType tv
+        let t' = ArrayType tv defaultLoc
+        let retType = ArrayType tv defaultLoc
         s1 <- mgu t t'
-        return (s1, apply s1  t', ArrayType tv)
+        return (s1, apply s1 t', t')
 getType t [First] = case t of
-    TupleType (a, b) -> do 
+    TupleType (a, b) _ -> do 
         return(nullSubst, t, a)
     _ ->do
         a <- newSPLVar
         b <- newSPLVar
-        let t' = TupleType (a, b)
+        let t' = TupleType (a, b) defaultLoc
         s1 <- mgu t t'
         return (s1, apply s1 t', apply s1 a)
 getType t [Second] = do
     a <- newSPLVar
     b <- newSPLVar
-    let t' = TupleType (a, b)
+    let t' = TupleType (a, b) defaultLoc
     s1 <- mgu t t'
-    return (s1, apply s1  t', b)
+    return (s1, apply s1  t', b) 
 getType t [IsEmpty] = do
     tv <- newSPLVar
-    let t' = ArrayType tv
-    let retType = TypeBasic BasicBool
+    let t' = ArrayType tv defaultLoc
+    let retType = TypeBasic BasicBool defaultLoc
     s1 <- mgu t t'
-    return (s1, apply s1 t', TypeBasic BasicBool)
+    return (s1, apply s1 t', retType)
 getType t (x:xs) = do
     (s1, t', ret) <- getType t [x]
     (s2, t'', ret') <- getType ret xs
@@ -515,19 +513,19 @@ getType t (x:xs) = do
 
 op2Type :: Op2 -> TI (SPLType,SPLType,SPLType)
 op2Type x | x == Plus || x == Min || x == Mult || x == Div || x == Mod = 
-    return (TypeBasic BasicInt, TypeBasic BasicInt, TypeBasic BasicInt)
+    return (TypeBasic BasicInt defaultLoc, TypeBasic BasicInt defaultLoc, TypeBasic BasicInt defaultLoc)
 op2Type x | x == Eq || x == Neq = do
     tv <- newSPLVarWithClass EqClass 
-    return (tv, tv, TypeBasic BasicBool)
+    return (tv, tv, TypeBasic BasicBool defaultLoc)
 
 op2Type x | x == Le || x == Ge || x == Leq || x == Geq  = do
     tv <- newSPLVarWithClass OrdClass 
-    return (tv, tv, TypeBasic BasicBool)
+    return (tv, tv, TypeBasic BasicBool defaultLoc)
 op2Type x | x== And || x == Or = 
-    return (TypeBasic BasicBool, TypeBasic BasicBool, TypeBasic BasicBool)
+    return (TypeBasic BasicBool defaultLoc, TypeBasic BasicBool defaultLoc, TypeBasic BasicBool defaultLoc)
 op2Type Con = do 
     tv <- newSPLVar
-    return (tv, ArrayType tv, ArrayType tv)
+    return (tv, ArrayType tv defaultLoc, ArrayType tv defaultLoc)
 
 -- ===================== Type Inference ============================
 
@@ -651,9 +649,6 @@ main1 filename = do
 -- 	tuple.snd = tmp;
 -- 	return tuple;
 -- }
-
-swap (a,b) = (b,a)
-
 
 -- main2 :: String -> IO()
 -- main2 filename = do

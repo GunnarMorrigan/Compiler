@@ -11,6 +11,9 @@ newtype SPL =  SPL [Decl]
 data Loc = Loc Int Int
   deriving (Eq, Show)
 
+defaultLoc :: Loc
+defaultLoc = Loc (-1) (-1)
+
 data Decl = VarMain VarDecl
           | FuncMain FunDecl
           | MutRec [FunDecl]
@@ -26,21 +29,21 @@ data FunDecl = FunDecl IDLoc [IDLoc] (Maybe SPLType) [VarDecl] [Stmt] --Line
 data Class = OrdClass | EqClass deriving (Show, Eq)
 
 data SPLType 
-  = TypeBasic BasicType
-  | TupleType (SPLType, SPLType)
-  | ArrayType SPLType
+  = TypeBasic BasicType Loc
+  | TupleType (SPLType, SPLType) Loc
+  | ArrayType SPLType Loc
   | IdType IDLoc (Maybe Class)
   | FunType SPLType SPLType
-  | Void
+  | Void Loc
   deriving (Eq, Show)
 
 eqType :: SPLType -> SPLType -> Bool
-eqType (TypeBasic l) (TypeBasic r) = l == r
-eqType (TupleType (a,b)) (TupleType (c,d)) = eqType a c && eqType b d
-eqType (ArrayType l) (ArrayType r) = eqType l r
+eqType (TypeBasic l loc) (TypeBasic r loc') = l == r
+eqType (TupleType (a,b) loc) (TupleType (c,d) loc') = eqType a c && eqType b d
+eqType (ArrayType a loc) (ArrayType b loc') = eqType a b
 eqType (IdType l c) (IdType r c') = True
 eqType (FunType arg ret) (FunType arg' ret') = eqType arg arg' && eqType ret ret'
-eqType Void Void = True
+eqType (Void x) (Void x') = True
 eqType _ _ = False
 
 
@@ -160,9 +163,9 @@ instance PrettyPrinter FunDecl where
     "}"
 
 instance PrettyPrinter SPLType where
-  pp (TypeBasic x) = pp x
-  pp (TupleType (a, b)) = "(" ++ pp a ++ ", "++pp b ++ ")"
-  pp (ArrayType x) = "["++pp x++"]"
+  pp (TypeBasic x loc) = pp x
+  pp (TupleType (a, b) loc) = "(" ++ pp a ++ ", "++pp b ++ ")"
+  pp (ArrayType x loc) = "["++pp x++"]"
   pp (IdType id Nothing) = pp id
   pp (IdType id (Just EqClass)) = "Eq "++ pp id ++ " =>" ++ pp id
   pp (IdType id (Just OrdClass)) = "Ord "++ pp id ++ " =>" ++ pp id
@@ -171,7 +174,7 @@ instance PrettyPrinter SPLType where
   pp (FunType args ret) = 
     let types = getArgsTypes (FunType args ret) 
     in ppClasses (FunType args ret) ++ unwords (Prelude.map pp (init types)) ++ " -> " ++ pp (last types)
-  pp Void = "Void"
+  pp (Void x) = "Void"
 
 ppClasses :: SPLType -> String
 ppClasses t = let c = Map.toList (getClasses t Map.empty) in if Prelude.null c then "" else unwords (Prelude.map printClass c) ++ "=>"
@@ -179,16 +182,16 @@ ppClasses t = let c = Map.toList (getClasses t Map.empty) in if Prelude.null c t
         printClass (a, OrdClass) = "Ord " ++ show a
 
 getClasses :: SPLType -> Map.Map IDLoc Class -> Map.Map IDLoc Class
-getClasses Void map = map
-getClasses (TypeBasic _) map = map
+getClasses (Void x) map = map
+getClasses (TypeBasic _ loc) map = map
 getClasses (IdType id Nothing) map = map
 getClasses (IdType id (Just EqClass)) map = 
   case Map.lookup id map of
     Just c -> map
     Nothing -> Map.insert id EqClass map
 getClasses (IdType id (Just OrdClass)) map = Map.insert id OrdClass map
-getClasses (TupleType (a,b)) map = getClasses a map `Map.union` getClasses b map
-getClasses (ArrayType x) map = getClasses x map
+getClasses (TupleType (a,b) loc) map = getClasses a map `Map.union` getClasses b map
+getClasses (ArrayType x loc) map = getClasses x map
 getClasses (FunType args ret) map = getClasses args map `Map.union` getClasses ret map
 
 -- ppArgs :: SPLType -> String

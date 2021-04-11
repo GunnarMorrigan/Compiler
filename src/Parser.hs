@@ -78,6 +78,12 @@ pTokenGen t f = Parser $
               (x, line, col):xs -> Left $ Error line col ("Expected: '"++show t++"' but found: " ++ show x)
               [] -> Left $ Error (-1) (-1) ("Unexpected EOF, expected: '"++show t++"'")
 
+lineParser :: Parser (Token, Int, Int) Loc
+lineParser = Parser $ 
+       \case 
+              (x, line, col):xs-> Right (Loc line col,(x, line, col):xs)
+              [] -> Left $ Error (-1) (-1) "Unexpected EOF"
+
 -- ===================== VarDecl ============================
 varDecl :: Parser (Token, Int, Int) VarDecl 
 varDecl = VarDeclType <$> splType <*> idPLoc <*> varAss <|>
@@ -93,7 +99,13 @@ funDecl = FunDecl <$>
        (pToken CBrackOToken*> many varDecl) <*>
        some stmt 
        <* pToken CBrackCToken
- where funType = Parser $ \case
+ 
+
+-- ===================== Types ============================
+
+-- ===== FunType =====
+funType :: Parser (Token, Int, Int) (Maybe SPLType)
+funType = Parser $ \case
                      (FunTypeToken, line, col): xs -> do
                             (ys, rest) <- run (many splType) xs
                             -- (ys, rest) <- run funType xs
@@ -101,25 +113,25 @@ funDecl = FunDecl <$>
                             Right (Just ret, rest)
                      x -> Right (Nothing, x)
 
--- ===================== Types ============================
--- ===== FunType =====
+-- ===== RetType =====
 retType :: Parser (Token, Int, Int) SPLType  
--- funType = FunType <$> splType <*> (pToken ArrowToken *> splType)
 retType = pToken ArrowToken *> splType
 
--- ===== RetType =====
 voidType :: Parser (Token, Int, Int) SPLType
-voidType = Void <$ pToken VoidToken
+voidType = pTokenGen VoidToken Void
 
 -- ===== Type =====
 splType :: Parser (Token, Int, Int) SPLType 
-splType = (TypeBasic <$> basicType) <|> tupleType <|> arrayType <|> idType <|> voidType <|> retType
+splType = typeBasic <|> tupleType <|> arrayType <|> idType <|> voidType <|> retType
+
+typeBasic :: Parser (Token, Int, Int) SPLType 
+typeBasic = flip TypeBasic <$> lineParser <*> basicType
 
 tupleType :: Parser (Token, Int, Int) SPLType 
-tupleType = TupleType <$> ( pToken BrackOToken *> ((,) <$> splType <* pToken CommaToken  <*> splType) <* pToken BrackCToken)
+tupleType = flip TupleType <$> lineParser <*> (pToken BrackOToken *> ((,) <$> splType <* pToken CommaToken  <*> splType) <* pToken BrackCToken)
 
 arrayType :: Parser (Token, Int, Int) SPLType
-arrayType = ArrayType <$> (pToken SBrackOToken *> splType <* pToken SBrackCToken)
+arrayType = flip ArrayType <$> lineParser <*> (pToken SBrackOToken *> splType <* pToken SBrackCToken)
 
 idType :: Parser (Token, Int, Int) SPLType 
 idType = IdType <$> idPLoc <*> pure Nothing
@@ -129,13 +141,13 @@ basicType :: Parser (Token, Int, Int) BasicType
 basicType = basicInt <|> basicBool <|> basicChar 
 
 basicInt :: Parser (Token, Int, Int) BasicType
-basicInt = BasicInt <$ pToken TypeIntToken
+basicInt = BasicInt <$ pToken TypeIntToken 
 
 basicBool :: Parser (Token, Int, Int) BasicType
-basicBool = BasicBool <$ pToken TypeBoolToken
+basicBool = BasicBool <$ pToken TypeBoolToken 
 
 basicChar :: Parser (Token, Int, Int) BasicType
-basicChar = BasicChar <$ pToken TypeCharToken
+basicChar = BasicChar <$ pToken TypeCharToken 
 
 -- ===================== Statements ============================
 stmt :: Parser (Token, Int, Int) Stmt         
