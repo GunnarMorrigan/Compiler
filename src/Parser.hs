@@ -278,7 +278,7 @@ expOp1 :: Parser (Token, Int, Int) Exp
 expOp1 = ExpOp1 <$> (Neg <$ pToken MinToken <|> Not <$ pToken NotToken) <*> expParser
 
 expEmptyList :: Parser (Token, Int, Int) Exp
-expEmptyList = ExpEmptyList <$ pToken EmptyListToken
+expEmptyList = pTokenGen EmptyListToken ExpEmptyList 
 
 expList :: Parser (Token, Int, Int) Exp 
 expList = flip ExpList <$> locParser <*> (pToken SBrackOToken *> expList <* pToken SBrackCToken)

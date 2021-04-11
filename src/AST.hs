@@ -69,8 +69,8 @@ data Exp
   | ExpOp2 Exp Op2 Exp -- Loc
   | ExpOp1 Op1 Exp -- Loc 
   | ExpFunCall FunCall -- Loc
-  | ExpEmptyList -- Loc
-  | ExpList [Exp] Loc -- Loc
+  | ExpEmptyList Loc
+  | ExpList [Exp] Loc
   | ExpTuple (Exp, Exp) -- Loc
   deriving(Eq, Show)
 
@@ -258,7 +258,7 @@ instance PrettyPrinter Exp where
   pp (ExpFunCall c) = pp c;
   pp (ExpList xs _) =  "["++ intercalate "," (Prelude.map pp xs)  ++ "]"
   pp (ExpTuple (a,b)) =  "(" ++ pp a ++ ", " ++ pp b ++")"
-  pp ExpEmptyList = "[]"
+  pp (ExpEmptyList _) = "[]"
 
 instance PrettyPrinter Field where
   pp (Field xs) = concatMap pp xs
