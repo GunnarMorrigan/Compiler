@@ -373,7 +373,7 @@ tiStmt (TypeEnv env) (StmtFuncCall (FunCall id e)) = case Map.lookup id env of
     Just (Scheme ids t) -> do
         let argTypes = init $ getArgsTypes t
         s1 <- typeCheckExps id (TypeEnv env) e argTypes
-        return (nullSubst, Nothing)
+        return (s1, Nothing)
     Nothing -> throwError $ Error (getLineNum id) (getColNum id) ("Function: '" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)")
 
 tiStmt env (StmtReturn Nothing) = return (nullSubst, Just (Void defaultLoc))
