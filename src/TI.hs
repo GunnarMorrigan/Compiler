@@ -244,7 +244,7 @@ tiVarDecls env (varDecl:varDecls) = do
 
 tiVarDecl :: TypeEnv -> VarDecl -> TI TypeEnv
 tiVarDecl (TypeEnv env) (VarDeclVar id e) = case Map.lookup id env of
-    Just x -> throwError $ Error (getLineNum id) (getColNum id) ("Variable with name: '" ++ showIDLoc id ++ "', already exists in the type environment: (i.e. double decleration)")
+    Just x -> throwError $ doubleDef id
     Nothing -> do
         --tv <- newASPLVar
         (s1, t1) <- tiExp (TypeEnv env) e
@@ -254,7 +254,7 @@ tiVarDecl (TypeEnv env) (VarDeclVar id e) = case Map.lookup id env of
         -- s2 <- mgu (apply s1 t1) (ASPLType $ IdType id)
         return $ apply s1 env'
 tiVarDecl (TypeEnv env) (VarDeclType t id e) = case Map.lookup id env of
-    Just x -> throwError $ Error (getLineNum id) (getColNum id) ("Variable with name: '" ++ showIDLoc id ++ "', already exists in the type environment: (i.e. double decleration)")
+    Just x -> throwError $ doubleDef id
     Nothing -> do
         (s1, t1) <- tiExp (TypeEnv env) e
         s2 <- mgu (apply s1  t) t1
@@ -296,8 +296,8 @@ tiFunDecl env (FunDecl funName args (Just funType) vars stmts) = do
 
 
     case length args `compare` length argTypes of
-        LT -> throwError $ Error (getLineNum funName) (getColNum funName) ("Function: '" ++ showIDLoc funName ++ "'  has less arguments than it has types")
-        GT -> throwError $ Error (getLineNum funName) (getColNum funName) ("Function: '" ++ showIDLoc funName ++ "'  has more arguments than it has types")
+        LT -> throwError $ funcCallLessArgs funName
+        GT -> throwError $ funcCallMoreArgs funName
         EQ -> do 
             let env' = TI.insertID env funName funType -- With only this function inserted
             let env'' = insertMore env' (zip args argTypes) -- With this function + args inserted
@@ -395,7 +395,7 @@ tiStmt (TypeEnv env) (StmtFuncCall (FunCall id e)) = case Map.lookup id env of
         let argTypes = init $ getArgsTypes t
         s1 <- typeCheckExps id (TypeEnv env) e argTypes
         return (s1, Nothing)
-    Nothing -> throwError $ Error (getLineNum id) (getColNum id) ("Function: '" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)")
+    Nothing -> throwError $ refBeforeDec "Variable:" id
 
 tiStmt env (StmtReturn Nothing) = return (nullSubst, Just (Void defaultLoc))
 tiStmt env (StmtReturn (Just exp)) = do 
@@ -408,7 +408,7 @@ tiStmt (TypeEnv env) (StmtDeclareVar id (Field []) e) = case Map.lookup id env o
         s2 <- mgu (apply s1 t) t1
         let cs1 = s2 `composeSubst` s1
         return (cs1, Nothing)
-    Nothing -> throwError $ Error (getLineNum id) (getColNum id) ("id: '" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)")
+    Nothing -> throwError $ refBeforeDec "Variable:" id
 tiStmt (TypeEnv env) (StmtDeclareVar id (Field fields) e) = case Map.lookup id env of
     Just (Scheme ids t) -> do
         (s1, t1) <- tiExp (TypeEnv env) e
@@ -419,7 +419,7 @@ tiStmt (TypeEnv env) (StmtDeclareVar id (Field fields) e) = case Map.lookup id e
         s4 <- mgu (apply cs2 t') t
         let cs3 = s4 `composeSubst` cs2
         return (cs3, Nothing)
-    Nothing -> throwError $ Error (getLineNum id) (getColNum id) ("id: '" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)")
+    Nothing -> throwError $ refBeforeDec "Variable:" id
 
 
 injectErrLoc :: TI a -> Loc -> TI a
@@ -427,12 +427,10 @@ injectErrLoc runable (Loc line col) = case runTI runable of
     (Right x, state) -> return x
     (Left (Error _ _ msg), state) -> throwError $ Error line col msg
 
--- 
-
 typeCheckExps :: IDLoc -> TypeEnv -> [Exp] -> [SPLType] -> TI Subst
 typeCheckExps id env [] [] = return nullSubst
-typeCheckExps id env [x] [] = throwError $ Error (getLineNum id) (getColNum id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too many arguments.")
-typeCheckExps id env [] [x] = throwError $ Error (getLineNum id) (getColNum id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too few arguments.")
+typeCheckExps id env [x] [] = throwError $ funcCallMoreArgs id
+typeCheckExps id env [] [x] = throwError $ funcCallLessArgs id
 typeCheckExps id env (e:es) (t:ts) = do 
     (s1,t1) <- tiExp env e
     s2 <- injectErrLoc (mgu (apply s1 t) t1) (getLoc id)
@@ -445,12 +443,12 @@ tiExp :: TypeEnv -> Exp -> TI (Subst, SPLType)
 tiExp env (ExpId id (Field [])) = do
     case find id env of
         Just (Scheme _ t) -> return (nullSubst, t)
-        Nothing -> throwError $ Error (getLineNum id) (getColNum id) ("id: '" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)")
+        Nothing -> throwError $ refBeforeDec "Variable:" id
 tiExp (TypeEnv env) (ExpId id (Field fields)) = case Map.lookup id env of
     Just (Scheme ids t) -> do 
         (s1, t', ret) <- getType t fields
         return (s1, ret)
-    Nothing -> throwError $ Error (getLineNum id) (getColNum id) ("id: '" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)")
+    Nothing -> throwError $ refBeforeDec "Variable:" id
 tiExp _ (ExpInt i)  = return (nullSubst, TypeBasic BasicInt defaultLoc)
 tiExp _ (ExpBool b) = return (nullSubst, TypeBasic BasicBool defaultLoc)
 tiExp _ (ExpChar c) = return (nullSubst, TypeBasic BasicChar defaultLoc)
@@ -490,7 +488,7 @@ tiExp (TypeEnv env) (ExpFunCall (FunCall name args)) = case Map.lookup name env 
     Just (Scheme ids t) -> do 
         let FunType arg ret = t
         return (nullSubst, ret)
-    Nothing -> throwError $ Error (getLineNum name) (getColNum name) ("Function: '" ++ pp name ++ "', " ++ showLoc name ++ " does not exist in the type environment: (i.e. reference before decleration)")
+    Nothing -> throwError $ refBeforeDec "Function:" name
 
 getType :: SPLType -> [StandardFunction] -> TI (Subst, SPLType, SPLType)
 getType t [] = do

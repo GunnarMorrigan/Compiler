@@ -5,6 +5,7 @@ import Control.Monad
 import Data.Map as Map
 import System.Directory ( getCurrentDirectory )
 
+import Error
 import Lexer
 import Parser
 import AST
@@ -23,10 +24,10 @@ parserTest1 = TestCase $ do
 
 
 
-showPlaceOfError :: String -> Error -> String
-showPlaceOfError code (Error line col msg) =
-    lines code !! (line -1) ++ "\n"
-    ++ replicate (col-1) ' ' ++ "^"
+-- showPlaceOfError :: String -> Error -> String
+-- showPlaceOfError code (Error line col msg) =
+--     lines code !! (line -1) ++ "\n"
+--     ++ replicate (col-1) ' ' ++ "^"
 
 
 
