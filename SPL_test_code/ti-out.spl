@@ -1,11 +1,12 @@
-swap ( tuple ){
+
+swap (tuple) :: (d, d) -> Void {
 	var tmp = tuple.fst;
+
 	tuple.fst = tuple.snd;
 	tuple.snd = tmp;
-	return tuple;
 }
 
-function2 (a, b) {
+function2 (a, b) :: Bool Int -> Int {
 	while (a) {
 		return 10;
 		return 10;
