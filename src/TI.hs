@@ -465,7 +465,7 @@ tiExp env (ExpList (x:xs) loc) = do
     (s1, t1) <- tiExp env x
     (s2, t2) <- tiExp (apply s1 env) (ExpList xs loc)
     return (s2 `composeSubst` s1, t2)
-tiExp env (ExpTuple (e1, e2)) = do
+tiExp env (ExpTuple (e1, e2) _) = do
     (s1, t1) <- tiExp env e1
     (s2, t2) <- tiExp (apply s1 env) e2
     let cs1 = s2 `composeSubst` s1
@@ -652,7 +652,7 @@ env =
     ]
 
 expTest8 =
-    let (res, s) = runTI (tiExp (TypeEnv (Map.fromList env))  (ExpTuple (ExpId (idLocCreator "tuple") (Field [Second]), ExpId (idLocCreator "tuple") (Field [First]) )) )
+    let (res, s) = runTI (tiExp (TypeEnv (Map.fromList env))  (ExpTuple ( ExpId (idLocCreator "tuple") (Field [Second]), ExpId (idLocCreator "tuple") (Field [First]) ) (Loc 0 0)) )
     in case res of
          Left err ->  putStrLn $ "error: " ++ show err
          Right (subst, t) ->  putStrLn $ show subst ++ "\n\n" ++ show t

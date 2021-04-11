@@ -285,7 +285,7 @@ expList = flip ExpList <$> locParser <*> (pToken SBrackOToken *> expList <* pTok
        where expList = sepBy (pToken CommaToken) expParser
        
 expTuple :: Parser (Token, Int, Int) Exp 
-expTuple = ExpTuple <$> tuple
+expTuple = flip ExpTuple <$> locParser <*> tuple
        where tuple = pToken BrackOToken *> ((,) <$> expParser <* pToken CommaToken  <*> expParser) <* pToken BrackCToken 
 
 expFunCall :: Parser (Token, Int, Int) Exp
