@@ -40,12 +40,12 @@ rtgaStmtsForLevel stmts = case Prelude.filter isValidReturn stmts of
 
 isVoidReturn :: Stmt ->  Bool
 isVoidReturn (StmtReturn Nothing _) = True
-isVoidReturn (StmtIf a (x:xs) b) = if isValidReturn x then isVoidReturn x else isVoidReturn (StmtIf a xs b)
+isVoidReturn (StmtIf a (x:xs) b loc) = if isValidReturn x then isVoidReturn x else isVoidReturn (StmtIf a xs b loc)
 isVoidReturn _ = False
 
 isValidReturn :: Stmt  -> Bool
 isValidReturn (StmtReturn _ _) = True
-isValidReturn (StmtIf _ iStmts els) = case els of
+isValidReturn (StmtIf _ iStmts els _) = case els of
     Nothing -> False 
     Just eStmts -> any isValidReturn iStmts && any isValidReturn eStmts
 isValidReturn _ = False
@@ -59,7 +59,7 @@ rtgaStmts stmts = case rtgaStmtsForLevel stmts of
 checkReturns :: [Stmt] -> Bool -> Maybe Error
 checkReturns [] expect = Nothing
 checkReturns (x:xs) expect = case x of
-    (StmtIf _ istmts els) -> case checkReturns istmts expect of
+    (StmtIf _ istmts els _) -> case checkReturns istmts expect of
         Nothing -> case els of
             Nothing -> checkReturns xs expect
             Just estmts -> case checkReturns estmts expect of
@@ -69,7 +69,7 @@ checkReturns (x:xs) expect = case x of
     (StmtReturn e (Loc line col)) -> if isVoidReturn x == expect 
         then checkReturns xs expect 
         else Just $ Error line col $ "Found invalid return: '" ++ pp x ++ "' expected function to be " ++ if isVoidReturn x then "non Void" else "Void"
-    (StmtWhile e wstmts) -> case checkReturns wstmts expect of
+    (StmtWhile e wstmts _) -> case checkReturns wstmts expect of
         Nothing -> checkReturns xs expect
         Just error -> Just error
     _ -> checkReturns xs expect
