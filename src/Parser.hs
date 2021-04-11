@@ -155,7 +155,8 @@ stmt :: Parser (Token, Int, Int) Stmt
 stmt = stmtReturn <|> stmtFuncCall <|> stmtDeclareVar <|> stmtIf <|> stmtWhile
 
 stmtIf :: Parser (Token, Int, Int) Stmt
-stmtIf = StmtIf <$> 
+stmtIf = (\a b c d -> StmtIf b c d a) <$> 
+       locParser <*> 
        (pToken IfToken *> pToken BrackOToken *> expParser <* pToken BrackCToken) <*>
        (pToken CBrackOToken *> many' stmt <* pToken CBrackCToken) <*> 
        stmtElse
@@ -168,7 +169,7 @@ stmtElse = Parser $ \case
        x -> Right (Nothing,x)
 
 stmtWhile :: Parser (Token, Int, Int) Stmt
-stmtWhile = StmtWhile <$> 
+stmtWhile = (\a b c -> StmtWhile b c a) <$> locParser <*>
        (pToken WhileToken *> pToken BrackOToken *> expParser <* pToken BrackCToken)  <*>
        (pToken CBrackOToken *>  many' stmt <* pToken CBrackCToken)
 
@@ -201,40 +202,33 @@ expId = ExpId <$> idPLoc <*> fieldP
 --               _ -> Left $ Error 0 0 "Expected Integer but got invalid token" )
 
 expInt :: Parser (Token, Int, Int) Exp
-expInt = ExpInt <$> Parser 
+expInt = Parser 
        (\case
-              (IntToken c, line, col):xs -> Right (c,xs)
+              (IntToken c, line, col):xs -> Right (ExpInt c (Loc line col),xs)
               (x, line, col):xs -> Left $ Error line col ("Expected Integer but got token: " ++ show x)
               _ -> Left $ Error 0 0 "Expected Integer but got invalid token" )
 
-expIntLine :: Parser (Token, Int, Int) Exp
-expIntLine = Parser 
-       (\case
-              (IntToken c, line, col):xs -> Right (ExpIntLine c (Loc line col),xs)
-              (x, line, col):xs -> Left $ Error line col ("Expected Integer but got token: " ++ show x)
-              _ -> Left $ Error 0 0 "Expected Integer but got invalid token" )
+-- expChar :: Parser (Token, Int, Int) Exp
+-- expChar = ExpChar <$> Parser (\case
+--        (CharToken c, line, col):xs -> Right (c,xs)
+--        (x, line, col):xs -> Left $ Error line col ("Expected Char but got token: " ++ show x)
+--        _ -> Left $ Error 0 0 "Expected Char but got invalid token" )
 
 expChar :: Parser (Token, Int, Int) Exp
-expChar = ExpChar <$> Parser (\case
-       (CharToken c, line, col):xs -> Right (c,xs)
-       (x, line, col):xs -> Left $ Error line col ("Expected Char but got token: " ++ show x)
-       _ -> Left $ Error 0 0 "Expected Char but got invalid token" )
-
-expCharLine :: Parser (Token, Int, Int) Exp
-expCharLine = Parser (\case
-       (CharToken c, line, col):xs -> Right (ExpCharLine c (Loc line col),xs)
+expChar = Parser (\case
+       (CharToken c, line, col):xs -> Right (ExpChar c (Loc line col),xs)
        (x, line, col):xs -> Left $ Error line col ("Expected Char but got token: " ++ show x)
        _ -> Left $ Error 0 0 "Expected Char but got invalid token")
 
-expBool :: Parser (Token, Int, Int) Exp
-expBool = ExpBool <$> Parser (\case
-       (BoolToken b, line, col):xs -> Right (b,xs)
-       (x, line, col):xs -> Left $ Error line col ("Expected Bool but got token: " ++ show x)
-       _ -> Left $ Error 0 0 "Expected Bool but got invalid token" )
+-- expBool :: Parser (Token, Int, Int) Exp
+-- expBool = ExpBool <$> Parser (\case
+--        (BoolToken b, line, col):xs -> Right (b,xs)
+--        (x, line, col):xs -> Left $ Error line col ("Expected Bool but got token: " ++ show x)
+--        _ -> Left $ Error 0 0 "Expected Bool but got invalid token" )
 
-expBoolLine :: Parser (Token, Int, Int) Exp
-expBoolLine = Parser (\case
-       (BoolToken b, line, col):xs -> Right (ExpBoolLine b (Loc line col),xs)
+expBool :: Parser (Token, Int, Int) Exp
+expBool = Parser (\case
+       (BoolToken b, line, col):xs -> Right (ExpBool b (Loc line col),xs)
        (x, line, col):xs -> Left $ Error line col ("Expected Bool but got token: " ++ show x)
        _ -> Left $ Error 0 0 "Expected Bool but got invalid token" )
 
@@ -310,12 +304,12 @@ fieldP :: Parser (Token, Int, Int) Field
 fieldP = Field <$> many standardFunctionP
 
 standardFunctionP :: Parser (Token, Int, Int) StandardFunction
-standardFunctionP = 
-       Head <$ pToken HdToken <|> 
-       Tail <$ pToken TlToken <|> 
-       First <$ pToken FstToken <|> 
-       Second <$ pToken SndToken <|>
-       IsEmpty <$ pToken IsEmptyToken
+standardFunctionP =
+       pTokenGen HdToken Head <|>
+       pTokenGen TlToken Tail <|> 
+       pTokenGen FstToken First <|> 
+       pTokenGen SndToken Second <|> 
+       pTokenGen IsEmptyToken IsEmpty
 
 -- ===================== FunCall ============================
 funCall :: Parser (Token, Int, Int) FunCall 

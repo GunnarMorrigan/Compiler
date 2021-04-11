@@ -363,7 +363,7 @@ tiStmts env (e:es) =
         return (cs2, retType)
 
 tiStmt :: TypeEnv -> Stmt -> TI (Subst, Maybe SPLType)
-tiStmt env (StmtIf e stmts (Just els)) = do
+tiStmt env (StmtIf e stmts (Just els) _) = do
     (s1, conditionType) <- tiExp env e
     s2 <- mgu conditionType (TypeBasic BasicBool defaultLoc)
     let cs1 = s2 `composeSubst` s1
@@ -374,7 +374,7 @@ tiStmt env (StmtIf e stmts (Just els)) = do
     s5 <- mgu (apply cs3 retIf) (apply cs3 retElse)
     let cs4 = s5 `composeSubst` cs3
     return (cs4, apply cs4 retIf)
-tiStmt env (StmtIf e stmts Nothing) = do
+tiStmt env (StmtIf e stmts Nothing _) = do
     (s1, conditionType) <- tiExp env e
     s2 <- mgu conditionType (TypeBasic BasicBool defaultLoc)
     let cs1 = s2 `composeSubst` s1
@@ -382,7 +382,7 @@ tiStmt env (StmtIf e stmts Nothing) = do
     let cs2 = s3 `composeSubst` cs1
     return (cs2, apply cs2 t2)
 
-tiStmt env (StmtWhile e stmts) = do
+tiStmt env (StmtWhile e stmts loc) = do
     (s1, conditionType) <- tiExp env e 
     s2 <- mgu conditionType (TypeBasic BasicBool defaultLoc)
     let cs1 = s2 `composeSubst` s1
@@ -451,9 +451,9 @@ tiExp (TypeEnv env) (ExpId id (Field fields)) = case Map.lookup id env of
         (s1, t', ret) <- getType t fields
         return (s1, ret)
     Nothing -> throwError $ Error (getLineNum id) (getColNum id) ("id: '" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)")
-tiExp _ (ExpInt i)  = return (nullSubst, TypeBasic BasicInt defaultLoc)
-tiExp _ (ExpBool b) = return (nullSubst, TypeBasic BasicBool defaultLoc)
-tiExp _ (ExpChar c) = return (nullSubst, TypeBasic BasicChar defaultLoc)
+tiExp _ (ExpInt i loc)  = return (nullSubst, TypeBasic BasicInt loc)
+tiExp _ (ExpBool b loc) = return (nullSubst, TypeBasic BasicBool loc)
+tiExp _ (ExpChar c loc) = return (nullSubst, TypeBasic BasicChar loc)
 tiExp env (ExpBracket e) = tiExp env e
 tiExp env (ExpList [] _) = do 
       tv <- newSPLVar
@@ -465,12 +465,12 @@ tiExp env (ExpList (x:xs) loc) = do
     (s1, t1) <- tiExp env x
     (s2, t2) <- tiExp (apply s1 env) (ExpList xs loc)
     return (s2 `composeSubst` s1, t2)
-tiExp env (ExpTuple (e1, e2) _) = do
+tiExp env (ExpTuple (e1, e2) loc) = do
     (s1, t1) <- tiExp env e1
     (s2, t2) <- tiExp (apply s1 env) e2
     let cs1 = s2 `composeSubst` s1
     return (cs1, apply cs1 (TupleType (t1,t2) defaultLoc))
-tiExp env (ExpOp2 e1 op e2) = do
+tiExp env (ExpOp2 e1 op e2 loc) = do
     (t1,t2,t3) <- op2Type op
     (s1, t1') <- tiExp env e1
     s2 <- mgu t1' (apply s1 t1)
@@ -499,12 +499,12 @@ getType :: SPLType -> [StandardFunction] -> TI (Subst, SPLType, SPLType)
 getType t [] = do
     tv <- newSPLVar
     return (nullSubst, tv, tv)
-getType t [Head] = do
+getType t [Head loc] = do
     tv <- newSPLVar
     let t' = ArrayType tv defaultLoc
     s1 <- mgu t t'
     return (s1, apply s1  t', tv)
-getType t [Tail] = case t of
+getType t [Tail loc] = case t of
     TupleType (a, b) _ -> do 
         return(nullSubst, t, b)
     _ ->do
@@ -513,7 +513,7 @@ getType t [Tail] = case t of
         let retType = ArrayType tv defaultLoc
         s1 <- mgu t t'
         return (s1, apply s1 t', t')
-getType t [First] = case t of
+getType t [First loc] = case t of
     TupleType (a, b) _ -> do 
         return(nullSubst, t, a)
     _ ->do
@@ -522,13 +522,13 @@ getType t [First] = case t of
         let t' = TupleType (a, b) defaultLoc
         s1 <- mgu t t'
         return (s1, apply s1 t', apply s1 a)
-getType t [Second] = do
+getType t [Second loc] = do
     a <- newSPLVar
     b <- newSPLVar
     let t' = TupleType (a, b) defaultLoc
     s1 <- mgu t t'
     return (s1, apply s1  t', b) 
-getType t [IsEmpty] = do
+getType t [IsEmpty loc] = do
     tv <- newSPLVar
     let t' = ArrayType tv defaultLoc
     let retType = TypeBasic BasicBool defaultLoc
@@ -652,7 +652,7 @@ env =
     ]
 
 expTest8 =
-    let (res, s) = runTI (tiExp (TypeEnv (Map.fromList env))  (ExpTuple ( ExpId (idLocCreator "tuple") (Field [Second]), ExpId (idLocCreator "tuple") (Field [First]) ) (Loc 0 0)) )
+    let (res, s) = runTI (tiExp (TypeEnv (Map.fromList env))  (ExpTuple ( ExpId (idLocCreator "tuple") (Field [Second defaultLoc ]), ExpId (idLocCreator "tuple") (Field [First defaultLoc]) ) (Loc 0 0)) )
     in case res of
          Left err ->  putStrLn $ "error: " ++ show err
          Right (subst, t) ->  putStrLn $ show subst ++ "\n\n" ++ show t
