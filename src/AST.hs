@@ -67,7 +67,7 @@ data Exp
   | ExpCharLine Char Loc -- remove
   | ExpBracket Exp
   | ExpOp2 Exp Op2 Exp -- Loc
-  | ExpOp1 Op1 Exp -- Loc 
+  | ExpOp1 Op1 Exp Loc
   | ExpFunCall FunCall Loc
   | ExpEmptyList Loc
   | ExpList [Exp] Loc
@@ -254,7 +254,7 @@ instance PrettyPrinter Exp where
   pp (ExpBool b) = show b
   pp (ExpBracket e) = "("++ pp e++")"
   pp (ExpOp2 e1 op e2) = "("++ pp e1  ++" "++ pp op++" " ++ pp e2++")"
-  pp (ExpOp1 op e) = pp op ++ pp e
+  pp (ExpOp1 op e _) = pp op ++ pp e
   pp (ExpFunCall c _) = pp c;
   pp (ExpList xs _) =  "["++ intercalate "," (Prelude.map pp xs)  ++ "]"
   pp (ExpTuple (a,b) _) =  "(" ++ pp a ++ ", " ++ pp b ++")"

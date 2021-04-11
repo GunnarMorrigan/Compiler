@@ -275,7 +275,7 @@ pMultDivMod = pChainl operators basicExpParser
               op (Mod <$ pToken ModToken)
 
 expOp1 :: Parser (Token, Int, Int) Exp
-expOp1 = ExpOp1 <$> (Neg <$ pToken MinToken <|> Not <$ pToken NotToken) <*> expParser
+expOp1 = (\f a b c-> f b c a) ExpOp1 <$> locParser <*> (Neg <$ pToken MinToken <|> Not <$ pToken NotToken) <*> expParser
 
 expEmptyList :: Parser (Token, Int, Int) Exp
 expEmptyList = pTokenGen EmptyListToken ExpEmptyList 
@@ -422,7 +422,8 @@ main filename = do
               Right (x, _) -> do
                      exists <- doesFileExist "../SPL_test_code/out.spl"
                      when exists $ removeFile "../SPL_test_code/out.spl"
-                     writeFile "../SPL_test_code/out.spl"$ pp x
+                     print $ show x
+                     --writeFile "../SPL_test_code/out.spl"$ pp x
               Left x -> do
                      print x
                      exitFailure

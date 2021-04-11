@@ -480,7 +480,7 @@ tiExp env (ExpOp2 e1 op e2) = do
     s4 <- mgu (apply cs2 t2') (apply cs2  t2)
     let cs3 = s4 `composeSubst` cs2 
     return (cs3, apply cs3 t3)
-tiExp env (ExpOp1 op e) = case op of
+tiExp env (ExpOp1 op e _) = case op of
     Neg -> do 
         (s1, t1) <- tiExp env e
         s2 <- mgu t1 (TypeBasic BasicInt defaultLoc)
