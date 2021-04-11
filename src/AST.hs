@@ -165,10 +165,14 @@ class PrettyPrinter a where
   pp :: a -> String
 
 instance PrettyPrinter SPL where
-  pp (SPL decls) = unlines $ Prelude.map pp decls
+  pp (SPL []) = ""
+  pp (SPL ((VarMain x):(FuncMain y):xs)) = pp x ++ "\n\n" ++ pp (SPL (FuncMain y:xs))
+  pp (SPL ((VarMain x):decls)) = pp x ++ "\n" ++ pp (SPL decls)
+  pp (SPL ((FuncMain x):decls)) = pp x ++ "\n\n" ++ pp (SPL decls)
 
 instance PrettyPrinter Loc where
   pp (Loc ln col) = "Line " ++ show ln ++ ", Col "++ show col
+
 
 instance PrettyPrinter a => PrettyPrinter [a] where
     pp xs = intercalate "\n" (Prelude.map pp xs)
@@ -184,7 +188,7 @@ instance PrettyPrinter VarDecl where
 
 instance PrettyPrinter FunDecl where
   pp (FunDecl fName fArgs fType fVard fStmts) = 
-    "\n" ++ pp fName ++ " (" ++ intercalate ", " (Prelude.map pp fArgs) ++ ") " ++ (case fType of 
+    pp fName ++ " (" ++ intercalate ", " (Prelude.map pp fArgs) ++ ") " ++ (case fType of 
                                                               Just x -> ":: "++ pp x
                                                               Nothing -> "") ++ " {\n"++ 
     prettyPrinter fVard ++ (if not (Prelude.null fVard) then "\n" else "") ++
@@ -196,8 +200,8 @@ instance PrettyPrinter SPLType where
   pp (TupleType (a, b) loc) = "(" ++ pp a ++ ", "++pp b ++ ")"
   pp (ArrayType x loc) = "["++pp x++"]"
   pp (IdType id Nothing) = pp id
-  pp (IdType id (Just EqClass)) = "Eq "++ pp id ++ " =>" ++ pp id
-  pp (IdType id (Just OrdClass)) = "Ord "++ pp id ++ " =>" ++ pp id
+  pp (IdType id (Just EqClass)) = pp id
+  pp (IdType id (Just OrdClass)) = pp id
   -- Prints function types haskell style:
   -- pp (FunType arg ret) = ppClasses (FunType arg ret) ++ pp arg ++ " -> " ++ pp ret
   pp (FunType args ret) = 
@@ -206,9 +210,9 @@ instance PrettyPrinter SPLType where
   pp (Void x) = "Void"
 
 ppClasses :: SPLType -> String
-ppClasses t = let c = Map.toList (getClasses t Map.empty) in if Prelude.null c then "" else unwords (Prelude.map printClass c) ++ "=>"
-  where printClass (a, EqClass) = "Eq " ++ show a
-        printClass (a, OrdClass) = "Ord " ++ show a
+ppClasses t = let c = Map.toList (getClasses t Map.empty) in if Prelude.null c then "" else unwords (Prelude.map printClass c) ++ " => "
+  where printClass (a, EqClass) = "Eq " ++ pp a
+        printClass (a, OrdClass) = "Ord " ++ pp a
 
 getClasses :: SPLType -> Map.Map IDLoc Class -> Map.Map IDLoc Class
 getClasses (IdType id (Just EqClass)) map = 
