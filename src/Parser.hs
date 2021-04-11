@@ -3,6 +3,7 @@
 
 module Parser where 
 
+import Error
 import Lexer
 import AST
 
@@ -78,8 +79,8 @@ pTokenGen t f = Parser $
               (x, line, col):xs -> Left $ Error line col ("Expected: '"++show t++"' but found: " ++ show x)
               [] -> Left $ Error (-1) (-1) ("Unexpected EOF, expected: '"++show t++"'")
 
-lineParser :: Parser (Token, Int, Int) Loc
-lineParser = Parser $ 
+locParser :: Parser (Token, Int, Int) Loc
+locParser = Parser $ 
        \case 
               (x, line, col):xs-> Right (Loc line col,(x, line, col):xs)
               [] -> Left $ Error (-1) (-1) "Unexpected EOF"
@@ -125,13 +126,13 @@ splType :: Parser (Token, Int, Int) SPLType
 splType = typeBasic <|> tupleType <|> arrayType <|> idType <|> voidType <|> retType
 
 typeBasic :: Parser (Token, Int, Int) SPLType 
-typeBasic = flip TypeBasic <$> lineParser <*> basicType
+typeBasic = flip TypeBasic <$> locParser <*> basicType
 
 tupleType :: Parser (Token, Int, Int) SPLType 
-tupleType = flip TupleType <$> lineParser <*> (pToken BrackOToken *> ((,) <$> splType <* pToken CommaToken  <*> splType) <* pToken BrackCToken)
+tupleType = flip TupleType <$> locParser <*> (pToken BrackOToken *> ((,) <$> splType <* pToken CommaToken  <*> splType) <* pToken BrackCToken)
 
 arrayType :: Parser (Token, Int, Int) SPLType
-arrayType = flip ArrayType <$> lineParser <*> (pToken SBrackOToken *> splType <* pToken SBrackCToken)
+arrayType = flip ArrayType <$> locParser <*> (pToken SBrackOToken *> splType <* pToken SBrackCToken)
 
 idType :: Parser (Token, Int, Int) SPLType 
 idType = IdType <$> idPLoc <*> pure Nothing

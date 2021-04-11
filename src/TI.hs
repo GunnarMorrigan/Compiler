@@ -1,8 +1,9 @@
 module TI where
 
-import Parser
-import AST
+import Error
 import Lexer
+import AST
+import Parser
 
 import Data.Map as Map
 import Data.Set as Set
@@ -424,7 +425,7 @@ tiStmt (TypeEnv env) (StmtDeclareVar id (Field fields) e) = case Map.lookup id e
 injectErrLoc :: TI a -> Loc -> TI a
 injectErrLoc runable (Loc line col) = case runTI runable of
     (Right x, state) -> return x
-    (Left (Error (-1) (-1) msg), state) -> throwError $ Error line col msg
+    (Left (Error _ _ msg), state) -> throwError $ Error line col msg
 
 -- 
 
@@ -432,7 +433,7 @@ typeCheckExps :: IDLoc -> TypeEnv -> [Exp] -> [SPLType] -> TI Subst
 typeCheckExps id env [] [] = return nullSubst
 typeCheckExps id env [x] [] = throwError $ Error (getLineNum id) (getColNum id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too many arguments.")
 typeCheckExps id env [] [x] = throwError $ Error (getLineNum id) (getColNum id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too few arguments.")
-typeCheckExps id env (e:es) (t:ts) = trace "typeCheckExps" $ do 
+typeCheckExps id env (e:es) (t:ts) = do 
     (s1,t1) <- tiExp env e
     s2 <- injectErrLoc (mgu (apply s1 t) t1) (getLoc id)
     let cs1 = s2 `composeSubst` s1
@@ -634,13 +635,11 @@ test1 e = case typeInference e of
 tiTest1 = do
       -- path <- getCurrentDirectory
       -- print path
-    --   file <- readFile  "../test/AutoTestSPL/test1.spl"
       file <- readFile  "../SPL_test_code/test3.spl"
       case tokeniseAndParse mainSegments file >>= (typeInference . fst) of 
             Right x -> do
                 writeFile "../SPL_test_code/ti-out.spl"$ pp x
-            Left x -> print x
-                --   assertFailure $ show x ++ "\n" ++ showPlaceOfError file x
+            Left x -> putStr $"\n" ++ showPlaceOfError file x
 
 
 
@@ -669,12 +668,6 @@ main1 filename = do
               Right (x, _) -> splTest1 x
               Left x -> do print x
 
--- swap ( tuple ){
--- 	var tmp = tuple.fst;
--- 	tuple.fst = tuple.snd;
--- 	tuple.snd = tmp;
--- 	return tuple;
--- }
 
 -- main2 :: String -> IO()
 -- main2 filename = do
