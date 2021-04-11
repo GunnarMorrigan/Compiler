@@ -144,40 +144,60 @@ instantiate (Scheme vars t) = do  nvars <- mapM (const newSPLVar) vars
 -- TODO Change TI stuff to Either
 class MGU a where
     mgu :: a -> a -> TI Subst
+    generateError :: a -> a -> Error
 
 instance MGU a => MGU [a] where
     mgu [] [] = return nullSubst
     mgu (x:xs) (y:ys) = do s1 <- mgu x y
                            s2 <- mgu xs ys
-                           return (s1 `composeSubst` s2) 
+                           return (s1 `composeSubst` s2)
+    generateError xs ys = undefined 
 
 instance MGU a => MGU (Maybe a) where
     mgu (Just l) (Just r) = mgu l r
     mgu Nothing _ = return nullSubst
     mgu _ Nothing = return nullSubst
+    generateError (Just l) (Just r) = generateError l r
 
 instance MGU SPLType where
+    mgu (TypeBasic x _) (TypeBasic y _) | x == y = return nullSubst
+    mgu (TypeBasic x loc) (TypeBasic y loc') =  throwError $ generateError (TypeBasic x loc) (TypeBasic y loc')
+    
+    mgu (Void _) (Void _) = return nullSubst
+    
     mgu (TupleType (l1,r1) _) (TupleType (l2,r2) _) = do 
         s1 <- mgu l1 l2
         s2 <- mgu r1 r2
         return (s1 `composeSubst` s2)
     mgu (ArrayType x _) (ArrayType y _) = mgu x y
-    mgu (TypeBasic x _) (TypeBasic y _) = mgu x y
     mgu (IdType id c) r = varBind id c r
     mgu l (IdType id c) = varBind id c l
 
-    mgu (Void _) (Void _) = return nullSubst
     mgu (FunType args ret) (FunType args' ret') = do 
         s1 <- mgu args args'
         s2 <- mgu (apply s1 ret) (apply s1 ret')  
         return (s1 `composeSubst` s2)
 
-    mgu t1 t2 =  throwError $ Error (-1) (-1) ("types do not unify: " ++ show t1 ++ " vs. " ++ show t2)
-        -- throwError $ "types do not unify: " ++ show t1 ++ " vs. " ++ show t2
+    mgu t1 t2 =  throwError $ generateError t1 t2
 
-instance MGU BasicType where
-    mgu a b | a == b = return nullSubst
-    mgu t1 t2 =  throwError $ Error (-1) (-1) ("types do not unify: " ++ show t1 ++ " vs. " ++ show t2)
+    generateError t1 t2 = case getLoc t1 of
+        (Loc (-1) (-1)) -> case getLoc t2 of 
+                        (Loc (-1) (-1)) -> Error (-1) (-1) ("types do not unify: " ++ pp t1 ++ " vs. " ++ pp t2)
+                        (Loc line col) -> Error line col ("type "++ pp t2 ++ showLoc t2 ++" does not unify with: " ++ pp t2)
+        (Loc line col) -> case getLoc t2 of 
+                        (Loc (-1) (-1)) -> Error line col ("type "++ pp t1 ++ showLoc t1 ++" does not unify with: " ++ pp t2)
+                        (Loc line col) -> Error line col ("type "++ pp t1 ++ showLoc t1 ++" does not unify with: " ++ pp t2 ++ showLoc t2)
+                        
+
+-- instance MGU BasicType where
+--     mgu a b | a == b = return nullSubst
+--     mgu t1 t2 =  throwError $ generateError t1 t2
+--     generateError t1 t2 = Error (-1) (-1) ("types do not unify: " ++ show t1 ++ " vs. " ++ show t2)
+
+
+
+
+
 
 -- instance MGU RetType where
 --     mgu Void Void = return nullSubst
@@ -334,8 +354,8 @@ tiStmts env [e] =
 tiStmts env (e:es) = 
     -- trace ("Calling tiStmts with: \n\t" ++ show env ++ "\n\n\t" ++ show (e:es) ++ "\n") $
     do
-        (s1, retType) <- tiStmts env es
-        (s2, t1) <- tiStmt (apply s1 env) e
+        (s1, t1) <- tiStmt env e
+        (s2, retType) <- tiStmts (apply s1 env) es
         let cs1 = s2 `composeSubst` s1
         s3 <- mgu (apply cs1 t1) retType
         let cs2 = s3 `composeSubst` cs1
@@ -401,14 +421,20 @@ tiStmt (TypeEnv env) (StmtDeclareVar id (Field fields) e) = case Map.lookup id e
     Nothing -> throwError $ Error (getLineNum id) (getColNum id) ("id: '" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)")
 
 
--- The following function should only be called when length of [SPLType] == length [Exp]
+injectErrLoc :: TI a -> Loc -> TI a
+injectErrLoc runable (Loc line col) = case runTI runable of
+    (Right x, state) -> return x
+    (Left (Error (-1) (-1) msg), state) -> throwError $ Error line col msg
+
+-- 
+
 typeCheckExps :: IDLoc -> TypeEnv -> [Exp] -> [SPLType] -> TI Subst
 typeCheckExps id env [] [] = return nullSubst
 typeCheckExps id env [x] [] = throwError $ Error (getLineNum id) (getColNum id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too many arguments.")
 typeCheckExps id env [] [x] = throwError $ Error (getLineNum id) (getColNum id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too few arguments.")
-typeCheckExps id env (e:es) (t:ts) = do 
+typeCheckExps id env (e:es) (t:ts) = trace "typeCheckExps" $ do 
     (s1,t1) <- tiExp env e
-    s2 <- mgu (apply s1 t) t1
+    s2 <- injectErrLoc (mgu (apply s1 t) t1) (getLoc id)
     let cs1 = s2 `composeSubst` s1
     s3 <- typeCheckExps id (apply cs1 env) es ts
     return $ s3 `composeSubst` cs1
