@@ -489,7 +489,7 @@ tiExp env (ExpOp1 op e) = case op of
         (s1, t1) <- tiExp env e
         s2 <- mgu t1 (TypeBasic BasicBool defaultLoc)
         return (s2 `composeSubst` s1, t1)
-tiExp (TypeEnv env) (ExpFunCall (FunCall name args)) = case Map.lookup name env of
+tiExp (TypeEnv env) (ExpFunCall (FunCall name args) _) = case Map.lookup name env of
     Just (Scheme ids t) -> do 
         let FunType arg ret = t
         return (nullSubst, ret)
