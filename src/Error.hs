@@ -9,7 +9,7 @@ import Data.Char
 import Control.Applicative
 
 data Error = Error Int Int String
-  deriving (Show)
+  -- deriving (Show)
 
 instance Eq Error where
   (==) (Error line col m) (Error line' col' m') =  line == line' && col == col'
@@ -17,9 +17,10 @@ instance Eq Error where
 instance Ord Error where
   (Error line col m) `compare` (Error line' col' m') = if line == line' then compare col col' else compare line line'
 
--- instance Show Error where
---   show (Error (-1) (-1) message) = message
---   show (Error line col message) = message ++ ", on line: " ++show line ++ " and character: " ++ show col 
+instance Show Error where
+  show (Error _ _ message) = message
+  -- show (Error (-1) (-1) message) = message
+  -- show (Error line col message) = message ++ ", on line: " ++show line ++ " and character: " ++ show col 
 
 instance Alternative (Either Error) where
   empty = Left $ Error 0 0 ""
@@ -28,18 +29,27 @@ instance Alternative (Either Error) where
   e1 <|> _ = e1
 
 showPlaceOfError :: String -> Error -> String
-showPlaceOfError code (Error line col msg) =
-    dropWhile isSpace $ lines code !! (line -1) ++ "\n"
-    ++ replicate (col-1) ' ' ++ "^\n"
+showPlaceOfError code' (Error line col msg) =
+    -- dropWhile isSpace $
+    let code = replaceTab code' in
+    lines code !! (line -1) ++ "\n"
+    ++ replicate (col-2) ' ' ++ "^^^\n"
+
+replaceTab :: String -> String
+replaceTab [] = []
+replaceTab (x:xs) | x== '\t' = "    " ++ replaceTab xs
+replaceTab (x:xs)  = x:replaceTab xs
 
 defaultLoc :: Loc
 defaultLoc = Loc (-1) (-1)
 
 
-refBeforeDec :: (LOC a, PrettyPrinter a) => String -> a -> Error
-refBeforeDec s id = Error (getLineNum id) (getColNum id) (s++"'" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)")
+missingSeperator line col sepToken token = Error line col ("Expected seperator '"++ show sepToken ++ "' but found '" ++ show token ++ "' on Line " ++ show line ++ " and, Col "++ show col ++ ".")
 
-doubleDef id = Error (getLineNum id) (getColNum id) ("Variable with name: '" ++ showIDLoc id ++ "', already exists in the type environment: (i.e. double decleration)")
+refBeforeDec :: (LOC a, PrettyPrinter a) => String -> a -> Error
+refBeforeDec s id = Error (getLineNum id) (getColNum id) (s++"'" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet. (i.e. reference before declaration)")
+
+doubleDef id = Error (getLineNum id) (getColNum id) ("Variable with name: '" ++ showIDLoc id ++ "', already exists in the type environment. (i.e. double decleration)")
 
 funcCallMoreArgs id = Error (getLineNum id) (getColNum id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too many arguments.")
 funcCallLessArgs id = Error (getLineNum id) (getColNum id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too many arguments.")

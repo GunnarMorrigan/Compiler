@@ -349,7 +349,7 @@ customSepBy sepToken sep elem = Parser $ \input ->
               Right(a, input'') -> run ((b:) <$> customSepBy sepToken sep elem) input''
               Left x -> 
                 case run elem input' of
-                  Right(b', (token, _, _):xs) -> let ((token', line, col):xs) = input' in Left $ Error line col ("Expected seperator '"++ show sepToken ++ "' but found " ++ show token')
+                  Right(b', (token, _, _):xs) -> let ((token', line, col):xs) = input' in Left $ missingSeperator line col sepToken token'
                   Left x -> Right ([b], input')
          Left x -> Right([], input)
 
@@ -417,8 +417,8 @@ main filename = do
               Right (x, _) -> do
                      exists <- doesFileExist "../SPL_test_code/out.spl"
                      when exists $ removeFile "../SPL_test_code/out.spl"
-                     print $ show x
-                     --writeFile "../SPL_test_code/out.spl"$ pp x
+                     print x
+                     writeFile "../SPL_test_code/out.spl"$ pp x
               Left x -> do
                      print x
                      exitFailure

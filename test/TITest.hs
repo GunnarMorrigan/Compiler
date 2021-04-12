@@ -14,7 +14,7 @@ import TI
 -- ====== Tests regarding getType ======
 getTypeTest1 = TestCase (assertEq "getType test 1" expected f)
     where
-        f = let (res, s) = runTI (getType (IdType (idLocCreator "hoi") Nothing) [Head, Second, Head] )
+        f = let (res, s) = runTI (getType (IdType (idLocCreator "hoi") Nothing) [Head defaultLoc, Second defaultLoc, Head defaultLoc] )
             in case res of
                 Left err  -> Left err
                 Right (subst, t, ret) -> Right (t, ret)
@@ -34,36 +34,36 @@ getTypeTests = [TestLabel "getTypeTest1" getTypeTest1, TestLabel "getTypeTest2" 
 -- ====== Tests regarding tiExp ======
 expTest1 = TestCase (assertEqual "tiExp test 1" expected f)
     where
-        f = let (res, s) = runTI (tiExp (TypeEnv Map.empty) (ExpId (idLocCreator "hoi") (Field [Head, Second, Head]))) in res
+        f = let (res, s) = runTI (tiExp (TypeEnv Map.empty) (ExpId (idLocCreator "hoi") (Field [Head defaultLoc, Second defaultLoc, Head defaultLoc]))) in res
         expected = Left $ Error (-1) (-1) "id: 'hoi', referenced on Line -1 and, Col -1, has not been defined yet: (i.e. reference before declaration)"
 
 expTest2 = TestCase (assertEqual "tiExp test 2" expected f)
     where
-        f = let (res, s) = runTI (tiExp (TypeEnv (Map.fromList [(idLocCreator "hoi", Scheme [] (IdType (idLocCreator "z") Nothing) )] )) (ExpId (idLocCreator "hoi") (Field [Head, Second, Head])))
+        f = let (res, s) = runTI (tiExp (TypeEnv (Map.fromList [(idLocCreator "hoi", Scheme [] (IdType (idLocCreator "z") Nothing) )] )) (ExpId (idLocCreator "hoi") (Field [Head defaultLoc, Second defaultLoc, Head defaultLoc])))
             in res
         expected = Right (fromList [ (idLocCreator "z", ArrayType (TupleType (IdType (idLocCreator "b")  Nothing, ArrayType (IdType (idLocCreator "d") Nothing) defaultLoc) defaultLoc) defaultLoc)], IdType (idLocCreator "d") Nothing)
 
 expTest3 = TestCase (assertEqual "tiExp test 3" expected f)
     where
-        f = let (res, s) = runTI (tiExp (TypeEnv (Map.fromList [(idLocCreator "hoi", Scheme [] (ArrayType (TupleType (IdType (idLocCreator "z") Nothing ,ArrayType (IdType (idLocCreator "x") Nothing) defaultLoc ) defaultLoc) defaultLoc) )] )) (ExpId (idLocCreator "hoi") (Field [Head, Second, Head])))
+        f = let (res, s) = runTI (tiExp (TypeEnv (Map.fromList [(idLocCreator "hoi", Scheme [] (ArrayType (TupleType (IdType (idLocCreator "z") Nothing ,ArrayType (IdType (idLocCreator "x") Nothing) defaultLoc ) defaultLoc) defaultLoc) )] )) (ExpId (idLocCreator "hoi") (Field [Head defaultLoc, Second defaultLoc, Head defaultLoc])))
             in res
         expected = Right (fromList [( idLocCreator "a",TupleType (IdType (idLocCreator "z") Nothing,ArrayType (IdType (idLocCreator "x") Nothing) defaultLoc) defaultLoc)],IdType (idLocCreator "d") Nothing)
 
 expTest4 = TestCase (assertEqual "tiExp test 4" expected f)
     where
-        f = let (res, s) = runTI (tiExp (TypeEnv Map.empty) ExpEmptyList)
+        f = let (res, s) = runTI (tiExp (TypeEnv Map.empty) $ ExpEmptyList defaultLoc)
             in res
         expected = Right (empty, ArrayType (IdType (idLocCreator "a") Nothing) defaultLoc)
 
 expTest5 = TestCase (assertEqual "tiExp test 5" expected f)
     where
-        f = let (res, s) = runTI (tiExp (TypeEnv Map.empty) (ExpOp1 Neg $ ExpInt 10))
+        f = let (res, s) = runTI (tiExp (TypeEnv Map.empty) (ExpOp1 Neg (ExpInt 10 defaultLoc) defaultLoc))
             in res
         expected = Right (empty,TypeBasic BasicInt defaultLoc)
 
 expTest6 = TestCase (assertEqual "tiExp test 6" expected f)
     where
-        f = let (res, s) = runTI (tiExp (TypeEnv (Map.fromList [(idLocCreator "hoi", Scheme [] (TypeBasic BasicBool defaultLoc) )])) (ExpOp1 Not $ ExpId (idLocCreator "hoi") (Field [])))
+        f = let (res, s) = runTI (tiExp (TypeEnv (Map.fromList [(idLocCreator "hoi", Scheme [] (TypeBasic BasicBool defaultLoc) )])) (ExpOp1 Not (ExpId (idLocCreator "hoi") (Field [])) defaultLoc))
             in res
         expected = Right (empty,TypeBasic BasicBool defaultLoc)
 
@@ -74,6 +74,7 @@ expTest6 = TestCase (assertEqual "tiExp test 6" expected f)
 
 -- ("flip" :: ID, Scheme [] (TypeBasic BasicBool)),
 
+env' :: [(ID, Scheme)]
 env' = 
     [
     ("first" :: ID, Scheme [] (IdType (idLocCreator "x") Nothing)),
@@ -113,11 +114,11 @@ env'' =
 --               Left x -> do print x
 
 -- ====== Tests regarding tiFunDecl ======
-fundecl = FunDecl (idLocCreator "swap") [idLocCreator "tuple"] Nothing [] [StmtDeclareVar (idLocCreator "tuple") (Field [First]) (ExpId (idLocCreator "tuple") (Field [First])),StmtDeclareVar (idLocCreator "tuple") (Field [Second]) (ExpId (idLocCreator "tuple") (Field [Second])),StmtReturn (Just (ExpId (idLocCreator "tuple") (Field [])))]
-fundecl' = FunDecl (idLocCreator "swap") [idLocCreator "tuple"] Nothing [] [StmtDeclareVar (idLocCreator "tuple") (Field [First]) (ExpId (idLocCreator "tuple") (Field [Second])),StmtDeclareVar (idLocCreator "tuple") (Field [Second]) (ExpId (idLocCreator "tuple") (Field [First]))]
-fundecl'' = FunDecl (idLocCreator "swap") [idLocCreator "tuple"] Nothing [VarDeclVar (idLocCreator "tmp") (ExpId (idLocCreator "tuple") (Field [First]))] [StmtDeclareVar (idLocCreator "tuple") (Field [First]) (ExpId (idLocCreator "tuple") (Field [Second])),StmtDeclareVar (idLocCreator "tuple") (Field [Second]) (ExpId (idLocCreator "tmp") (Field []))]
+fundecl = FunDecl (idLocCreator "swap") [idLocCreator "tuple"] Nothing [] [StmtDeclareVar (idLocCreator "tuple") (Field [Second defaultLoc]) (ExpId (idLocCreator "tuple") (Field [Second defaultLoc])),StmtDeclareVar (idLocCreator "tuple") (Field [Second defaultLoc]) (ExpId (idLocCreator "tuple") (Field [Second defaultLoc])),StmtReturn (Just (ExpId (idLocCreator "tuple") (Field []))) defaultLoc]
+fundecl' = FunDecl (idLocCreator "swap") [idLocCreator "tuple"] Nothing [] [StmtDeclareVar (idLocCreator "tuple") (Field [Second defaultLoc]) (ExpId (idLocCreator "tuple") (Field [Second defaultLoc])),StmtDeclareVar (idLocCreator "tuple") (Field [Second defaultLoc]) (ExpId (idLocCreator "tuple") (Field [Second defaultLoc]))]
+fundecl'' = FunDecl (idLocCreator "swap") [idLocCreator "tuple"] Nothing [VarDeclVar (idLocCreator "tmp") (ExpId (idLocCreator "tuple") (Field [Second defaultLoc]))] [StmtDeclareVar (idLocCreator "tuple") (Field [Second defaultLoc]) (ExpId (idLocCreator "tuple") (Field [Second defaultLoc])),StmtDeclareVar (idLocCreator "tuple") (Field [Second defaultLoc]) (ExpId (idLocCreator "tmp") (Field []))]
 
-fundecl''' = FunDecl (idLocCreator "swap") [idLocCreator "tuple"] Nothing [VarDeclVar (idLocCreator "tmp") (ExpId (idLocCreator "tuple") (Field [First]))] [StmtDeclareVar (idLocCreator "tuple") (Field [First]) (ExpId (idLocCreator "tuple") (Field [Second])),StmtDeclareVar (idLocCreator "tuple") (Field [Second]) (ExpId (idLocCreator "tmp") (Field [])),StmtReturn (Just (ExpId (idLocCreator "tuple") (Field [])))]
+fundecl''' = FunDecl (idLocCreator "swap") [idLocCreator "tuple"] Nothing [VarDeclVar (idLocCreator "tmp") (ExpId (idLocCreator "tuple") (Field [Second defaultLoc]))] [StmtDeclareVar (idLocCreator "tuple") (Field [Second defaultLoc]) (ExpId (idLocCreator "tuple") (Field [Second defaultLoc])),StmtDeclareVar (idLocCreator "tuple") (Field [Second defaultLoc]) (ExpId (idLocCreator "tmp") (Field [])),StmtReturn (Just (ExpId (idLocCreator "tuple") (Field []))) defaultLoc]
 
 funDeclTest1 ::  IO()
 funDeclTest1 = let (res, s) = runTI (tiFunDecl (TypeEnv Map.empty) fundecl''' )

@@ -1,9 +1,24 @@
+Int a = 10;
+Char b = 'L';
+Char g = 'L';
 
-equal (x, y) :: Eq ID "d" (Loc (-1) (-1))=>Eq d =>d Eq d =>d -> Bool {
-	return (x == y);
+equal (x, y) :: Ord d => d d -> Bool {
+	return (x < y);
 }
 
-swap (tuple) :: (h, h) -> (h, h) {
+[e] list = [];
+
+assign (l) :: [e] -> Void {
+	list = l;
+	return;
+}
+
+main () :: Void {
+	assign((True : []));
+	return;
+}
+
+swap (tuple) :: (n, n) -> (n, n) {
 	var tmp = tuple.fst;
 
 	tuple.fst = tuple.snd;
@@ -18,3 +33,4 @@ function2 (a, b) :: Bool Int -> Int {
 	}
 	return b;
 }
+
