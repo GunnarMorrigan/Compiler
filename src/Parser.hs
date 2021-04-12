@@ -63,7 +63,7 @@ pChainl :: Parser s (a -> a -> a) -> Parser s a -> Parser s a
 pChainl x p = foldl (&) <$> p <*> many (flip <$> x <*> p)
 
 op :: Parser (Token, Int, Int) Op2 -> Parser (Token, Int, Int) (Exp -> Exp -> Exp)
-op p = flip ExpOp2 <$> p
+op p = (\a b c d -> ExpOp2 c b d a) <$> locParser <*> p
 
 pToken :: Token -> Parser (Token, Int, Int) Token
 pToken t = Parser $ 
@@ -155,7 +155,8 @@ stmt :: Parser (Token, Int, Int) Stmt
 stmt = stmtReturn <|> stmtFuncCall <|> stmtDeclareVar <|> stmtIf <|> stmtWhile
 
 stmtIf :: Parser (Token, Int, Int) Stmt
-stmtIf = StmtIf <$> 
+stmtIf = (\a b c d -> StmtIf b c d a) <$> 
+       locParser <*> 
        (pToken IfToken *> pToken BrackOToken *> expParser <* pToken BrackCToken) <*>
        (pToken CBrackOToken *> many' stmt <* pToken CBrackCToken) <*> 
        stmtElse
@@ -168,21 +169,21 @@ stmtElse = Parser $ \case
        x -> Right (Nothing,x)
 
 stmtWhile :: Parser (Token, Int, Int) Stmt
-stmtWhile = StmtWhile <$> 
-       (pToken WhileToken *> pToken BrackOToken *> expParser <* pToken BrackCToken) <*>
-       (pToken CBrackOToken *>  many' stmt <* pToken CBrackCToken) 
+stmtWhile = (\a b c -> StmtWhile b c a) <$> locParser <*>
+       (pToken WhileToken *> pToken BrackOToken *> expParser <* pToken BrackCToken)  <*>
+       (pToken CBrackOToken *>  many' stmt <* pToken CBrackCToken)
 
 stmtDeclareVar :: Parser (Token, Int, Int) Stmt
-stmtDeclareVar = StmtDeclareVar <$> 
+stmtDeclareVar = StmtDeclareVar <$>
        idPLoc <*> 
        fieldP <*> 
        (pToken IsToken *> expParser <* pToken SemiColToken)
 
 stmtFuncCall :: Parser (Token, Int, Int) Stmt
-stmtFuncCall = StmtFuncCall <$> funCall <* pToken SemiColToken
+stmtFuncCall = flip StmtFuncCall <$> locParser <*> funCall <* pToken SemiColToken
 
 stmtReturn :: Parser (Token, Int, Int) Stmt 
-stmtReturn = StmtReturn <$> 
+stmtReturn = flip StmtReturn <$> locParser <*> 
        ((Nothing <$ pToken ReturnToken <* pToken SemiColToken ) <|>
        (Just <$> (pToken ReturnToken *> expParser) <* pToken SemiColToken))
 
@@ -201,54 +202,48 @@ expId = ExpId <$> idPLoc <*> fieldP
 --               _ -> Left $ Error 0 0 "Expected Integer but got invalid token" )
 
 expInt :: Parser (Token, Int, Int) Exp
-expInt = ExpInt <$> Parser 
+expInt = Parser 
        (\case
-              (IntToken c, line, col):xs -> Right (c,xs)
+              (IntToken c, line, col):xs -> Right (ExpInt c (Loc line col),xs)
               (x, line, col):xs -> Left $ Error line col ("Expected Integer but got token: " ++ show x)
               _ -> Left $ Error 0 0 "Expected Integer but got invalid token" )
 
-expIntLine :: Parser (Token, Int, Int) Exp
-expIntLine = Parser 
-       (\case
-              (IntToken c, line, col):xs -> Right (ExpIntLine c (Loc line col),xs)
-              (x, line, col):xs -> Left $ Error line col ("Expected Integer but got token: " ++ show x)
-              _ -> Left $ Error 0 0 "Expected Integer but got invalid token" )
+-- expChar :: Parser (Token, Int, Int) Exp
+-- expChar = ExpChar <$> Parser (\case
+--        (CharToken c, line, col):xs -> Right (c,xs)
+--        (x, line, col):xs -> Left $ Error line col ("Expected Char but got token: " ++ show x)
+--        _ -> Left $ Error 0 0 "Expected Char but got invalid token" )
 
 expChar :: Parser (Token, Int, Int) Exp
-expChar = ExpChar <$> Parser (\case
-       (CharToken c, line, col):xs -> Right (c,xs)
-       (x, line, col):xs -> Left $ Error line col ("Expected Char but got token: " ++ show x)
-       _ -> Left $ Error 0 0 "Expected Char but got invalid token" )
-
-expCharLine :: Parser (Token, Int, Int) Exp
-expCharLine = Parser (\case
-       (CharToken c, line, col):xs -> Right (ExpCharLine c (Loc line col),xs)
+expChar = Parser (\case
+       (CharToken c, line, col):xs -> Right (ExpChar c (Loc line col),xs)
        (x, line, col):xs -> Left $ Error line col ("Expected Char but got token: " ++ show x)
        _ -> Left $ Error 0 0 "Expected Char but got invalid token")
 
-expBool :: Parser (Token, Int, Int) Exp
-expBool = ExpBool <$> Parser (\case
-       (BoolToken b, line, col):xs -> Right (b,xs)
-       (x, line, col):xs -> Left $ Error line col ("Expected Bool but got token: " ++ show x)
-       _ -> Left $ Error 0 0 "Expected Bool but got invalid token" )
+-- expBool :: Parser (Token, Int, Int) Exp
+-- expBool = ExpBool <$> Parser (\case
+--        (BoolToken b, line, col):xs -> Right (b,xs)
+--        (x, line, col):xs -> Left $ Error line col ("Expected Bool but got token: " ++ show x)
+--        _ -> Left $ Error 0 0 "Expected Bool but got invalid token" )
 
-expBoolLine :: Parser (Token, Int, Int) Exp
-expBoolLine = Parser (\case
-       (BoolToken b, line, col):xs -> Right (ExpBoolLine b (Loc line col),xs)
+expBool :: Parser (Token, Int, Int) Exp
+expBool = Parser (\case
+       (BoolToken b, line, col):xs -> Right (ExpBool b (Loc line col),xs)
        (x, line, col):xs -> Left $ Error line col ("Expected Bool but got token: " ++ show x)
        _ -> Left $ Error 0 0 "Expected Bool but got invalid token" )
 
 expBracket :: Parser (Token, Int, Int) Exp
 expBracket = pToken BrackOToken  *> expParser <* pToken BrackCToken 
 
-pOr :: Parser (Token, Int, Int) Exp 
+-- pOr :: Parser (Token, Int, Int) Exp
+pOr :: Parser (Token, Int, Int) Exp
 pOr = pChainl (op (Or <$ pToken OrToken)) pAnd
 
-pAnd :: Parser (Token, Int, Int) Exp 
+pAnd :: Parser (Token, Int, Int) Exp
 pAnd = pChainl (op (And <$ pToken AndToken)) pConst
 
 pConst :: Parser (Token, Int, Int) Exp 
-pConst = (ExpOp2 <$> basicExpParser <*> (Con <$ pToken ConstToken) <*> expParser) <|> pComp
+pConst = ((\f a b c d -> f b c d a) ExpOp2 <$> locParser <*> basicExpParser <*> (Con <$ pToken ConstToken) <*> expParser) <|> pComp
 -- pConst = pChainl (op (Con <$ pToken ConstToken)) pComp
 
 pComp :: Parser (Token, Int, Int) Exp 
@@ -275,21 +270,21 @@ pMultDivMod = pChainl operators basicExpParser
               op (Mod <$ pToken ModToken)
 
 expOp1 :: Parser (Token, Int, Int) Exp
-expOp1 = ExpOp1 <$> (Neg <$ pToken MinToken <|> Not <$ pToken NotToken) <*> expParser
+expOp1 = (\f a b c-> f b c a) ExpOp1 <$> locParser <*> (Neg <$ pToken MinToken <|> Not <$ pToken NotToken) <*> expParser
 
 expEmptyList :: Parser (Token, Int, Int) Exp
-expEmptyList = ExpEmptyList <$ pToken EmptyListToken
+expEmptyList = pTokenGen EmptyListToken ExpEmptyList 
 
 expList :: Parser (Token, Int, Int) Exp 
-expList = ExpList <$> (pToken SBrackOToken *> expList <* pToken SBrackCToken)
-       where expList = sepBy (pToken CommaToken) expParser
+expList = flip ExpList <$> locParser <*> (pToken SBrackOToken *> expList <* pToken SBrackCToken)
+       where expList = customSepBy CommaToken (pToken CommaToken) expParser
        
 expTuple :: Parser (Token, Int, Int) Exp 
-expTuple = ExpTuple <$> tuple
+expTuple = flip ExpTuple <$> locParser <*> tuple
        where tuple = pToken BrackOToken *> ((,) <$> expParser <* pToken CommaToken  <*> expParser) <* pToken BrackCToken 
 
 expFunCall :: Parser (Token, Int, Int) Exp
-expFunCall = ExpFunCall <$> funCall
+expFunCall = flip ExpFunCall <$> locParser <*> funCall
 
 basicExpParser :: Parser (Token, Int, Int) Exp 
 basicExpParser = 
@@ -309,19 +304,19 @@ fieldP :: Parser (Token, Int, Int) Field
 fieldP = Field <$> many standardFunctionP
 
 standardFunctionP :: Parser (Token, Int, Int) StandardFunction
-standardFunctionP = 
-       Head <$ pToken HdToken <|> 
-       Tail <$ pToken TlToken <|> 
-       First <$ pToken FstToken <|> 
-       Second <$ pToken SndToken <|>
-       IsEmpty <$ pToken IsEmptyToken
+standardFunctionP =
+       pTokenGen HdToken Head <|>
+       pTokenGen TlToken Tail <|> 
+       pTokenGen FstToken First <|> 
+       pTokenGen SndToken Second <|> 
+       pTokenGen IsEmptyToken IsEmpty
 
 -- ===================== FunCall ============================
 funCall :: Parser (Token, Int, Int) FunCall 
 funCall = FunCall <$> idPLoc <*> (pToken BrackOToken *> actArgs <* pToken BrackCToken)
 
 -- ===================== ActArgs ============================
-actArgs = sepBy (pToken CommaToken) expParser
+actArgs = customSepBy CommaToken (pToken CommaToken) expParser
 -- actArgs = (:) <$> expParser <*> many' ( pToken CommaToken *> expParser)
 
 -- ===================== ID ============================
@@ -422,7 +417,8 @@ main filename = do
               Right (x, _) -> do
                      exists <- doesFileExist "../SPL_test_code/out.spl"
                      when exists $ removeFile "../SPL_test_code/out.spl"
-                     writeFile "../SPL_test_code/out.spl"$ pp x
+                     print $ show x
+                     --writeFile "../SPL_test_code/out.spl"$ pp x
               Left x -> do
                      print x
                      exitFailure

@@ -9,6 +9,7 @@ import Error
 import Lexer
 import Parser
 import AST
+import Error
 
 -- main :: IO()
 parserTest1 = TestCase $ do

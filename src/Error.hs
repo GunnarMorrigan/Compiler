@@ -2,6 +2,8 @@
 {-# LANGUAGE FlexibleInstances #-}
 module Error where
 
+import AST
+
 import Data.List
 import Data.Char
 import Control.Applicative
@@ -30,8 +32,14 @@ showPlaceOfError code (Error line col msg) =
     dropWhile isSpace $ lines code !! (line -1) ++ "\n"
     ++ replicate (col-1) ' ' ++ "^\n"
 
-data Loc = Loc Int Int
-    deriving (Eq, Show)
-
 defaultLoc :: Loc
 defaultLoc = Loc (-1) (-1)
+
+
+refBeforeDec :: (LOC a, PrettyPrinter a) => String -> a -> Error
+refBeforeDec s id = Error (getLineNum id) (getColNum id) (s++"'" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)")
+
+doubleDef id = Error (getLineNum id) (getColNum id) ("Variable with name: '" ++ showIDLoc id ++ "', already exists in the type environment: (i.e. double decleration)")
+
+funcCallMoreArgs id = Error (getLineNum id) (getColNum id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too many arguments.")
+funcCallLessArgs id = Error (getLineNum id) (getColNum id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too many arguments.")
