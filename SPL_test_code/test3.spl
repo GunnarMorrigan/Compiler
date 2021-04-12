@@ -1,7 +1,10 @@
-equal(x, y) {
-   return x==y;
-}
+var a = 10;
+var b = 'L';
+var g = 'L';
 
+equal(x, y) {
+   return x < y;
+}
 
 var list = [];
 assign(l) {
@@ -13,7 +16,6 @@ main() {
 	assign(1 : []);
     return;
  }
-
 
 swap ( tuple ){
 	var tmp = tuple.fst;
