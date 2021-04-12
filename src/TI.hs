@@ -182,8 +182,8 @@ instance MGU SPLType where
     mgu t1 t2 =  throwError $ generateError t1 t2
     
     generateError t1 t2 = case getLoc t1 `compare` getLoc t2 of
-        LT -> let (Loc line col) = getLoc t2 in Error line col ("type "++ pp t2 ++" "++ showLoc t2 ++" does not unify with: " ++ pp t2)
-        GT -> let (Loc line col) = getLoc t1 in Error line col ("Here: type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
+        LT -> let (Loc line col) = getLoc t2 in Error line col ("type "++ pp t1 ++" "++ showLoc t2 ++" does not unify with: " ++ pp t2)
+        GT -> let (Loc line col) = getLoc t1 in Error line col ("type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
         EQ -> case getLoc t2 of 
                         (Loc (-1) (-1)) -> Error (-1) (-1) ("types do not unify: " ++ pp t1 ++ " vs. " ++ pp t2)
                         (Loc line col) -> Error line col ("type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
@@ -245,30 +245,6 @@ tiVarDecl (TypeEnv env) (VarDeclType t id e) = case Map.lookup id env of
         let env' = TypeEnv (Map.insert id t' env)
         return $ apply cs1 env'
 
-
-tiFunDeclTest :: TypeEnv -> FunDecl -> TI (Subst, Subst, Maybe SPLType, TypeEnv)
-tiFunDeclTest env (FunDecl funName args (Just funType) vars stmts) = undefined
-tiFunDeclTest env (FunDecl funName args Nothing vars stmts) = do
-    argTypes <- replicateM (length args) newSPLVar
-    retType <- newSPLVar
-    let fType = if not (Prelude.null argTypes) then foldr1 FunType (argTypes ++ [retType]) else retType
-    let env' = TI.insertID env funName fType -- With only this function inserted
-    let env'' = insertMore env' (zip args argTypes) -- With this function + args inserted
-    env''' <- tiVarDecls env'' vars -- With this function + args + local varDecls inserted
-
-    -- let (l,r) = Prelude.splitAt 2 stmts
-
-    (s1,t1) <- tiStmts env''' stmts
-    -- (s4,t4) <- tiStmts env''' r
-
-
-    let t1' = fromMaybe (Void defaultLoc) t1
-
-    s2 <- mgu retType (apply s1 t1')
-    let cs1 = s2 `composeSubst` s1
-    return (s1, s2, t1, apply cs1 env')
-    -- return (cs1, apply cs1 env''')
-    -- return (cs1,env'
 
 tiFunDecl :: TypeEnv -> FunDecl -> TI TypeEnv
 tiFunDecl env (FunDecl funName args (Just funType) vars stmts) = do
@@ -345,8 +321,8 @@ tiStmts env (e:es) =
 
 tiStmt :: TypeEnv -> Stmt -> TI (Subst, Maybe SPLType)
 tiStmt env (StmtIf e stmts (Just els) _) = do
-    (s1, conditionType) <- tiExp env e
-    s2 <- mgu conditionType (TypeBasic BasicBool defaultLoc)
+    (s1, conditionType) <- injectErrLoc (tiExp env e) (getLoc e)
+    s2 <- injectErrLocMsg (mgu conditionType (TypeBasic BasicBool defaultLoc)) (getLoc e) ("Given condition does not have type Bool " ++ showLoc e)
     let cs1 = s2 `composeSubst` s1
     (s3, retIf) <- tiStmts (apply cs1 env) stmts
     let cs2 = s3 `composeSubst` cs1
@@ -355,17 +331,18 @@ tiStmt env (StmtIf e stmts (Just els) _) = do
     s5 <- mgu (apply cs3 retIf) (apply cs3 retElse)
     let cs4 = s5 `composeSubst` cs3
     return (cs4, apply cs4 retIf)
-tiStmt env (StmtIf e stmts Nothing _) = do
-    (s1, conditionType) <- tiExp env e
-    s2 <- mgu conditionType (TypeBasic BasicBool defaultLoc)
+tiStmt env (StmtIf e stmts els _) | els == Just [] || isNothing els = trace (show $ getLoc e) $ do
+    (s1, conditionType) <- injectErrLoc (tiExp env e) (getLoc e)
+    s2 <- injectErrLocMsg (mgu conditionType (TypeBasic BasicBool defaultLoc)) (getLoc e) ("Given condition does not have type Bool " ++ showLoc e)
     let cs1 = s2 `composeSubst` s1
     (s3, t2) <- tiStmts (apply cs1 env) stmts
     let cs2 = s3 `composeSubst` cs1
     return (cs2, apply cs2 t2)
 
+
 tiStmt env (StmtWhile e stmts loc) = do
-    (s1, conditionType) <- tiExp env e 
-    s2 <- mgu conditionType (TypeBasic BasicBool defaultLoc)
+    (s1, conditionType) <- injectErrMsgAddition (tiExp env e) (getLoc e) "tiStmt while"
+    s2 <- injectErrLocMsg (mgu conditionType (TypeBasic BasicBool defaultLoc)) (getLoc e) ("Given condition does not have type Bool " ++ showLoc e)
     let cs1 = s2 `composeSubst` s1
     (s3, t3) <- tiStmts (apply cs1 env) stmts
     let cs2 = s3 `composeSubst` cs1
@@ -402,19 +379,30 @@ tiStmt (TypeEnv env) (StmtDeclareVar id (Field fields) e) = case Map.lookup id e
         return (cs3, Nothing)
     Nothing -> throwError $ refBeforeDec "Variable:" id
 
+
 injectErrLoc :: TI a -> Loc -> TI a
 injectErrLoc runable (Loc line col) = case runTI runable of
     (Right x, state) -> return x
     (Left (Error _ _ msg), state) -> throwError $ Error line col msg
+
+injectErrLocMsg :: TI a -> Loc -> String -> TI a
+injectErrLocMsg runable (Loc line col) m = case runTI runable of
+    (Right x, state) -> return x
+    (Left (Error _ _ msg), state) -> throwError $ Error line col m
+
+injectErrMsgAddition :: TI a -> Loc -> String -> TI a
+injectErrMsgAddition runable (Loc line col) m = case runTI runable of
+    (Right x, state) -> return x
+    (Left (Error _ _ msg), state) -> throwError $ Error line col (m++" "++msg)
 
 typeCheckExps :: IDLoc -> TypeEnv -> [Exp] -> [SPLType] -> TI Subst
 typeCheckExps id env [] [] = return nullSubst
 typeCheckExps id env [x] [] = throwError $ funcCallMoreArgs id
 typeCheckExps id env [] [x] = throwError $ funcCallLessArgs id
 typeCheckExps id env (e:es) (t:ts) = do 
-    (s1,t1) <- tiExp env e
+    (s1,t1) <- injectErrMsgAddition (tiExp env e) (getLoc e) "typeCheckExps"
     -- s2 <- injectErrLoc (mgu (apply s1 t) t1) (getLoc id)
-    s2 <- mgu (apply s1 t) t1
+    s2 <- injectErrLocMsg (mgu (apply s1 t) t1) (getLoc e) ("Argument '"++ pp e ++ "' should have type "++ pp t)
     let cs1 = s2 `composeSubst` s1
     s3 <- typeCheckExps id (apply cs1 env) es ts
     return $ s3 `composeSubst` cs1
@@ -619,7 +607,7 @@ test1 e = case typeInference e of
 tiTest1 = do
       -- path <- getCurrentDirectory
       -- print path
-      file <- readFile  "../SPL_test_code/test4.spl"
+      file <- readFile  "../SPL_test_code/main.spl"
       case tokeniseAndParse mainSegments file >>= (typeInference . fst) of 
             Right x -> do
                 writeFile "../SPL_test_code/ti-out.spl"$ pp x
