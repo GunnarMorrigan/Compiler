@@ -2,9 +2,10 @@ module ReturnGraph where
 
 import Lexer
 import AST
-import Data.Bifunctor
 import Parser
 import TI
+
+import Data.Bifunctor
 import Data.Map as Map
 
 

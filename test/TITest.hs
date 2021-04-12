@@ -4,6 +4,8 @@ import Test.HUnit
 import Control.Monad
 import Data.Map as Map
 
+
+import Error
 import AST
 import Lexer
 import Parser
@@ -16,7 +18,7 @@ getTypeTest1 = TestCase (assertEq "getType test 1" expected f)
             in case res of
                 Left err  -> Left err
                 Right (subst, t, ret) -> Right (t, ret)
-        expected = Right (ArrayType (TupleType (IdType (idLocCreator "a") Nothing, ArrayType $ IdType (idLocCreator "b") Nothing)), IdType (idLocCreator "b") Nothing)
+        expected = Right (ArrayType (TupleType (IdType (idLocCreator "a") Nothing, ArrayType (IdType (idLocCreator "b") Nothing) defaultLoc) defaultLoc) defaultLoc, IdType (idLocCreator "b") Nothing)
         
 getTypeTest2 = TestCase (assertEq "getType test 2" expected f)
     where
@@ -39,32 +41,31 @@ expTest2 = TestCase (assertEqual "tiExp test 2" expected f)
     where
         f = let (res, s) = runTI (tiExp (TypeEnv (Map.fromList [(idLocCreator "hoi", Scheme [] (IdType (idLocCreator "z") Nothing) )] )) (ExpId (idLocCreator "hoi") (Field [Head, Second, Head])))
             in res
-        expected = Right (fromList [ (idLocCreator "z", ArrayType (TupleType (IdType (idLocCreator "b") Nothing,ArrayType (IdType (idLocCreator "d") Nothing))))], IdType (idLocCreator "d") Nothing)
-
+        expected = Right (fromList [ (idLocCreator "z", ArrayType (TupleType (IdType (idLocCreator "b")  Nothing, ArrayType (IdType (idLocCreator "d") Nothing) defaultLoc) defaultLoc) defaultLoc)], IdType (idLocCreator "d") Nothing)
 
 expTest3 = TestCase (assertEqual "tiExp test 3" expected f)
     where
-        f = let (res, s) = runTI (tiExp (TypeEnv (Map.fromList [(idLocCreator "hoi", Scheme [] (ArrayType (TupleType (IdType (idLocCreator "z") Nothing ,ArrayType (IdType (idLocCreator "x") Nothing)))) )] )) (ExpId (idLocCreator "hoi") (Field [Head, Second, Head])))
+        f = let (res, s) = runTI (tiExp (TypeEnv (Map.fromList [(idLocCreator "hoi", Scheme [] (ArrayType (TupleType (IdType (idLocCreator "z") Nothing ,ArrayType (IdType (idLocCreator "x") Nothing) defaultLoc ) defaultLoc) defaultLoc) )] )) (ExpId (idLocCreator "hoi") (Field [Head, Second, Head])))
             in res
-        expected = Right (fromList [( idLocCreator "a",TupleType (IdType (idLocCreator "z") Nothing,ArrayType (IdType (idLocCreator "x") Nothing)))],IdType (idLocCreator "d") Nothing)
+        expected = Right (fromList [( idLocCreator "a",TupleType (IdType (idLocCreator "z") Nothing,ArrayType (IdType (idLocCreator "x") Nothing) defaultLoc) defaultLoc)],IdType (idLocCreator "d") Nothing)
 
 expTest4 = TestCase (assertEqual "tiExp test 4" expected f)
     where
         f = let (res, s) = runTI (tiExp (TypeEnv Map.empty) ExpEmptyList)
             in res
-        expected = Right (empty, ArrayType (IdType (idLocCreator "a") Nothing))
+        expected = Right (empty, ArrayType (IdType (idLocCreator "a") Nothing) defaultLoc)
 
 expTest5 = TestCase (assertEqual "tiExp test 5" expected f)
     where
         f = let (res, s) = runTI (tiExp (TypeEnv Map.empty) (ExpOp1 Neg $ ExpInt 10))
             in res
-        expected = Right (empty,TypeBasic BasicInt)
+        expected = Right (empty,TypeBasic BasicInt defaultLoc)
 
 expTest6 = TestCase (assertEqual "tiExp test 6" expected f)
     where
-        f = let (res, s) = runTI (tiExp (TypeEnv (Map.fromList [(idLocCreator "hoi", Scheme [] (TypeBasic BasicBool) )])) (ExpOp1 Not $ ExpId (idLocCreator "hoi") (Field [])))
+        f = let (res, s) = runTI (tiExp (TypeEnv (Map.fromList [(idLocCreator "hoi", Scheme [] (TypeBasic BasicBool defaultLoc) )])) (ExpOp1 Not $ ExpId (idLocCreator "hoi") (Field [])))
             in res
-        expected = Right (empty,TypeBasic BasicBool)
+        expected = Right (empty,TypeBasic BasicBool defaultLoc)
 
 
 

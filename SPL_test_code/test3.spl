@@ -1,3 +1,20 @@
+equal(x, y) {
+   return x==y;
+}
+
+
+var list = [];
+assign(l) {
+    list = l;
+    return;
+ }
+main() {
+    assign(True : []);
+	assign(1 : []);
+    return;
+ }
+
+
 swap ( tuple ){
 	var tmp = tuple.fst;
 	tuple.fst = tuple.snd;
