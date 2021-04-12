@@ -186,21 +186,8 @@ instance MGU SPLType where
         GT -> let (Loc line col) = getLoc t1 in Error line col ("Here: type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
         EQ -> case getLoc t2 of 
                         (Loc (-1) (-1)) -> Error (-1) (-1) ("types do not unify: " ++ pp t1 ++ " vs. " ++ pp t2)
-                        (Loc line col) -> Error line col ("Here: type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
+                        (Loc line col) -> Error line col ("type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
 
-
--- instance MGU BasicType where
---     mgu a b | a == b = return nullSubst
---     mgu t1 t2 =  throwError $ generateError t1 t2
---     generateError t1 t2 = Error (-1) (-1) ("types do not unify: " ++ show t1 ++ " vs. " ++ show t2)
-
-
--- instance MGU RetType where
---     mgu Void Void = return nullSubst
---     mgu Void (RetSplType (IdType id)) = varBind id (ARetType Void)
---     mgu (RetSplType (IdType id)) Void = varBind id (ARetType Void)
---     mgu (RetSplType x) (RetSplType y) = mgu x y
---     mgu t1 t2 =  throwError $ "types do not unify: " ++ show t1 ++ " vs. " ++ show t2
 
 varBind :: IDLoc -> Maybe Class -> SPLType -> TI Subst
 varBind id _ (IdType t _) | id == t = return nullSubst
@@ -213,7 +200,6 @@ composeClass Nothing c = c
 composeClass c Nothing = c
 composeClass c c' | c == c' = c
 composeClass c c' | c /= c' = Just OrdClass
-
 
 -- ===================== Type inference ============================
 
