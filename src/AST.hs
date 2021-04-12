@@ -138,6 +138,46 @@ instance LOC SPLType where
   getColNum (IdType idloc _) = getColNum idloc
   getColNum (Void loc) = getColNum loc
 
+
+instance LOC Exp where
+  showLoc x = let Loc line col = getLoc x in "on Line " ++ show line ++ " and, Col "++ show col
+
+  getLoc (ExpId idloc _) = getLoc idloc
+  getLoc (ExpInt _ loc) =  loc
+  getLoc (ExpBool _ loc) =  loc
+  getLoc (ExpChar _ loc) =  loc
+  getLoc (ExpBracket e) =  getLoc e
+  getLoc (ExpOp2 _ _ _ loc) = loc
+  getLoc (ExpOp1 _ _ loc) =   loc
+  getLoc (ExpFunCall _ loc) = loc
+  getLoc (ExpEmptyList loc) = loc
+  getLoc (ExpList _ loc) = loc
+  getLoc (ExpTuple _ loc) = loc
+
+  getLineNum (ExpId idloc _) = getLineNum idloc
+  getLineNum (ExpInt _ loc) =  getLineNum loc
+  getLineNum (ExpBool _ loc) = getLineNum loc
+  getLineNum (ExpChar _ loc) =  getLineNum loc
+  getLineNum (ExpBracket e) =  getLineNum e
+  getLineNum (ExpOp2 _ _ _ loc) = getLineNum loc
+  getLineNum (ExpOp1 _ _ loc) =  getLineNum loc
+  getLineNum (ExpFunCall _ loc) = getLineNum loc
+  getLineNum (ExpEmptyList loc) = getLineNum loc
+  getLineNum (ExpList _ loc) = getLineNum loc
+  getLineNum (ExpTuple _ loc) = getLineNum loc
+
+  getColNum (ExpId idloc _) = getColNum idloc
+  getColNum (ExpInt _ loc) =  getColNum loc
+  getColNum (ExpBool _ loc) =  getColNum loc
+  getColNum (ExpChar _ loc) =  getColNum loc
+  getColNum (ExpBracket e) =  getColNum e
+  getColNum (ExpOp2 _ _ _ loc) = getColNum loc
+  getColNum (ExpOp1 _ _ loc) =   getColNum loc
+  getColNum (ExpFunCall _ loc) = getColNum loc
+  getColNum (ExpEmptyList loc) = getColNum loc
+  getColNum (ExpList _ loc) = getColNum loc
+  getColNum (ExpTuple _ loc) = getColNum loc
+
 -- ===================== FunCall and Operators ============================
 
 data FunCall
@@ -276,7 +316,7 @@ instance PrettyPrinter StandardFunction where
   pp (IsEmpty _) = ".isEmpty"
 
 instance PrettyPrinter IDLoc where
-  pp (ID  id (Loc line col)) = id
+  pp (ID id (Loc line col)) = id
 
 instance PrettyPrinter FunCall where
   pp (FunCall i eS) = pp i ++ "("++ intercalate "," (Prelude.map pp eS) ++")"

@@ -105,7 +105,7 @@ tokenise2 _ _ (c : xs) line col
   | isSpace c = tokenise xs line (col+1)
   | isDigit c = spanToken isDigit line col (IntToken . read) (c : xs)
   | isAlpha c = spanToken (\c -> isAlphaNum c || c == '_') line col IdToken (c : xs)
-  | otherwise = Left $ Error line col ("Unrecognized character: " ++ show c)
+  | otherwise = Left $ Error line col ("Unrecognized keyword or character on Line " ++ show line ++ " and, Col " ++ show col ++ ". Character: " ++ show c)
 
 tokenise2 _ _ [] line col = Right []
 
