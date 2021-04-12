@@ -8,6 +8,7 @@ import TI
 import Data.Bifunctor
 import Data.Map as Map
 import Error
+import Data.Maybe
 
 class ReturnGraph a where
     rtga :: a -> Either Error a
@@ -31,20 +32,27 @@ rtgaStmtsForLevel stmts (ID fname (Loc line col)) fType = case Prelude.filter is
                 Nothing -> Right True 
                 (Just x) -> case last (getArgsTypes x) of
                     (Void _) -> Right True 
-                    t -> Left $ Error line col ("Missing return statement in function '" ++ fname ++ "', expected return statement of type: " ++ pp t ++ " but got Void, please add a return statement to the function")
+                    t -> Left (missingReturn fname t line col )
             xs ->  if allTheSame (Prelude.map isVoidReturn xs) 
                     then case fType of
                         Nothing -> if allTheSame (Prelude.map isVoidReturn xs) 
                                     then Right (isVoidReturn $ head xs) 
-                                    else let l = getLocReturn (last xs) in  Left $ Error (getLineNum l) (getColNum l) ("Found conflicting Void and non Void return for function '" ++ fname ++ "'")
+                                    else let l = getLocReturn (last xs) in  Left (conflictingReturn fname l)
                         (Just y) ->  case y of
                             (Void _) -> if isVoidReturn $ head xs
                                     then Right True
-                                    else let l = getLocReturn (last xs) in  Left $ Error (getLineNum l) (getColNum l) ("Expected function '" ++ fname ++ "' to return Void but returned non Void")
+                                    else let l = getLocReturn (last xs) in  Left (expectedReturn fname (Void l) "non Void" l)
                             t -> if not (isVoidReturn $ head xs)
                                     then Right False
-                                    else let l = getLocReturn(head xs) in Left $ Error (getLineNum l) (getColNum l) ("Expected function '" ++ fname ++ "' to return " ++ pp y++ " but returned Void")
-                    else let l = getLocReturn (last xs) in Left $ Error (getLineNum l) (getColNum l) ("Found conflicting Void and non Void return for function '" ++ fname ++ "'")
+                                    else let l = getLocReturn(head xs) in Left (expectedReturn fname t "Void" l)
+                    else let l = getLocReturn (last xs) in Left $ conflictingReturn fname l
+
+missingReturn :: ID -> SPLType  -> Int -> Int -> Error
+missingReturn fName t line col = Error line col ("Missing return statement in function '" ++ fName ++ "' on Line " ++ show line ++ " and Col " ++ show col ++ ", expected return statement of type: " ++ pp t ++ " but got no return, please add a return statement to the function")  
+conflictingReturn :: ID -> Loc -> Error 
+conflictingReturn fName (Loc line col) = Error line col ("Found conflicting returns Void and non Void for function '" ++ fName ++ "' on Line " ++ show line ++ " and Col " ++ show col) 
+expectedReturn :: ID -> SPLType -> String -> Loc -> Error
+expectedReturn fName expect got  (Loc line col) = Error line col ("Expected function '" ++ fName ++ "' to return " ++ pp expect ++" but returned " ++ got ++ " on Line " ++ show line ++ " and, Col " ++ show col)
 
 
 getLocReturn :: Stmt -> Loc 
@@ -78,9 +86,9 @@ checkReturns (x:xs) expect fName fType = case x of
                 Nothing -> checkReturns xs expect fName fType
                 Just error -> Just error
         Just error -> Just error
-    (StmtReturn e (Loc line col)) -> if isVoidReturn x == expect 
+    (StmtReturn e loc) -> if isVoidReturn x == expect 
         then checkReturns xs expect fName  fType
-        else Just $ Error line col ("Expected function '" ++ fName ++ "' to return " ++ (if isVoidReturn x then ppFtype fType else "Void") ++ " but returned " ++ (if isVoidReturn x then "Void" else "non Void") ++ ppExp e )
+        else Just (expectedReturn fName (if isVoidReturn x then fromMaybe (Void loc)  fType else Void loc) ((if isVoidReturn x then "Void" else "non Void") ++ ppExp e) loc)
     (StmtWhile e wstmts _) -> case checkReturns wstmts expect fName fType of
         Nothing -> checkReturns xs expect fName fType
         Just error -> Just error
