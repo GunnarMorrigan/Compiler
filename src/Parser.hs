@@ -102,10 +102,11 @@ locParser = Parser $
 -- ===================== VarDecl ============================
 varDecl :: Parser (Token, Int, Int) VarDecl
 varDecl =
-  VarDeclType <$> splType <*> idPLoc <*> varAss
-    <|> (VarDeclVar <$> (pToken VarToken *> idPLoc) <*> varAss)
+ (\ (a,b) c -> VarDeclType a b c) <$> stuff <*> varAss <|> 
+  (\a b c -> VarDeclVar b c) <$> pToken VarToken <*> idPLoc <*> varAss
   where
     varAss = pToken IsToken *> expParser <* pToken SemiColToken
+    stuff = (,) <$> splType <*> idPLoc
 
 -- ===================== FunDecl ============================
 funDecl :: Parser (Token, Int, Int) FunDecl
@@ -125,7 +126,6 @@ funType :: Parser (Token, Int, Int) (Maybe SPLType)
 funType = Parser $ \case
   (FunTypeToken, line, col) : xs -> do
     (ys, rest) <- run (many splType) xs
-    -- (ys, rest) <- run funType xs
     let ret = if length ys > 1 then foldr1 FunType ys else head ys
     Right (Just ret, rest)
   x -> Right (Nothing, x)
