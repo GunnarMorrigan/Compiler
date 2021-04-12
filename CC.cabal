@@ -30,7 +30,8 @@ library
     AST,
     Parser,
     TI,
-    MutRec
+    MutRec,
+    Error
 --   other-modules:
 --     AST,
 --     Parser,

@@ -4,8 +4,9 @@ import Test.HUnit
 import Control.Monad
 import Data.Map as Map
 
-import Parser
+import Error
 import AST
+import Parser
 
 
 

@@ -1,9 +1,14 @@
 
-swap (tuple) :: (d, d) -> Void {
+equal (x, y) :: Eq ID "d" (Loc (-1) (-1))=>Eq d =>d Eq d =>d -> Bool {
+	return (x == y);
+}
+
+swap (tuple) :: (h, h) -> (h, h) {
 	var tmp = tuple.fst;
 
 	tuple.fst = tuple.snd;
 	tuple.snd = tmp;
+	return tuple;
 }
 
 function2 (a, b) :: Bool Int -> Int {

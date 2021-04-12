@@ -196,10 +196,6 @@ instance MGU SPLType where
 --     generateError t1 t2 = Error (-1) (-1) ("types do not unify: " ++ show t1 ++ " vs. " ++ show t2)
 
 
-
-
-
-
 -- instance MGU RetType where
 --     mgu Void Void = return nullSubst
 --     mgu Void (RetSplType (IdType id)) = varBind id (ARetType Void)
@@ -640,8 +636,6 @@ tiTest1 = do
             Right x -> do
                 writeFile "../SPL_test_code/ti-out.spl"$ pp x
             Left x -> putStr $"\n" ++ showPlaceOfError file x
-
-
 
 env = 
     [
