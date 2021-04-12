@@ -9,7 +9,6 @@ import Error
 import Lexer
 import Parser
 import AST
-import Error
 
 -- main :: IO()
 parserTest1 = TestCase $ do
@@ -17,7 +16,7 @@ parserTest1 = TestCase $ do
       -- print path
       file <- readFile  "./test/AutoTestSPL/test1.spl"
       expected <- readFile  "./test/AutoTestSPL/test1_expected.spl"
-      case tokeniseAndParse mainSegments file of 
+      case tokeniseAndParse mainSegments file of
             Right (x, _) -> do
                   assertEqual "parser test 1" expected (pp x)
             Left x -> do

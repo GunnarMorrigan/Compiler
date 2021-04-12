@@ -195,9 +195,7 @@ data Op2 = Plus|Min
          |And|Or|Con
         deriving (Show, Eq)
 
-
 -- ===================== prettyPrinter ============================
-
 prettyPrinter :: PrettyPrinter a => [a] -> String
 prettyPrinter (x:xs) = concatMap (\x -> unlines $ Prelude.map ("    "++) (lines $ pp x)) (x:xs)
 prettyPrinter [] = ""
