@@ -184,10 +184,10 @@ instance MGU SPLType where
     generateError t1 t2 = case getLoc t1 of
         (Loc (-1) (-1)) -> case getLoc t2 of 
                         (Loc (-1) (-1)) -> Error (-1) (-1) ("types do not unify: " ++ pp t1 ++ " vs. " ++ pp t2)
-                        (Loc line col) -> Error line col ("type "++ pp t2 ++ showLoc t2 ++" does not unify with: " ++ pp t2)
+                        (Loc line col) -> Error line col ("type "++ pp t2 ++" "++ showLoc t2 ++" does not unify with: " ++ pp t2)
         (Loc line col) -> case getLoc t2 of 
-                        (Loc (-1) (-1)) -> Error line col ("type "++ pp t1 ++ showLoc t1 ++" does not unify with: " ++ pp t2)
-                        (Loc line col) -> Error line col ("type "++ pp t1 ++ showLoc t1 ++" does not unify with: " ++ pp t2 ++ showLoc t2)
+                        (Loc (-1) (-1)) -> Error line col ("type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2)
+                        (Loc line col) -> Error line col ("type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
                         
 
 -- instance MGU BasicType where
@@ -428,7 +428,8 @@ typeCheckExps id env [x] [] = throwError $ funcCallMoreArgs id
 typeCheckExps id env [] [x] = throwError $ funcCallLessArgs id
 typeCheckExps id env (e:es) (t:ts) = do 
     (s1,t1) <- tiExp env e
-    s2 <- injectErrLoc (mgu (apply s1 t) t1) (getLoc id)
+    -- s2 <- injectErrLoc (mgu (apply s1 t) t1) (getLoc id)
+    s2 <- mgu (apply s1 t) t1
     let cs1 = s2 `composeSubst` s1
     s3 <- typeCheckExps id (apply cs1 env) es ts
     return $ s3 `composeSubst` cs1
@@ -634,7 +635,7 @@ tiTest1 = do
       case tokeniseAndParse mainSegments file >>= (typeInference . fst) of 
             Right x -> do
                 writeFile "../SPL_test_code/ti-out.spl"$ pp x
-            Left x -> putStr $"\n" ++ showPlaceOfError file x
+            Left x -> putStr $ show x ++ "\n" ++ showPlaceOfError file x
 
 env = 
     [

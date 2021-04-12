@@ -13,13 +13,13 @@ assign(l) {
  }
 main() {
     assign(True : []);
-	assign(1 : []);
+    //assign(1 : []);
     return;
- }
+}
 
 swap ( tuple ){
 	var tmp = tuple.fst;
-	tuple.fst = tuple.snd;
+    tuple.fst = tuple.snd;
 	tuple.snd = tmp;
 	return tuple;
 }

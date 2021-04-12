@@ -159,7 +159,7 @@ data Op2 = Plus|Min
 -- ===================== prettyPrinter ============================
 
 prettyPrinter :: PrettyPrinter a => [a] -> String
-prettyPrinter (x:xs) = concatMap (\x -> unlines $ Prelude.map ("\t"++) (lines $ pp x)) (x:xs)
+prettyPrinter (x:xs) = concatMap (\x -> unlines $ Prelude.map ("    "++) (lines $ pp x)) (x:xs)
 prettyPrinter [] = ""
 
 class PrettyPrinter a where
