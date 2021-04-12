@@ -67,7 +67,25 @@ expTest6 = TestCase (assertEqual "tiExp test 6" expected f)
             in res
         expected = Right (empty,TypeBasic BasicBool defaultLoc)
 
+-- env = 
+--     [
+--     (idLocCreator "tuple", Scheme [] (IdType (idLocCreator "x") Nothing))
+--     ]
 
+-- expTest8 =
+--     let (res, s) = runTI (tiExp (TypeEnv (Map.fromList env))  (ExpTuple ( ExpId (idLocCreator "tuple") (Field [Second defaultLoc ]), ExpId (idLocCreator "tuple") (Field [First defaultLoc]) ) (Loc 0 0)) )
+--     in case res of
+--          Left err ->  putStrLn $ "error: " ++ show err
+--          Right (subst, t) ->  putStrLn $ show subst ++ "\n\n" ++ show t
+
+tiExpTests = 
+    [TestLabel "expTest1" expTest1,
+    TestLabel "expTest2" expTest2,
+    TestLabel "expTest3" expTest3,
+    TestLabel "expTest4" expTest4,
+    TestLabel "expTest5" expTest5,
+    TestLabel "expTest6" expTest6
+    ]
 
 
 -- ====== Tests regarding tiStmts ======
@@ -83,18 +101,15 @@ env' =
     ]
 
 env'' = 
-    [("tuple" :: ID, Scheme [] (IdType (idLocCreator "z") Nothing))
+    [(idLocCreator "tuple" , Scheme [] (IdType (idLocCreator "z") Nothing))
     ]
 
-
--- stmtsTest1 :: [Stmt] -> IO()
--- stmtsTest1 stmts = let (res, s) = runTI (tiStmtTest (TypeEnv (Map.fromList env'')) (head stmts) )
---     in case res of
---          Left err ->  putStrLn $ "error: " ++ err
---          Right (subst, t1, t2, env) ->  putStrLn $ show subst 
---             ++ "\n\n" ++ show t1 
---             ++ "\n\n" ++ show t2
---             ++ "\n\n" ++ show env
+stmtsTest1 stmts = TestCase (assertEqual "tiStmts test 1" expected f)
+    where 
+        f =   
+            let (res, s) = runTI (tiStmt (TypeEnv (Map.fromList env'')) (head stmts) )
+            in res
+        expected = undefined 
 
 
 -- stmtsTest2 :: [Stmt] -> IO()
@@ -124,45 +139,36 @@ funDeclTest1 ::  IO()
 funDeclTest1 = let (res, s) = runTI (tiFunDecl (TypeEnv Map.empty) fundecl''' )
     in case res of
          Left err ->  putStrLn $ "error: " ++ show err
-         Right (TypeEnv env) -> print env
+         Right (subst, TypeEnv env) -> print env
 
 
 
 -- ====== Tests with full SPL code ======
 
--- tiTest1 = TestCase $ do
---       -- path <- getCurrentDirectory
---       -- print path
---       file <- readFile  "./test/AutoTestSPL/test1.spl"
---       case tokeniseAndParse mainSegments file of 
---             Right (x, _) -> do
---                   assertEqual "ti test 1" file (pp x)
---             Left x -> do
---                   assertFailure $ show x ++ "\n" ++ showPlaceOfError file x
+tiTest1 = TestCase $ do
+      file <- readFile  "./test/AutoTestSPL/test1.spl"
+      expected <- readFile  "./test/AutoTestSPL/test1_expected.spl"
+      case tokeniseAndParse mainSegments file of 
+            Right (x, _) -> do
+                  assertEqual "ti test 1" expected (pp x)
+            Left x -> do
+                  assertFailure $ show x ++ "\n" ++ showPlaceOfError file x
 
+tiTest2 = TestCase $ do
+      file <- readFile  "./test/AutoTestSPL/test2.spl"
+      expected <- readFile  "./test/AutoTestSPL/test2_expected.spl"
+      case tokeniseAndParse mainSegments file of 
+            Right (x, _) -> do
+                assertEqual "ti test 2" expected (pp x)
+            Left x -> do
+                  assertFailure $ show x ++ "\n" ++ showPlaceOfError file x
 
-
-
-showPlaceOfError :: String -> Error -> String
-showPlaceOfError code (Error line col msg) =
-    lines code !! (line -1) ++ "\n"
-    ++ replicate (col-1) ' ' ++ "^"
-
-
-
-
-
-
-
-
-tiExpTests = 
-    [TestLabel "expTest1" expTest1,
-    TestLabel "expTest2" expTest2,
-    TestLabel "expTest3" expTest3,
-    TestLabel "expTest4" expTest4,
-    TestLabel "expTest5" expTest5,
-    TestLabel "expTest6" expTest6
+tiSPLTests = 
+    [TestLabel "Ti Test 1" tiTest1,
+    TestLabel "Ti Test 2" tiTest2
     ]
+
+-- ==================== End ====================
 
 assertEq :: Show a => String -> Either a (SPLType, SPLType) -> Either a (SPLType, SPLType) -> Assertion
 assertEq preface expected actual = do
@@ -174,4 +180,4 @@ assertEq preface expected actual = do
 
 
 
-tiTests = getTypeTests ++ tiExpTests
+tiTests = getTypeTests ++ tiExpTests ++ tiSPLTests

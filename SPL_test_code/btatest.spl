@@ -9,19 +9,19 @@ swap (tuple) :: (a,a) -> (a,a) {
 }
 
 
-callA (i) :: Int -> Void {
+callA (i) {
 	callB(i-1);
 }
 
-callB (i) :: Int -> Void {
+callB (i) {
 	callC(i-1);
 }
 
-callC (i) :: Int -> Void {
+callC (i){
 	callA(i-1);
 }
 
-callD (i) :: Int -> Void {
+callD (i){
 	callD(i-1);
 }
 

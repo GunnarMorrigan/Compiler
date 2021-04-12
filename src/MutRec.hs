@@ -65,6 +65,9 @@ instance Callees Exp where
     getCallees (ExpId id fields) = [id]
     getCallees _ = []
 
+removeMutRec :: [Decl] -> [Decl]
+removeMutRec (MutRec x:xs) = (FuncMain <$> x) ++ removeMutRec xs 
+removeMutRec x = x
 
 mainMutRec :: String -> IO()
 mainMutRec filename = do
@@ -73,8 +76,8 @@ mainMutRec filename = do
            Right (x,xs) -> print $ toGraph x
            Left x -> print x
 
-mainMutRec1 :: String -> IO()
-mainMutRec1 filename = do
+mainMutRecToIO :: String -> IO()
+mainMutRecToIO filename = do
        file <- readFile $ "../SPL_test_code/"++filename
        case tokeniseAndParse mainSegments file of
         --    Right (x,xs) -> let (g, v, f) = graphFromEdges $ toGraph x in print $ scc g
@@ -84,8 +87,9 @@ mainMutRec1 filename = do
             Left x -> print x
 
 
-mainMutRec2 :: String -> IO()
-mainMutRec2 filename = do
+
+mainMutRecToFile :: String -> IO()
+mainMutRecToFile filename = do
        file <- readFile $ splFilePath++filename
        case tokeniseAndParse mainSegments file of 
                 Right (x, _) -> do
@@ -96,9 +100,6 @@ mainMutRec2 filename = do
                     exitFailure
 
 showSCC :: [SCC (Decl, String, [String])] -> IO()
--- showSCC ((AcyclicSCC x):xs) = do
---     print (AcyclicSCC x)
---     showSCC xs
 showSCC [x] = print x
 showSCC (x:xs) = do
     print x
@@ -109,10 +110,6 @@ getCyclics ((CyclicSCC x):xs) = CyclicSCC x : getCyclics xs
 getCyclics (_:xs) = getCyclics xs
 getCyclics [] = []
 
--- TODO CyclicSCC can also container VarDecls and should then throw and error
--- because variables cant be Cyclic
--- var hoi = hoi2;
--- var hoi2 = hoi;
 fromGraph :: [SCC (Decl, IDLoc, [IDLoc])]  -> Either Error SPL
 fromGraph [x] = do 
     decls <- castCyclicToMutRec x
@@ -122,7 +119,6 @@ fromGraph (x:xs) = do
     (SPL second) <- fromGraph xs
     return (SPL $ first:second)
         
-
 onlyFuncMain :: [(Decl, IDLoc, [IDLoc])] -> Bool
 onlyFuncMain [] = True
 onlyFuncMain ((VarMain x,_,_):xs) = False
