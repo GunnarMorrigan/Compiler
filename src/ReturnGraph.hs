@@ -48,11 +48,11 @@ rtgaStmtsForLevel stmts (ID fname (Loc line col)) fType = case Prelude.filter is
                     else let l = getLocReturn (last xs) in Left $ conflictingReturn fname l
 
 missingReturn :: ID -> SPLType  -> Int -> Int -> Error
-missingReturn fName t line col = Error line col ("Missing return statement in function '" ++ fName ++ "' on Line " ++ show line ++ " and Col " ++ show col ++ ", expected return statement of type: " ++ pp t ++ " but got no return, please add a return statement to the function")  
+missingReturn fName t line col = Error line col ("Missing return statement in function '" ++ fName ++ "' on Line " ++ show line ++ " and Col " ++ show col ++ ", expected return statement of type " ++ pp t ++ " but got no return, please add a return statement to the function")  
 conflictingReturn :: ID -> Loc -> Error 
-conflictingReturn fName (Loc line col) = Error line col ("Found conflicting return types Void and non Void for function '" ++ fName ++ "' on Line " ++ show line ++ " and Col " ++ show col) 
+conflictingReturn fName (Loc line col) = Error line col ("Found conflicting return types on Line " ++ show line ++ " and Col " ++ show col ++ ", types Void and non Void for function '" ++ fName ++ "'") 
 expectedReturn :: ID -> SPLType -> String -> Loc -> Error
-expectedReturn fName expect got  (Loc line col) = Error line col ("Expected function '" ++ fName ++ "' to return " ++ pp expect ++" but returned " ++ got ++ " on Line " ++ show line ++ " and Col " ++ show col)
+expectedReturn fName expect got  (Loc line col) = Error line col ("Expected function '" ++ fName ++ "' on Line " ++ show line ++ " and Col " ++ show col ++ " to return " ++ pp expect ++" but returned " ++ got)
 
 
 getLocReturn :: Stmt -> Loc 
