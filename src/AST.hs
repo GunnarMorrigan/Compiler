@@ -210,6 +210,7 @@ instance PrettyPrinter SPL where
   pp (SPL ((VarMain x):(FuncMain y):xs)) = pp x ++ "\n\n" ++ pp (SPL (FuncMain y:xs))
   pp (SPL ((VarMain x):decls)) = pp x ++ "\n" ++ pp (SPL decls)
   pp (SPL ((FuncMain x):decls)) = pp x ++ "\n\n" ++ pp (SPL decls)
+  pp (SPL ((MutRec x):decls)) = pp x ++ "\n\n" ++ pp (SPL decls)
 
 instance PrettyPrinter Loc where
   pp (Loc ln col) = "Line " ++ show ln ++ ", Col "++ show col
