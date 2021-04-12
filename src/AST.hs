@@ -90,7 +90,7 @@ instance Ord IDLoc where
 
 -- ===================== Loc ============================
 data Loc = Loc Int Int
-    deriving (Eq, Show)
+    deriving (Eq, Ord, Show)
 
 class LOC a where
   showLoc :: a -> String

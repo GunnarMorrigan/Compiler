@@ -180,15 +180,14 @@ instance MGU SPLType where
         return (s1 `composeSubst` s2)
 
     mgu t1 t2 =  throwError $ generateError t1 t2
-
-    generateError t1 t2 = case getLoc t1 of
-        (Loc (-1) (-1)) -> case getLoc t2 of 
+    
+    generateError t1 t2 = case getLoc t1 `compare` getLoc t2 of
+        LT -> let (Loc line col) = getLoc t2 in Error line col ("type "++ pp t2 ++" "++ showLoc t2 ++" does not unify with: " ++ pp t2)
+        GT -> let (Loc line col) = getLoc t1 in Error line col ("Here: type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
+        EQ -> case getLoc t2 of 
                         (Loc (-1) (-1)) -> Error (-1) (-1) ("types do not unify: " ++ pp t1 ++ " vs. " ++ pp t2)
-                        (Loc line col) -> Error line col ("type "++ pp t2 ++" "++ showLoc t2 ++" does not unify with: " ++ pp t2)
-        (Loc line col) -> case getLoc t2 of 
-                        (Loc (-1) (-1)) -> Error line col ("type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2)
-                        (Loc line col) -> Error line col ("type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
-                        
+                        (Loc line col) -> Error line col ("Here: type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
+
 
 -- instance MGU BasicType where
 --     mgu a b | a == b = return nullSubst
@@ -484,8 +483,11 @@ tiExp env (ExpOp1 op e _) = case op of
         return (s2 `composeSubst` s1, t1)
 tiExp (TypeEnv env) (ExpFunCall (FunCall name args) _) = case Map.lookup name env of
     Just (Scheme ids t) -> do 
-        let FunType arg ret = t
-        return (nullSubst, ret)
+        -- let FunType arg ret = t
+        let argTypes = getArgsTypes t
+        s1 <- typeCheckExps name (TypeEnv env) args (init argTypes)
+        let returnType = last argTypes
+        return (s1, apply s1 returnType)
     Nothing -> throwError $ refBeforeDec "Function:" name
 
 getType :: SPLType -> [StandardFunction] -> TI (Subst, SPLType, SPLType)
@@ -631,7 +633,7 @@ test1 e = case typeInference e of
 tiTest1 = do
       -- path <- getCurrentDirectory
       -- print path
-      file <- readFile  "../SPL_test_code/test3.spl"
+      file <- readFile  "../SPL_test_code/test4.spl"
       case tokeniseAndParse mainSegments file >>= (typeInference . fst) of 
             Right x -> do
                 writeFile "../SPL_test_code/ti-out.spl"$ pp x
