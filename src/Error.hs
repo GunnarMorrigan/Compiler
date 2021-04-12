@@ -44,7 +44,7 @@ defaultLoc :: Loc
 defaultLoc = Loc (-1) (-1)
 
 
-missingSeperator line col sepToken token = Error line col ("Expected seperator '"++ show sepToken ++ "' but found '" ++ show token ++ "' on Line " ++ show line ++ " and, Col "++ show col ++ ".")
+missingSeparator line col sepToken token = Error line col ("Expected seperator '"++ show sepToken ++ "' but found '" ++ show token ++ "' on Line " ++ show line ++ " and, Col "++ show col ++ ".")
 
 refBeforeDec :: (LOC a, PrettyPrinter a) => String -> a -> Error
 refBeforeDec s id = Error (getLineNum id) (getColNum id) (s++"'" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet. (i.e. reference before declaration)")

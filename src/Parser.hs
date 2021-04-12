@@ -422,3 +422,12 @@ main filename = do
               Left x -> do
                      print x
                      exitFailure
+
+mainError filename = do
+      -- path <- getCurrentDirectory
+      -- print path
+      file <- readFile $ splFilePath++filename
+      case tokeniseAndParse mainSegments file of 
+            Right (x, _) -> putStr $ pp x
+            Left x -> do
+                  putStr $ show x ++ "\n" ++ showPlaceOfError file x
