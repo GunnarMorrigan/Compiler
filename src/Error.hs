@@ -29,6 +29,7 @@ instance Alternative (Either Error) where
   e1 <|> _ = e1
 
 showPlaceOfError :: String -> Error -> String
+showPlaceOfError code' (Error (-1) (-1) msg) = ""
 showPlaceOfError code' (Error line col msg) =
     -- dropWhile isSpace $
     let code = replaceTab code' in
