@@ -102,11 +102,10 @@ locParser = Parser $
 -- ===================== VarDecl ============================
 varDecl :: Parser (Token, Int, Int) VarDecl
 varDecl =
- (\ (a,b) c -> VarDeclType a b c) <$> stuff <*> varAss <|> 
-  (\a b c -> VarDeclVar b c) <$> pToken VarToken <*> idPLoc <*> varAss
+ VarDeclType <$> rigidType <*> idPLoc <*> varAss <|> 
+  VarDeclVar <$> (pToken VarToken *> idPLoc) <*> varAss
   where
     varAss = pToken IsToken *> expParser <* pToken SemiColToken
-    stuff = (,) <$> splType <*> idPLoc
 
 -- ===================== FunDecl ============================
 funDecl :: Parser (Token, Int, Int) FunDecl
@@ -115,7 +114,7 @@ funDecl =
     <$> idPLoc
     <*> (pToken BrackOToken *> customSepBy CommaToken (pToken CommaToken) idPLoc <* pToken BrackCToken)
     <*> funType
-    <*> (pToken CBrackOToken *> many varDecl)
+    <*> (pToken CBrackOToken *> many' varDecl)
     <*> some stmt
     <* pToken CBrackCToken
 
@@ -139,7 +138,10 @@ voidType = pTokenGen VoidToken Void
 
 -- ===== Type =====
 splType :: Parser (Token, Int, Int) SPLType
-splType = typeBasic <|> tupleType <|> arrayType <|> idType <|> voidType <|> retType
+splType = rigidType <|> idType <|> voidType <|> retType
+
+rigidType :: Parser (Token, Int, Int) SPLType
+rigidType = typeBasic <|> tupleType <|> arrayType
 
 typeBasic :: Parser (Token, Int, Int) SPLType
 typeBasic = flip TypeBasic <$> locParser <*> basicType
