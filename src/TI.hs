@@ -220,7 +220,8 @@ tiDecl env (MutRec funcs) = do
 
     (s1,env'', decls) <- tiMutRecFunDecls env' funcs
 
-    generalizeFuncs env'' (Prelude.map fst fTypes)
+    env''' <- generalizeFuncs env'' (Prelude.map fst fTypes)
+    return (env''', MutRec decls)
 
 getFuncTypes :: [FunDecl] -> TI [(IDLoc, SPLType)]
 getFuncTypes [] = return []
@@ -488,7 +489,9 @@ typeCheckExps id env (e:es) (t:ts) =
 tiExpsList :: TypeEnv -> [Exp] -> TI (Subst, SPLType, Exp) 
 tiExpsList env [e] = do
     (s1, t1, e') <- tiExp env e
-    return (s1, t1, ExpOp2 e' Con (ExpEmptyList (getLoc e)) (getLoc e))
+    let arrayType = ArrayType t1 (getLoc t1)
+    let opType = Op2 Con (Just $ FunType t1 (FunType arrayType arrayType))
+    return (s1, t1, ExpOp2 e' opType (ExpEmptyList (getLoc e)) (getLoc e))
 tiExpsList env (e:es) = do
     (s1, t1, e' ) <- tiExp env e
     (s2, t2, es') <- tiExpsList (apply s1 env) es
@@ -497,7 +500,10 @@ tiExpsList env (e:es) = do
 
     let cs2 = s3 `composeSubst` cs1
 
-    return (cs2, t2, ExpOp2 e' Con es' (getLoc e))
+    let arrayType = ArrayType t2 (getLoc t2)
+    let opType = Op2 Con (Just $ FunType t1 (FunType arrayType arrayType))
+
+    return (cs2, t2, ExpOp2 e' opType es' (getLoc e))
 
 tiExp :: TypeEnv -> Exp -> TI (Subst, SPLType, Exp)    
 tiExp env (ExpId id (Field [])) = do
@@ -528,8 +534,8 @@ tiExp env (ExpTuple (e1, e2) loc) = do
     let cs1 = s2 `composeSubst` s1
     return (cs1, apply cs1 (TupleType (t1,t2) defaultLoc), ExpTuple (e1', e2') loc)
 
-tiExp env (ExpOp2 e1 op e2 loc) = do
-    (t1, t2, t3) <- op2Type op
+tiExp env (ExpOp2 e1 (Op2 op _) e2 loc) = do
+    (t1, t2, t3, opType) <- op2Type op
     (s1, t1', e1') <- injectErrLoc (tiExp env e1) (getLoc e1)
     s2 <- injectErrLoc (mgu t1' (apply s1 t1)) (getLoc e1)
     let cs1 = s2 `composeSubst` s1
@@ -540,24 +546,24 @@ tiExp env (ExpOp2 e1 op e2 loc) = do
     s4 <- injectErrLoc (mgu (apply cs2 t2') (apply cs2  t2)) (getLoc e2)
     let cs3 = s4 `composeSubst` cs2 
     -- We maybe want to takes these out and let them be function calls. This way we 
-    return (cs3, apply cs3 t3, ExpOp2 e1' op e2' loc)
+    return (cs3, apply cs3 t3, ExpOp2 e1' (Op2 op (Just $ apply cs3 opType)) e2' loc)
 
-tiExp env (ExpOp1 op e _) = case op of
+tiExp env (ExpOp1 op e loc) = case op of
     Neg -> do 
-        (s1, t1) <- tiExp env e
-        s2 <- mgu t1 (TypeBasic BasicInt defaultLoc)
-        return (s2 `composeSubst` s1, t1)
+        (s1, t1, e') <- tiExp env e
+        s2 <- mgu t1 (TypeBasic BasicInt (getLoc t1))
+        return (s2 `composeSubst` s1, t1, ExpOp1 op e' loc)
     Not -> do 
-        (s1, t1) <- tiExp env e
-        s2 <- mgu t1 (TypeBasic BasicBool defaultLoc)
-        return (s2 `composeSubst` s1, t1)
+        (s1, t1, e') <- tiExp env e
+        s2 <- mgu t1 (TypeBasic BasicBool (getLoc t1))
+        return (s2 `composeSubst` s1, t1, ExpOp1 op e' loc)
 tiExp (TypeEnv env) (ExpFunCall (FunCall name args _) loc) = case Map.lookup name env of
     Just scheme -> do 
         t <- instantiate scheme
         let argTypes = getArgsTypes t
-        s1 <- typeCheckExps name (TypeEnv env) args (init argTypes)
+        (s1, args') <- typeCheckExps name (TypeEnv env) args (init argTypes)
         let returnType = last argTypes
-        return (s1, apply s1 returnType)
+        return (s1, apply s1 returnType, ExpFunCall (FunCall name args' (Just $ apply s1 t)) loc)
     Nothing -> throwError $ refBeforeDec "Function:" name
 
 getType :: SPLType -> [StandardFunction] -> TI (Subst, SPLType, SPLType)
@@ -606,21 +612,26 @@ getType t (x:xs) = do
     let s3 = applySubst s2 s1
     return (s3, apply s3 t, ret')
 
-op2Type :: Op2 -> TI (SPLType,SPLType,SPLType)
+op2Type :: Op2 -> TI (SPLType, SPLType, SPLType, SPLType)
 op2Type x | x == Plus || x == Min || x == Mult || x == Div || x == Mod = 
-    return (TypeBasic BasicInt defaultLoc, TypeBasic BasicInt defaultLoc, TypeBasic BasicInt defaultLoc)
+    let t = TypeBasic BasicInt defaultLoc in
+    return (t, t, t, FunType t (FunType t t))
 op2Type x | x == Eq || x == Neq = do
     tv <- newSPLVarWithClass EqClass 
-    return (tv, tv, TypeBasic BasicBool defaultLoc)
+    let t = TypeBasic BasicBool defaultLoc
+    return (tv, tv, t, FunType tv (FunType tv t))
 
 op2Type x | x == Le || x == Ge || x == Leq || x == Geq  = do
-    tv <- newSPLVarWithClass OrdClass 
-    return (tv, tv, TypeBasic BasicBool defaultLoc)
+    tv <- newSPLVarWithClass OrdClass
+    let t = TypeBasic BasicBool defaultLoc
+    return (tv, tv, t, FunType tv (FunType tv t))
 op2Type x | x== And || x == Or = 
-    return (TypeBasic BasicBool defaultLoc, TypeBasic BasicBool defaultLoc, TypeBasic BasicBool defaultLoc)
+    let t = TypeBasic BasicBool defaultLoc in 
+    return (t, t, t, FunType t (FunType t t))
 op2Type Con = do 
     tv <- newSPLVar
-    return (tv, ArrayType tv defaultLoc, ArrayType tv defaultLoc)
+    let t = ArrayType tv defaultLoc
+    return (tv, t, t, FunType tv (FunType t t))
 
 -- ===================== Type Inference ============================
 

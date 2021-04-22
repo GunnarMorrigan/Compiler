@@ -61,7 +61,7 @@ data Exp
   | ExpBool Bool Loc
   | ExpChar Char Loc
   | ExpBracket Exp
-  | ExpOp2 Exp Op2 Exp Loc
+  | ExpOp2 Exp Op2Typed Exp Loc
   | ExpOp1 Op1 Exp Loc
   | ExpFunCall FunCall Loc
   | ExpEmptyList Loc
@@ -188,12 +188,19 @@ data FunCall
 data Op1 = Neg | Not deriving (Eq, Show)
 
 
+data Op2Typed = Op2 Op2 (Maybe SPLType)
+  deriving (Show, Eq)
+
 -- ==== Op2 ====
-data Op2 = Plus|Min
-         |Mult|Div|Mod
-         |Le|Ge|Leq|Geq|Eq|Neq
-         |And|Or|Con
-        deriving (Show, Eq)
+data Op2 = 
+  Plus|Min|Mult|Div|Mod|
+  
+  Le|Ge|Leq|Geq|Eq|Neq|
+  
+  And|Or|
+  
+  Con
+  deriving (Show, Eq)
 
 -- ===================== prettyPrinter ============================
 prettyPrinter :: PrettyPrinter a => [a] -> String
@@ -269,6 +276,8 @@ getArgsTypes :: SPLType -> [SPLType]
 getArgsTypes (FunType args ret) = getArgsTypes args ++ getArgsTypes ret
 getArgsTypes x = [x]
 
+
+
 instance PrettyPrinter Class where
   pp EqClass = "Eq =>"
 
@@ -297,7 +306,7 @@ instance PrettyPrinter Exp where
   pp (ExpChar c _) = show c
   pp (ExpBool b _) = show b
   pp (ExpBracket e) = "("++ pp e++")"
-  pp (ExpOp2 e1 op e2 _) = "("++ pp e1  ++" "++ pp op++" " ++ pp e2++")"
+  pp (ExpOp2 e1 (Op2 op _) e2 _) = "("++ pp e1  ++" "++ pp op++" " ++ pp e2++")"
   pp (ExpOp1 op e _) = pp op ++ pp e
   pp (ExpFunCall c _) = pp c;
   pp (ExpList xs _) =  "["++ intercalate "," (Prelude.map pp xs)  ++ "]"
