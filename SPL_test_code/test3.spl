@@ -2,8 +2,13 @@ var a = 10;
 var b = 'L';
 var g = 'L';
 
+main() {
+	var x = 10;
+	return x == 'y';
+}
+
 equal(x, y) {
-   return x < y;
+   return x == y;
 }
 
 var list = [];

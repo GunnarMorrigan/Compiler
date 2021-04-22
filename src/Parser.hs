@@ -331,7 +331,7 @@ standardFunctionP =
 
 -- ===================== FunCall ============================
 funCall :: Parser (Token, Int, Int) FunCall
-funCall = FunCall <$> idPLoc <*> (pToken BrackOToken *> actArgs <* pToken BrackCToken)
+funCall = FunCall <$> idPLoc <*> (pToken BrackOToken *> actArgs <* pToken BrackCToken) <*> pure Nothing
 
 -- ===================== ActArgs ============================
 actArgs = customSepBy CommaToken (pToken CommaToken) expParser

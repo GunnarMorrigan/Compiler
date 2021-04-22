@@ -181,7 +181,7 @@ instance LOC Exp where
 -- ===================== FunCall and Operators ============================
 
 data FunCall
-    = FunCall IDLoc [Exp]
+    = FunCall IDLoc [Exp] (Maybe SPLType)
     deriving (Show, Eq)
 
 -- ==== Op1 ====
@@ -318,7 +318,7 @@ instance PrettyPrinter IDLoc where
   pp (ID id (Loc line col)) = id
 
 instance PrettyPrinter FunCall where
-  pp (FunCall i eS) = pp i ++ "("++ intercalate "," (Prelude.map pp eS) ++")"
+  pp (FunCall i eS fType) = pp i ++ "("++ intercalate "," (Prelude.map pp eS) ++")"
 
 instance PrettyPrinter Op1 where
   pp Neg = "-"
