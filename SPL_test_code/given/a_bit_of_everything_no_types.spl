@@ -1,8 +1,19 @@
+append ( l1, l2 ) {
+	if ( isEmpty ( l1 ) ) {
+		return l2;
+    } else {
+		l1.tl = append ( l1.tl, l2 );
+		return l1;
+	}
+}
+
+
+
 /*
     Three ways to implement the factorial function in SPL.
     First the recursive version.
-*/
-facR ( n ) :: Int -> Int {
+
+facR ( n ){
     if ( n < 2 ) {
         return 1;
     } else {
@@ -11,7 +22,7 @@ facR ( n ) :: Int -> Int {
 }
 
 // The iterative version of the factorial function
-facI ( n ) :: Int -> Int {
+facI ( n ){
     var r = 1;
     while ( n > 1 ) {
         r = r * n;
@@ -22,7 +33,7 @@ facI ( n ) :: Int -> Int {
 
 // A main function to check the results
 // It takes no arguments, so the type looks like this:
-main ( ) :: Void {
+main ( ) {
     var n = 0;
     var facN = 1;
     var ok = True;
@@ -39,12 +50,12 @@ main ( ) :: Void {
 
 // A list based factorial function
 // Defined here to show that functions can be given in any order (unlike C)
-facL ( n ) :: Int -> Int {
+facL ( n ) {
     return product (fromTo ( 1, n ));
 }
 
 // Computes the product of a list of integers
-product ( list ) :: [Int] -> Int {
+product ( list ) {
     if ( isEmpty ( list ) ) {
         return 1;
     } else {
@@ -53,7 +64,7 @@ product ( list ) :: [Int] -> Int {
 }
 
 // Generates a list of integers from the first to the last argument
-fromTo ( from, to ) :: Int Int -> [Int] {
+fromTo ( from, to ) {
     if ( from <= to ) {
         return from : fromTo ( from + 1, to );
     } else {
@@ -62,7 +73,7 @@ fromTo ( from, to ) :: Int Int -> [Int] {
 }
 
 // Make a reversed copy of any list
-reverse ( list ) :: [t] -> [t] {
+reverse ( list ){
     var accu = [];
     while ( ! isEmpty ( list ) ) {
         accu = list.hd : accu ;
@@ -72,15 +83,15 @@ reverse ( list ) :: [t] -> [t] {
 }
 
 // Absolute value, in a strange layout
-abs ( n ) :: Int -> Int { if (n < 0) {return -n;} else {return n ;} }
+abs ( n ){ if (n < 0) {return -n;} else {return n ;} }
 
 // make a copy of a tuple with swapped elements
-swapCopy ( pair ) :: (a, b) -> (b, a) {
+swapCopy ( pair ){
 	return (pair.snd, pair.fst);
 }
 
 // swap the elements in a tuple
-swap ( tuple ) :: (a, a) -> (a, a) {
+swap ( tuple ){
 	var tmp = tuple.fst;
 	tuple.fst = tuple.snd;
 	tuple.snd = tmp;
@@ -88,7 +99,7 @@ swap ( tuple ) :: (a, a) -> (a, a) {
 }
 
 // list append
-append ( l1, l2 ) :: [t] [t] -> [t] {
+append ( l1, l2 ) {
 	if ( isEmpty ( l1 ) ) {
 		return l2;
     } else {
@@ -98,7 +109,7 @@ append ( l1, l2 ) :: [t] [t] -> [t] {
 }
 
 // square the odd numbers in a list and remove the even numbers
-squareOddNumbers ( list ) :: [Int] -> [Int] {
+squareOddNumbers ( list ) {
     while (! isEmpty (list) && list.hd % 2 == 0) {
         list = list.tl;
     }
@@ -108,3 +119,4 @@ squareOddNumbers ( list ) :: [Int] -> [Int] {
     }
     return list;
 }
+*/
