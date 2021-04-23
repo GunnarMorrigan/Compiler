@@ -472,7 +472,7 @@ tiExpsList env (e:es) = do
 
     return (cs2, t2, ExpOp2 e' opType es' (getLoc e))
 
-tiExp :: TypeEnv -> Exp -> TI (Subst, SPLType, Exp)    
+tiExp :: TypeEnv -> Exp -> TI (Subst, SPLType, Exp)
 tiExp env (ExpId id (Field [])) = do
     case find id env of
         Just (Scheme _ t) -> return (nullSubst, t, ExpId id (Field []))
@@ -719,7 +719,7 @@ instance UpdateTypes Stmt where
     updateTypes (StmtReturn (Just e) loc) s env = do
         let e' = updateTypes e s env
         StmtReturn (Just e') loc
-    updateTypes e s env = trace (pp e) e
+    updateTypes e s env = e
 
 instance UpdateTypes Exp where 
     updateTypes (ExpOp2 e1 (Op2 op (Just t)) e2 loc) s env = do
@@ -739,24 +739,27 @@ instance UpdateTypes Exp where
         ExpTuple (e1', e2')  loc
     updateTypes (ExpBracket e) s env = ExpBracket (updateTypes e s env)
     updateTypes (ExpOp1 op e loc) s env = let e' = updateTypes e s env in ExpOp1 op e' loc
-    updateTypes e s env = trace (pp e) e
+    updateTypes e s env = e
     
 instance UpdateTypes FunCall where 
-    updateTypes (FunCall (ID name l) es (Just t)) s env = trace ("updateTypes "++name++ pp t) $  do
+    updateTypes (FunCall (ID name l) es (Just t)) s env = -- trace ("updateTypes "++name++ pp t) $ 
+        do
         let es' = updateTypes es s env
         FunCall (ID name l) es' (Just $ apply s t)
-    updateTypes (FunCall (ID name l) es Nothing) s env = trace ("updateTypes "++name++ " Nothing!!!!!!!") $ FunCall (ID name l) es Nothing 
+    updateTypes (FunCall (ID name l) es Nothing) s env = {-- trace ("updateTypes "++name++ " Nothing!!!!!!!") $ --} FunCall (ID name l) es Nothing 
     
+
+
 
 mainTI filename = do
       -- path <- getCurrentDirectory
       -- print path
       file <- readFile  ("../SPL_test_code/" ++ filename)
       case tokeniseAndParse mainSegments file >>= (mutRec . fst) >>= typeInference of 
-            Right (s, TypeEnv env, code) -> do
+            Right (s1, TypeEnv env, code) -> do
                 writeFile "../SPL_test_code/ti-out.spl"$ pp code
                 putStr $ "\nEnv:\n" ++ printEnv (Map.toList env)
-                putStr $ "\nSubst:\n" ++ printSubst (Map.toList s)
+                putStr $ "\nSubst:\n" ++ printSubst (Map.toList s1)
             Left x -> putStr $ show x ++ "\n" ++ showPlaceOfError file x
 
 
