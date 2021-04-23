@@ -12,7 +12,7 @@ newtype Code = Code [(Char, Int, Int)]
   deriving (Show, Eq)
 
 data Token
-  = VarToken | IntToken Integer | BoolToken Bool| CharToken Char
+  = VarToken | IntToken Int | BoolToken Bool| CharToken Char
   | TypeIntToken| TypeBoolToken| TypeCharToken
   | SemiColToken| CommaToken| IsToken
   | FunTypeToken| ArrowToken| VoidToken| ReturnToken

@@ -57,7 +57,7 @@ data Stmt = StmtIf Exp [Stmt] (Maybe [Stmt]) Loc
 
 data Exp
   = ExpId IDLoc Field
-  | ExpInt Integer Loc
+  | ExpInt Int Loc
   | ExpBool Bool Loc
   | ExpChar Char Loc
   | ExpBracket Exp
@@ -215,7 +215,7 @@ instance PrettyPrinter SPL where
   pp (SPL ((VarMain x):(FuncMain y):xs)) = pp x ++ "\n\n" ++ pp (SPL (FuncMain y:xs))
   pp (SPL ((VarMain x):decls)) = pp x ++ "\n" ++ pp (SPL decls)
   pp (SPL ((FuncMain x):decls)) = pp x ++ "\n\n" ++ pp (SPL decls)
-  pp (SPL ((MutRec x):decls)) = "mutRec\n" ++pp x ++ "\n\n" ++ pp (SPL decls)
+  pp (SPL ((MutRec x):decls)) = "//mutRec\n" ++ pp x ++ "\n\n" ++ pp (SPL decls)
 
 instance PrettyPrinter Loc where
   pp (Loc ln col) = "Line " ++ show ln ++ ", Col "++ show col
@@ -227,7 +227,7 @@ instance PrettyPrinter a => PrettyPrinter [a] where
 instance PrettyPrinter Decl where
   pp (VarMain x) = pp x
   pp (FuncMain x) = pp x  
-  pp (MutRec x) = "//MutRec" ++ prettyPrinter x
+  pp (MutRec x) = prettyPrinter x
 
 instance PrettyPrinter VarDecl where
   pp (VarDeclVar i e) = "var " ++ pp i ++ " = "++ pp e ++ ";"
@@ -327,8 +327,8 @@ instance PrettyPrinter IDLoc where
   pp (ID id (Loc line col)) = id
 
 instance PrettyPrinter FunCall where
-  pp (FunCall i eS Nothing) = pp i ++ "("++ intercalate "," (Prelude.map pp eS) ++") :: Nothing"
-  pp (FunCall i eS (Just fType)) = pp i ++ "("++ intercalate "," (Prelude.map pp eS) ++") :: "++ pp fType 
+  pp (FunCall i eS Nothing) = pp i ++ "("++ intercalate "," (Prelude.map pp eS) ++") /*:: Nothing*/"
+  pp (FunCall i eS (Just fType)) = pp i ++ "("++ intercalate "," (Prelude.map pp eS) ++") /*:: "++ pp fType ++"*/"
 
 instance PrettyPrinter Op1 where
   pp Neg = "-"
