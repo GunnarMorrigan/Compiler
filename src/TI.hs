@@ -699,7 +699,6 @@ instance UpdateTypes FunDecl where
         let stmts' = updateTypes stmts s env
         FunDecl funName args funType varDecls' stmts'
     
-
 instance UpdateTypes Stmt where
     updateTypes (StmtIf e stmts Nothing loc) s env = do
         let e' = updateTypes e s env
@@ -748,8 +747,6 @@ instance UpdateTypes FunCall where
         FunCall (ID name l) es' (Just $ apply s t)
     updateTypes (FunCall (ID name l) es Nothing) s env = {-- trace ("updateTypes "++name++ " Nothing!!!!!!!") $ --} FunCall (ID name l) es Nothing 
     
-
-
 
 mainTI filename = do
       -- path <- getCurrentDirectory
