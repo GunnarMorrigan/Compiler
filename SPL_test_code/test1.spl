@@ -1,0 +1,9 @@
+f(x, y) {
+    var z = 4;
+    var a = 10;
+    return y + x + z * a;
+}
+
+main(){
+    f(30,8);
+}
