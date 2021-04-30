@@ -8,9 +8,9 @@ cabal-version: 1.12
 
 name:           CC
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/githubuser/MCProject2#readme>
-homepage:       https://github.com/githubuser/MCProject2#readme
-bug-reports:    https://github.com/githubuser/MCProject2/issues
+description:    Please see the README on GitHub at <https://github.com/..../#readme>
+homepage:       https://github.com/..../#readme
+bug-reports:    https://github.com/..../issues
 author:         Author name here
 maintainer:     example@example.com
 copyright:      2021 Author name here
@@ -22,14 +22,21 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/githubuser/MCProject2
+  location: 
 
 library
-  -- exposed-modules:
-  --     FTtoBDD
-  --     Heuristics
-  -- other-modules:
-  --     Paths_CC
+  exposed-modules:
+    Lexer,
+    AST,
+    Parser,
+    TI,
+    MutRec,
+    Error
+--   other-modules:
+--     AST,
+--     Parser,
+--     TI,
+--     MutRec
   hs-source-dirs:
       src
   build-depends:
@@ -61,11 +68,13 @@ executable CC-exe
 
   default-language: Haskell2010
 
-test-suite CC-test
+test-suite CC-tests
   type: exitcode-stdio-1.0
-  main-is: Spec.hs
-  -- other-modules:
-  --     Paths_CC
+  main-is: Main.hs
+  other-modules:
+    LexerTest,
+    ParserTest,
+    TITest
   hs-source-dirs:
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
@@ -76,5 +85,27 @@ test-suite CC-test
       containers,
       array,
       directory,
-      mtl
+      mtl,
+      HUnit
+  default-language: Haskell2010
+
+executable Linux-tests
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  other-modules:
+    LexerTest,
+    ParserTest,
+    TITest
+  hs-source-dirs:
+      test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      CC,
+      base >=4.7 && <5,
+      random,
+      containers,
+      array,
+      directory,
+      mtl,
+      HUnit
   default-language: Haskell2010

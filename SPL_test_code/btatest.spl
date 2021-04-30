@@ -1,0 +1,36 @@
+var hoi2 = hoi;
+var hoi = (1,'c');
+var doei = swap(hoi);
+
+swap (tuple) :: (a,a) -> (a,a) {
+	var tmp = tuple.fst;
+	tuple = (tuple.snd, tmp);
+	return tuple;
+}
+
+
+callA (i) {
+	callB(i-1);
+}
+
+callB (i) {
+	callC(i-1);
+}
+
+callC (i){
+	callA(i-1);
+}
+
+callD (i){
+	callD(i-1);
+}
+
+//var doei = 10 + 10;
+//var lalal = doei:[doei];
+
+//var hoi = 11;
+//var hoi = 11;
+//var a = 10&&7;
+
+//SPL [VarMain (VarDeclVar "hoi" (ExpInt 10))]
+//SPL [VarMain (VarDeclVar "hoi" (ExpInt 10))]

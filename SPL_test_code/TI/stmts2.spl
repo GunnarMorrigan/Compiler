@@ -1,0 +1,4 @@
+first = tuple.fst;
+sec = tuple.snd;
+tuple.fst = tuple.snd;
+tuple.snd = first;

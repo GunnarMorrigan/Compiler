@@ -1,0 +1,38 @@
+var a = 10;
+var b = 'L';
+var g = 'L';
+
+main() {
+	var x = 10;
+	return x == 'y';
+}
+
+equal(x, y) {
+   return x == y;
+}
+
+var list = [];
+assign(l) {
+    list = l;
+    return;
+ }
+main() {
+    assign(True : []);
+    //assign(1 : []);
+    return;
+}
+
+swap ( tuple ){
+	var tmp = tuple.fst;
+    tuple.fst = tuple.snd;
+	tuple.snd = tmp;
+	return tuple;
+}
+
+function2 (a, b) {
+	while (a) {
+		return 10;
+		return 10;
+	}
+	return b;
+}

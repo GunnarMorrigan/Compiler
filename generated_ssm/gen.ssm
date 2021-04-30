@@ -1,0 +1,25 @@
+bra main
+f: link 2
+ldc 4
+stl 1
+ldc 10
+stl 2
+ldl -2
+ldl -3
+add
+ldl 1
+ldl 2
+mul
+add
+str RR
+unlink
+ret
+main : ldc 30
+ldc 8
+bsr f
+ajs -2
+ldr RR
+trap 0
+halt
+; THE END debug:
+

@@ -2,32 +2,17 @@
 {-# LANGUAGE FlexibleInstances #-}
 module Lexer where
 import Data.List
-import Control.Applicative
+
 import Data.Char
 
-data Error = Error Int Int String
+import Error
 
-instance Eq Error where
-  (==) (Error line col m) (Error line' col' m') =  line == line' && col == col'
-
-instance Ord Error where
-  (Error line col m) `compare` (Error line' col' m') = if line == line' then compare col col' else compare line line'
-
-instance Show Error where
-  show (Error (-1) (-1) message) = message
-  show (Error line col message) = message ++ ", on line: " ++show line ++ " and character: " ++ show col 
-
-instance Alternative (Either Error) where
-  empty = Left $ Error 0 0 ""
-  Left x <|> Left y = Left $ max x y
-  Left _ <|> e2 = e2
-  e1 <|> _ = e1
 
 newtype Code = Code [(Char, Int, Int)]
   deriving (Show, Eq)
 
 data Token
-  = VarToken | IntToken Integer | BoolToken Bool| CharToken Char
+  = VarToken | IntToken Int | BoolToken Bool| CharToken Char
   | TypeIntToken| TypeBoolToken| TypeCharToken
   | SemiColToken| CommaToken| IsToken
   | FunTypeToken| ArrowToken| VoidToken| ReturnToken
@@ -38,6 +23,7 @@ data Token
   | IdToken String
   | IfToken| ElseToken| WhileToken
   deriving (Eq)
+  
 instance Show Token where
   show VarToken = "var"
   show (IntToken x) = show x
@@ -80,7 +66,8 @@ instance Show Token where
   show OrToken = "||"
   show ConstToken = ":"
   show NotToken = "!"
-  show (IdToken x) = "id["++x++"]"
+  -- show (IdToken x) = "id["++x++"]"
+  show (IdToken x) = x
   show IfToken = "if"
   show ElseToken = "else"
   show WhileToken = "while"
@@ -97,12 +84,14 @@ tokenise:: String -> Int -> Int -> Either Error [(Token, Int, Int)]
 tokenise ('/' : '*' : xs) line col = gulp xs line col
   where
     gulp ('*' : '/' : rest) line col = tokenise rest line (col + 2)
+    gulp ('\n' : rest) line col = gulp rest (line + 1) 1
+    gulp ('\t' : rest) line col = gulp rest line (col + 4)
     gulp (c : rest) line col = gulp rest line (col + 1)
     gulp [] line col = Right []
-tokenise ('/' : '/' : xs) line col = tokenise (dropWhile (/= '\n') xs) (line + 1) 0
+tokenise ('/' : '/' : xs) line col = tokenise (dropWhile (/= '\n') xs) line 1
 tokenise (' ' : xs) line col = tokenise xs line (col + 1)
-tokenise ('\t' : xs) line col = tokenise xs line (col + 2)
-tokenise ('\n' : xs) line col = tokenise xs (line + 1) 0
+tokenise ('\t' : xs) line col = tokenise xs line (col + 4)
+tokenise ('\n' : xs) line col = tokenise xs (line + 1) 1
 tokenise ('\'' : x : '\'' : xs) line col = ((CharToken x, line, col) :) <$> tokenise xs line (col + 3)
 tokenise input line col = tokenise2 acTokens tokens input line col
 
@@ -116,14 +105,14 @@ tokenise2 _ _ (c : xs) line col
   | isSpace c = tokenise xs line (col+1)
   | isDigit c = spanToken isDigit line col (IntToken . read) (c : xs)
   | isAlpha c = spanToken (\c -> isAlphaNum c || c == '_') line col IdToken (c : xs)
-  | otherwise = Left $ Error line col ("Unrecognized character: " ++ show c)
+  | otherwise = Left $ Error line col ("Unrecognized keyword or character on Line " ++ show line ++ " and, Col " ++ show col ++ ". Character: " ++ show c)
 
 tokenise2 _ _ [] line col = Right []
 
 stringToCode x = Code <$> concat $ zipWith (\s line -> zip3 s (repeat line) [1 ..]) (lines x) [1 ..]
 
 runTokenise :: String -> Either Error [(Token, Int, Int)]
-runTokenise x = tokenise x 0 0
+runTokenise x = tokenise x 1 1
 
 spanToken ::  (Char -> Bool) -> Int -> Int -> ([Char] -> Token) -> [Char] -> Either Error [(Token, Int, Int)]
 spanToken p line col t = (\(ds, rest) -> ((t ds, line, col) :) <$> tokenise rest line (col + length ds)) . span p

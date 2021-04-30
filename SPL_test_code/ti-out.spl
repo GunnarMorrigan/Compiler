@@ -1,0 +1,9 @@
+append (l1, l2) :: [a] [a] -> [a] {
+    if (isEmpty(l1) :: [a] -> Bool) {
+        return l2;
+    } else {
+        l1.tl = append(l1.tl,l2) :: [a] [a] -> [a];
+        return l1;
+    }
+}
+
