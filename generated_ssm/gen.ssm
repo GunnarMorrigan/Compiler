@@ -1,25 +1,25 @@
 bra main
-f: link 2
-ldc 4
-stl 1
+f: link 1
 ldc 10
-stl 2
+stl 1
 ldl -2
-ldl -3
-add
 ldl 1
-ldl 2
+gt
+brt f_ifTh0
+ldc 5
+bra fEnd
+f_ifTh0:    ldl -2
+ldl 1
 mul
-add
-str RR
+bra fEnd
+fEnd:    str RR
 unlink
 ret
-main : ldc 30
-ldc 8
+main : link 0
+ldc 50
 bsr f
-ajs -2
+ajs -1
 ldr RR
 trap 0
 halt
-; THE END debug:
 
