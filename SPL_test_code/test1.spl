@@ -1,3 +1,22 @@
+f(x) {
+    var a = 10;
+
+    if (x > a){
+        return x * a;
+    }
+    else{
+        return 5;
+    }
+}
+
+main(){
+    f(50);
+}
+
+
+
+
+/*
 f(x, y) {
     var z = 4;
     var a = 10;
@@ -7,3 +26,4 @@ f(x, y) {
 main(){
     f(30,8);
 }
+*/

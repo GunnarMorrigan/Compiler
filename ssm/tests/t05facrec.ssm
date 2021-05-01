@@ -17,9 +17,9 @@ FacEnd:	str	RR
 	unlink
 	sts	-1
 	ret
-main:	LDC	6
+main:	LDC	1
 	annote	SP 0 0 green argument
-	bsr	Fac	// fac( 6 )
+	bsr	Fac	// fac( 1 )
 	halt
 	
 	

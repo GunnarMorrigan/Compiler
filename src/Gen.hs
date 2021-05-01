@@ -1,4 +1,5 @@
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 module Gen where
 
 import AST
@@ -27,20 +28,19 @@ data Mem =
 
 data Scope = Global | Local
 
-type GenState = Int
+type GenState = (Int,Int)
 type Gen a = ExceptT Error (State GenState) a
  
 type GenEnv = Map IDLoc Mem
 
+runGen :: Gen a -> (Either Error a, GenState)
+runGen t = runState (runExceptT t) initState
+  where initState = (0,0)
+
 class GenCode a where
     gen :: a -> [String] -> GenEnv -> Gen [String]
 
-runGen :: Gen a -> (Either Error a, GenState)
-runGen t = runState (runExceptT t) initState
-  where initState = 0
-
 -- ===== Generation =====
-
 instance GenCode a => GenCode [a] where
     gen [] c env = return c
     gen (x:xs) c env = do
@@ -65,33 +65,41 @@ genVarDecls (x:xs) c s env = do
 
 -- instance GenCode VarDecl where
 genVarDecl :: VarDecl -> [String] -> Scope -> GenEnv -> Gen [String]
-genVarDecl (VarDeclType t i e) c Global env = case Map.lookup i env of
-    Just memLoc -> gen e (stl memLoc:c) env
-    UPDATE ENV HIER, dit is een error zodat ik weet dat dit nog moet.
-    Nothing -> error ("Variable " ++ show i ++ " unkown in generator " ++ showLoc i)
+genVarDecl (VarDeclType t id e) c Global env = do
+    mem <- newGlobal t
+    let env' = Map.insert id mem env
+    gen e (store mem:c) env'
+    -- UPDATE ENV HIER, dit is een error zodat ik weet dat dit nog moet.
 genVarDecl (VarDeclType t i e) c Local env = case Map.lookup i env of
-    Just memLoc -> gen e (stl memLoc:c) env
+    Just memLoc -> gen e (store memLoc:c) env
     Nothing -> error ("Variable " ++ show i ++ " unkown in generator " ++ showLoc i)
 genVarDecl (VarDeclVar _ _) c _ env = undefined
 
 newIf :: String -> Gen (String, String)
 newIf name = do  
-    s <- get
-    put (s + 1)
-    return (name++"_ifTh"++show s,name++"_ifCon"++show s)
+    (ifS,globalS) <- get
+    put (ifS + 1,globalS)
+    return (name++"_ifTh"++show ifS,name++"_ifCon"++show ifS)
+
+newGlobal :: SPLType -> Gen Mem
+newGlobal typ = do  
+    (ifS,globalS) <- get
+    put (ifS,globalS + 1)
+    return $ G globalS typ
 
 instance GenCode FunDecl where
     gen (FunDecl (ID "main" loc) [] (Just fType) vDecls stmts) c env = do
-        put 0
-        let env' = constructEnv env [] vDecls 
+        (ifS,globalS) <- get
+        put (0,globalS)
+        let env' = constructEnv env fType [] vDecls
 
         c' <- genStmts stmts (["trap 0","halt"] ++ c) (ID "main" loc) env'
         c'' <- genVarDecls vDecls c' Local env'
         return $ ("main : link " ++ show (length vDecls)):c''
-
     gen (FunDecl (ID name loc) args (Just fType) vDecls stmts) c env = do
-        put 0
-        let env' = constructEnv env args vDecls
+        (ifS,globalS) <- get
+        put (0,globalS)
+        let env' = constructEnv env fType args vDecls
 
         c' <- genStmts stmts (genReturn fType name c) (ID name loc) env'
         c'' <- genVarDecls vDecls c' Local env'
@@ -101,7 +109,6 @@ instance GenCode FunDecl where
 genReturn :: SPLType -> String -> [String] -> [String]
 genReturn fType fName c | isVoidFun fType = (fName++"End:    unlink"):"ret": c
 genReturn fType fName c = (fName++"End:    str RR"):"unlink":"ret": c
-
 
 genStmts :: [Stmt] -> [String] -> IDLoc -> GenEnv -> Gen [String]
 genStmts [] c id env = return c
@@ -113,7 +120,6 @@ genStmts ((StmtIf e stmts Nothing loc):xs) c (ID name l) env = do
     continC <- genStmts xs c' (ID name l) env
     let c'' = brt th:continC
     gen e c'' env
-
 genStmts ((StmtIf e stmts (Just els) loc):xs) c (ID name l) env = do
     (th, contin) <- newIf name
 
@@ -124,22 +130,11 @@ genStmts ((StmtIf e stmts (Just els) loc):xs) c (ID name l) env = do
     let conditionC = brt th:elseC
     
     gen e conditionC env
-
 genStmts (x:xs) c id env = do
     c' <- genStmts xs c id env 
     genStmt x c' id env
 
 genStmt :: Stmt -> [String] -> IDLoc -> GenEnv -> Gen [String]
--- genStmt (StmtIf e stmts (Just els) loc) c (ID name l) env = do
---     (th, contin) <- newIf name
-
---     let continC = insertLabel contin c
---     c' <- genStmts stmts continC (ID name l) env
---     let thC = insertLabel th c'
---     elseC <- genStmts els thC (ID name l) env
---     let conditionC = brt th:elseC
-    
---     gen e conditionC env
 genStmt (StmtWhile e stmts loc) c id env = undefined
 genStmt (StmtDeclareVar (ID name loc) field exp) c _ env = undefined
 genStmt (StmtFuncCall (FunCall id args Nothing) loc) c _ env = undefined
@@ -153,27 +148,10 @@ genStmt (StmtReturn exp loc) c (ID id _) env =
     Nothing -> return $ retLink:c --"unlink":"ret":c
     Just e -> gen e (retLink:c) env
 
-isVoidFun :: SPLType -> Bool
-isVoidFun x = last (getArgsTypes x) `eqType` Void defaultLoc
-
-class UpdateGenEnv a where
-    updateEnv :: GenEnv -> a -> GenEnv
-
-instance UpdateGenEnv IDLoc where
-    updateEnv env IDLoc
-
-constructEnv :: GenEnv -> [IDLoc] -> [VarDecl] -> GenEnv
-constructEnv env xs ys = fromList (Prelude.map (BI.second L) (args ++ zip decls [1..])) `union` env
-    where
-        args = zip xs [(negate (length xs)-1 )..]
-        decls = Prelude.map (\(VarDeclType t id e) -> id) ys
-
--- genExp :: Exp -> [String] -> Map IDLoc Int -> [String]
-
 instance GenCode Exp where
     gen (ExpId id field) c env = case Map.lookup id env of
-        Just (L x _) -> return $ ldl x : c
-        Just (G x _) -> return $ ldh (G x) : c
+        Just mem -> return $ load mem : c
+        -- Just (G x loc) -> return $ ldh (G x loc) : c
         Nothing -> error ("Variable " ++ show id ++ " unkown in generator " ++ showLoc id)
     gen (ExpInt i _) c env = return $ ldc i:c
     gen (ExpBool b loc) c env= return $ ldc (if b then -1 else 0  ):c
@@ -185,8 +163,8 @@ instance GenCode Exp where
         c'' <- gen e2 c' env
         gen e1 c'' env
     gen (ExpOp1 op e loc) c env = case op of
-            Neg -> gen e ("neg":c) env
-            Not -> gen e ("not":c) env
+        Neg -> gen e ("neg":c) env
+        Not -> gen e ("not":c) env
 
 instance GenCode Op2Typed where
     gen (Op2 Plus _) c _ = return $ "add":c
@@ -207,23 +185,40 @@ instance GenCode Op2Typed where
 
     gen (Op2 Con (Just opType)) c _= undefined
 
-
 insertLabel :: String -> [String] -> [String]
 insertLabel label (x:xs) = (label++":    "++x):xs
 
+isVoidFun :: SPLType -> Bool
+isVoidFun x = last (getArgsTypes x) `eqType` Void defaultLoc
+
+-- ==================== Env insert ====================
+constructEnv :: GenEnv -> SPLType -> [IDLoc] -> [VarDecl] -> GenEnv
+constructEnv env fType xs ys = fromList decls `union` fromList args `union` env
+    where
+        args = zipWith3 (\ id loc typ -> (id, L loc typ)) xs [(negate (length xs)-1 )..] (init $ getArgsTypes fType)
+        decls = zipWith (\(VarDeclType t id e) b -> (id, L b t) ) ys [1..]
+
+-- ==================== Instructions ====================
+load :: Mem -> String 
+load (L x _) = "ldl " ++ show x
+load (H x _) = undefined 
+load (G x _) = "lda " ++ show x
+
+store :: Mem -> String
+store (L x _) = "stl " ++ show x
+store (H x _) = "sth " ++ show x
+store (G x _) = "stl " ++ show x 
 
 -- ===== Local =====
-
 -- Load Local. Pushes a value relative to the markpointer.
-ldl :: Int -> String
-ldl x = "ldl " ++ show x
+-- ldl :: Int -> String
+-- ldl x = "ldl " ++ show x
 
-stl :: Mem -> String
-stl (L x _) = "stl " ++ show x
-
+-- stl :: Mem -> String
+-- stl (L x _) = "stl " ++ show x
+-- stl (H x _) = "stl " ++ show x
 
 -- ===== Branching =====
-
 -- Branch on True. If a True value is on top of the stack, jump to the destination.
 brt :: String -> String 
 brt name = "brt "++name
@@ -237,7 +232,6 @@ bra :: String -> String
 bra name = "bra "++name
 
 -- ===== Abitrary =====
-
 -- Load Constant. Pushes the inline constant on the stack.
 ldc :: Int -> String
 ldc x = "ldc " ++ show x
@@ -246,9 +240,7 @@ ldc x = "ldc " ++ show x
 ajs :: Int -> String
 ajs x = "ajs " ++ show x
 
-
 -- ===== Heap =====
-
 -- Load from Heap. Pushes a value pointed to by the value at the top of the stack. The pointer value is offset by a constant offset.
 ldh :: Mem -> String
 ldh (H x _) = "ldl " ++ show x
