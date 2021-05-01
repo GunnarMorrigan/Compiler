@@ -522,7 +522,7 @@ tiExp env (ExpOp1 op e loc) = case op of
         (s1, t1, e') <- tiExp env e
         s2 <- mgu t1 (TypeBasic BasicBool (getLoc t1))
         return (s2 `composeSubst` s1, t1, ExpOp1 op e' loc)
-tiExp (TypeEnv env) (ExpFunCall (FunCall (ID n l) args typ) loc) = trace ("ExpFunCall "++n++" " ++show typ) $ case Map.lookup (ID n l) env of
+tiExp (TypeEnv env) (ExpFunCall (FunCall (ID n l) args typ) loc) = {-- trace ("ExpFunCall "++n++" " ++show typ) $ --}  case Map.lookup (ID n l) env of
     Just scheme -> do 
         t <- instantiate scheme
         let argTypes = getArgsTypes t
@@ -688,7 +688,7 @@ instance UpdateTypes VarDecl where
     --     let Just (Scheme _ varType) = find id env in
     --     VarDeclType varType id e
     updateTypes (VarDeclType t (ID id loc) e) s env = VarDeclType (apply s t) (ID id loc) e
-    updateTypes e s env = trace (pp e) e
+    updateTypes e s env = e
 
 instance UpdateTypes FunDecl where
     -- updateTypes (FunDecl funName args Nothing varDecls stmts) s env =
@@ -704,7 +704,7 @@ instance UpdateTypes Stmt where
         let e' = updateTypes e s env
         let stmts' = updateTypes stmts s env
         StmtIf e' stmts' Nothing loc
-    updateTypes (StmtIf e stmts (Just els) loc) s env = trace ("If stmt "++ pp e) $ do
+    updateTypes (StmtIf e stmts (Just els) loc) s env = {-- trace ("If stmt "++ pp e) $ --} do
         let e' = updateTypes e s env
         let stmts' = updateTypes stmts s env
         let els' = updateTypes els s env
