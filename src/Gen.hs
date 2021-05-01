@@ -20,9 +20,9 @@ import Control.Applicative
 -- ===== Types ====
 
 data Mem =
-    G Int |
-    H Int |
-    L Int
+    G Int SPLType |
+    H Int SPLType|
+    L Int SPLType
     deriving (Show, Eq)
 
 data Scope = Global | Local
@@ -48,9 +48,10 @@ instance GenCode a => GenCode [a] where
         gen x c' env
 
 instance GenCode SPL where
-    gen (SPL decls) c env = do
-        c' <- gen decls c env
-        return $ "bra main":c'
+    gen spl c env = do
+        let (globals, functions) = sortSPL spl
+        c' <- gen functions c env
+        gen globals ("bra main":c') env
 
 instance GenCode Decl where
     gen (VarMain varDecl) c = genVarDecl varDecl c Global
@@ -65,10 +66,11 @@ genVarDecls (x:xs) c s env = do
 -- instance GenCode VarDecl where
 genVarDecl :: VarDecl -> [String] -> Scope -> GenEnv -> Gen [String]
 genVarDecl (VarDeclType t i e) c Global env = case Map.lookup i env of
-    Just h -> gen e (sth h:c) env
+    Just memLoc -> gen e (stl memLoc:c) env
+    UPDATE ENV HIER, dit is een error zodat ik weet dat dit nog moet.
     Nothing -> error ("Variable " ++ show i ++ " unkown in generator " ++ showLoc i)
 genVarDecl (VarDeclType t i e) c Local env = case Map.lookup i env of
-    Just l -> gen e (stl l:c) env
+    Just memLoc -> gen e (stl memLoc:c) env
     Nothing -> error ("Variable " ++ show i ++ " unkown in generator " ++ showLoc i)
 genVarDecl (VarDeclVar _ _) c _ env = undefined
 
@@ -76,27 +78,30 @@ newIf :: String -> Gen (String, String)
 newIf name = do  
     s <- get
     put (s + 1)
-    return (name++"_ifTh"++show s++":    ",name++"_ifCon"++show s++":    ")
+    return (name++"_ifTh"++show s,name++"_ifCon"++show s)
 
 instance GenCode FunDecl where
     gen (FunDecl (ID "main" loc) [] (Just fType) vDecls stmts) c env = do
         put 0
         let env' = constructEnv env [] vDecls 
-        c' <- genStmts stmts (["trap 0","halt","; THE END debug:"] ++ c) (ID "main" loc) env'
+
+        c' <- genStmts stmts (["trap 0","halt"] ++ c) (ID "main" loc) env'
         c'' <- genVarDecls vDecls c' Local env'
         return $ ("main : link " ++ show (length vDecls)):c''
 
     gen (FunDecl (ID name loc) args (Just fType) vDecls stmts) c env = do
         put 0
-
         let env' = constructEnv env args vDecls
-        c' <- genStmts stmts c (ID name loc) env'
+
+        c' <- genStmts stmts (genReturn fType name c) (ID name loc) env'
         c'' <- genVarDecls vDecls c' Local env'
 
         return $ (name ++ ": link " ++ show (length vDecls)):c''
 
-genReturn :: SPLType -> [String]
-genReturn f = undefined 
+genReturn :: SPLType -> String -> [String] -> [String]
+genReturn fType fName c | isVoidFun fType = (fName++"End:    unlink"):"ret": c
+genReturn fType fName c = (fName++"End:    str RR"):"unlink":"ret": c
+
 
 genStmts :: [Stmt] -> [String] -> IDLoc -> GenEnv -> Gen [String]
 genStmts [] c id env = return c
@@ -125,17 +130,16 @@ genStmts (x:xs) c id env = do
     genStmt x c' id env
 
 genStmt :: Stmt -> [String] -> IDLoc -> GenEnv -> Gen [String]
+-- genStmt (StmtIf e stmts (Just els) loc) c (ID name l) env = do
+--     (th, contin) <- newIf name
 
-genStmt (StmtIf e stmts (Just els) loc) c (ID name l) env = do
-    (th, contin) <- newIf name
-
-    let continC = insertLabel contin c
-    c' <- genStmts stmts continC (ID name l) env
-    let thC = insertLabel th c'
-    elseC <- genStmts els thC (ID name l) env
-    let conditionC = brt th:elseC
+--     let continC = insertLabel contin c
+--     c' <- genStmts stmts continC (ID name l) env
+--     let thC = insertLabel th c'
+--     elseC <- genStmts els thC (ID name l) env
+--     let conditionC = brt th:elseC
     
-    gen e conditionC env
+--     gen e conditionC env
 genStmt (StmtWhile e stmts loc) c id env = undefined
 genStmt (StmtDeclareVar (ID name loc) field exp) c _ env = undefined
 genStmt (StmtFuncCall (FunCall id args Nothing) loc) c _ env = undefined
@@ -147,10 +151,16 @@ genStmt (StmtFuncCall (FunCall id args (Just fType)) loc) c _ env = do
 genStmt (StmtReturn exp loc) c (ID id _) env =
     let retLink = "bra " ++ id ++ "End" in case exp of
     Nothing -> return $ retLink:c --"unlink":"ret":c
-    Just e -> gen e (retLink:c) env --("str RR":"unlink":"ret": c) env
+    Just e -> gen e (retLink:c) env
 
 isVoidFun :: SPLType -> Bool
 isVoidFun x = last (getArgsTypes x) `eqType` Void defaultLoc
+
+class UpdateGenEnv a where
+    updateEnv :: GenEnv -> a -> GenEnv
+
+instance UpdateGenEnv IDLoc where
+    updateEnv env IDLoc
 
 constructEnv :: GenEnv -> [IDLoc] -> [VarDecl] -> GenEnv
 constructEnv env xs ys = fromList (Prelude.map (BI.second L) (args ++ zip decls [1..])) `union` env
@@ -162,8 +172,8 @@ constructEnv env xs ys = fromList (Prelude.map (BI.second L) (args ++ zip decls 
 
 instance GenCode Exp where
     gen (ExpId id field) c env = case Map.lookup id env of
-        Just (L x) -> return $ ldl x : c
-        Just (G x) -> return $ ldh (G x) : c
+        Just (L x _) -> return $ ldl x : c
+        Just (G x _) -> return $ ldh (G x) : c
         Nothing -> error ("Variable " ++ show id ++ " unkown in generator " ++ showLoc id)
     gen (ExpInt i _) c env = return $ ldc i:c
     gen (ExpBool b loc) c env= return $ ldc (if b then -1 else 0  ):c
@@ -199,7 +209,7 @@ instance GenCode Op2Typed where
 
 
 insertLabel :: String -> [String] -> [String]
-insertLabel label (x:xs) = (label++x):xs
+insertLabel label (x:xs) = (label++":    "++x):xs
 
 
 -- ===== Local =====
@@ -209,7 +219,7 @@ ldl :: Int -> String
 ldl x = "ldl " ++ show x
 
 stl :: Mem -> String
-stl (L x) = "stl " ++ show x
+stl (L x _) = "stl " ++ show x
 
 
 -- ===== Branching =====
@@ -241,11 +251,24 @@ ajs x = "ajs " ++ show x
 
 -- Load from Heap. Pushes a value pointed to by the value at the top of the stack. The pointer value is offset by a constant offset.
 ldh :: Mem -> String
-ldh (H x) = "ldl " ++ show x
+ldh (H x _) = "ldl " ++ show x
 
 -- Store into Heap. Pops 1 value from the stack and stores it into the heap. Pushes the heap address of that value on the stack.
 sth :: Mem -> String 
-sth (H x) = "sth " ++ show x
+sth (H x _) = "sth " ++ show x
+
+-- ==================== Sorting ====================
+sortSPL :: SPL -> ([Decl],[Decl])
+sortSPL (SPL xs) = sortDecls (reverse xs)
+
+sortDecls :: [Decl] -> ([Decl],[Decl])
+sortDecls [] = ([],[])
+sortDecls (VarMain x:xs) =  BI.first (VarMain x:) (sortDecls xs)
+sortDecls (FuncMain (FunDecl (ID "main" l) args fType locals stmts):xs) = BI.second (\xs -> xs ++ [FuncMain (FunDecl (ID "main" l) args fType locals stmts)]) (sortDecls xs)
+sortDecls (FuncMain x:xs) = BI.second (FuncMain x:) (sortDecls xs)
+
+
+-- ==================== Main ====================
 
 
 mainGen :: String -> IO ()
