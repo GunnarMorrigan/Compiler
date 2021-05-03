@@ -292,12 +292,12 @@ expEmptyList :: Parser (Token, Int, Int) Exp
 expEmptyList = pTokenGen EmptyListToken ExpEmptyList
 
 expList :: Parser (Token, Int, Int) Exp
-expList = flip ExpList <$> locParser <*> (pToken SBrackOToken *> expList <* pToken SBrackCToken)
+expList = flip ExpList <$> locParser <*> (pToken SBrackOToken *> expList <* pToken SBrackCToken) <*> pure Nothing
   where
     expList = customSepBy CommaToken (pToken CommaToken) expParser
 
 expTuple :: Parser (Token, Int, Int) Exp
-expTuple = flip ExpTuple <$> locParser <*> tuple
+expTuple = flip ExpTuple <$> locParser <*> tuple <*> pure Nothing
   where
     tuple = pToken BrackOToken *> ((,) <$> expParser <* pToken CommaToken <*> expParser) <* pToken BrackCToken
 

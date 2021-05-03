@@ -60,8 +60,8 @@ instance Callees Exp where
     getCallees (ExpOp2 e1 op e2 _) = getCallees e1 ++ getCallees e2
     getCallees (ExpOp1 op e _) = getCallees e
     getCallees (ExpBracket e) = getCallees e
-    getCallees (ExpList e _) = getCallees e
-    getCallees (ExpTuple (e1, e2) _) = getCallees e1 ++ getCallees e2
+    getCallees (ExpList e _ _) = getCallees e
+    getCallees (ExpTuple (e1, e2) _ _) = getCallees e1 ++ getCallees e2
     getCallees (ExpId id fields) = [id]
     getCallees _ = []
 
