@@ -65,8 +65,8 @@ data Exp
   | ExpOp1 Op1 Exp Loc
   | ExpFunCall FunCall Loc
   | ExpEmptyList Loc
-  | ExpList [Exp] Loc
-  | ExpTuple (Exp, Exp) Loc
+  | ExpList [Exp] Loc (Maybe SPLType)
+  | ExpTuple (Exp, Exp) Loc (Maybe SPLType)
   deriving(Eq, Show)
 
 newtype Field
@@ -151,8 +151,8 @@ instance LOC Exp where
   getLoc (ExpOp1 _ _ loc) =   loc
   getLoc (ExpFunCall _ loc) = loc
   getLoc (ExpEmptyList loc) = loc
-  getLoc (ExpList _ loc) = loc
-  getLoc (ExpTuple _ loc) = loc
+  getLoc (ExpList _ loc _) = loc
+  getLoc (ExpTuple _ loc _) = loc
 
   getLineNum (ExpId idloc _) = getLineNum idloc
   getLineNum (ExpInt _ loc) =  getLineNum loc
@@ -163,8 +163,8 @@ instance LOC Exp where
   getLineNum (ExpOp1 _ _ loc) =  getLineNum loc
   getLineNum (ExpFunCall _ loc) = getLineNum loc
   getLineNum (ExpEmptyList loc) = getLineNum loc
-  getLineNum (ExpList _ loc) = getLineNum loc
-  getLineNum (ExpTuple _ loc) = getLineNum loc
+  getLineNum (ExpList _ loc _) = getLineNum loc
+  getLineNum (ExpTuple _ loc _) = getLineNum loc
 
   getColNum (ExpId idloc _) = getColNum idloc
   getColNum (ExpInt _ loc) =  getColNum loc
@@ -175,8 +175,8 @@ instance LOC Exp where
   getColNum (ExpOp1 _ _ loc) =   getColNum loc
   getColNum (ExpFunCall _ loc) = getColNum loc
   getColNum (ExpEmptyList loc) = getColNum loc
-  getColNum (ExpList _ loc) = getColNum loc
-  getColNum (ExpTuple _ loc) = getColNum loc
+  getColNum (ExpList _ loc _) = getColNum loc
+  getColNum (ExpTuple _ loc _) = getColNum loc
 
 -- ===================== FunCall and Operators ============================
 
@@ -309,8 +309,8 @@ instance PrettyPrinter Exp where
   pp (ExpOp2 e1 (Op2 op _) e2 _) = "("++ pp e1  ++" "++ pp op++" " ++ pp e2++")"
   pp (ExpOp1 op e _) = pp op ++ pp e
   pp (ExpFunCall c _) = pp c;
-  pp (ExpList xs _) =  "["++ intercalate "," (Prelude.map pp xs)  ++ "]"
-  pp (ExpTuple (a,b) _) =  "(" ++ pp a ++ ", " ++ pp b ++")"
+  pp (ExpList xs _ _) =  "["++ intercalate "," (Prelude.map pp xs)  ++ "]"
+  pp (ExpTuple (a,b) _ _) =  "(" ++ pp a ++ ", " ++ pp b ++")"
   pp (ExpEmptyList _) = "[]"
 
 instance PrettyPrinter Field where

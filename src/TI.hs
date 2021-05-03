@@ -488,18 +488,18 @@ tiExp _ (ExpChar c loc) = return (nullSubst, TypeBasic BasicChar loc, ExpChar c 
 tiExp env (ExpBracket e) = do
     (s1, t1, e') <- tiExp env e
     return (s1, t1, ExpBracket e')
-tiExp env (ExpList [] loc) = trace "Removed ExpList [] because lists [1,2,3] are converted to 1:2:3:[] " undefined 
+tiExp env (ExpList [] loc _) = trace "Removed ExpList [] because lists [1,2,3] are converted to 1:2:3:[] " undefined 
 tiExp env (ExpEmptyList loc) = do 
       tv <- newSPLVar
       return (nullSubst, ArrayType tv defaultLoc, ExpEmptyList loc)
-tiExp env (ExpList es loc) = do
+tiExp env (ExpList es loc Nothing) = do
     (s1, t1, es') <- tiExpsList env es
     return (s1, ArrayType t1 loc, es')
-tiExp env (ExpTuple (e1, e2) loc) = do
+tiExp env (ExpTuple (e1, e2) loc Nothing) = do
     (s1, t1, e1') <- tiExp env e1
     (s2, t2, e2') <- tiExp (apply s1 env) e2
     let cs1 = s2 `composeSubst` s1
-    return (cs1, apply cs1 (TupleType (t1,t2) defaultLoc), ExpTuple (e1', e2') loc)
+    return (cs1, apply cs1 (TupleType (t1,t2) loc), ExpTuple (e1', e2') loc (Just $ TupleType (t1, t2) loc) )
 tiExp env (ExpOp2 e1 (Op2 op _) e2 loc) = do
     (t1, t2, t3, opType) <- op2Type op
     (s1, t1', e1') <- injectErrLoc (tiExp env e1) (getLoc e1)
@@ -729,13 +729,13 @@ instance UpdateTypes Exp where
     updateTypes (ExpFunCall fCall loc) s env =  do
         let fCall' = updateTypes fCall s env
         ExpFunCall fCall' loc
-    updateTypes (ExpList es loc) s env = do 
+    updateTypes (ExpList es loc typ) s env = do 
         let es' = updateTypes es s env
-        ExpList es' loc
-    updateTypes (ExpTuple (e1, e2)  loc) s env = do
+        ExpList es' loc (apply s typ)
+    updateTypes (ExpTuple (e1, e2) loc typ) s env = do
         let e1' = updateTypes e1 s env
         let e2' = updateTypes e2 s env
-        ExpTuple (e1', e2')  loc
+        ExpTuple (e1', e2') loc (apply s typ)
     updateTypes (ExpBracket e) s env = ExpBracket (updateTypes e s env)
     updateTypes (ExpOp1 op e loc) s env = let e' = updateTypes e s env in ExpOp1 op e' loc
     updateTypes e s env = e
