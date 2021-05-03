@@ -522,7 +522,7 @@ tiExp env (ExpOp1 op e loc) = case op of
         (s1, t1, e') <- tiExp env e
         s2 <- mgu t1 (TypeBasic BasicBool (getLoc t1))
         return (s2 `composeSubst` s1, t1, ExpOp1 op e' loc)
-tiExp (TypeEnv env) (ExpFunCall (FunCall (ID n l) args typ) loc) = {-- trace ("ExpFunCall "++n++" " ++show typ) $ --}  case Map.lookup (ID n l) env of
+tiExp (TypeEnv env) (ExpFunCall (FunCall (ID n l) args Nothing) loc) =  trace ("ExpFunCall "++n++" \n\n" ++printEnv (Map.toList env)) $  case Map.lookup (ID n l) env of
     Just scheme -> do 
         t <- instantiate scheme
         let argTypes = getArgsTypes t

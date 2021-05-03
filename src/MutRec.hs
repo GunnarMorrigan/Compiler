@@ -43,14 +43,14 @@ instance Callees FunDecl where
     getCallees (FunDecl _ _ _ vs stmts) = getCallees vs ++ getCallees stmts
 
 instance Callees VarDecl where
-    getCallees (VarDeclVar _ e) = getCallees e 
+    getCallees (VarDeclVar _ e) = getCallees e
     getCallees (VarDeclType _ _ e) = getCallees e
     
 instance Callees Stmt where
-    getCallees (StmtIf e xs (Just ys) _) = getCallees xs ++ getCallees ys
-    getCallees (StmtIf e xs Nothing _) = getCallees xs
-    getCallees (StmtWhile e xs _) = getCallees xs
-    getCallees (StmtDeclareVar _ _ e) = getCallees e
+    getCallees (StmtIf e xs (Just ys) _) = getCallees e ++ getCallees xs ++ getCallees ys
+    getCallees (StmtIf e xs Nothing _) = getCallees e ++ getCallees xs
+    getCallees (StmtWhile e xs _) = getCallees e ++ getCallees xs
+    getCallees (StmtDeclareVar id _ e) = id:getCallees e
     getCallees (StmtFuncCall (FunCall id e _) _) = id:getCallees e
     getCallees (StmtReturn (Just e) _) = getCallees e
     getCallees (StmtReturn Nothing _) = []
@@ -73,7 +73,7 @@ mainMutRec :: String -> IO()
 mainMutRec filename = do
        file <- readFile $ "../SPL_test_code/"++filename
        case tokeniseAndParse mainSegments file of
-           Right (x,xs) -> print $ toGraph x
+           Right (x,xs) -> print ( toGraph x)
            Left x -> print x
 
 mainMutRecToIO :: String -> IO()
@@ -85,8 +85,6 @@ mainMutRecToIO filename = do
                 let Right spl = fromGraph $ stronglyConnCompR $ toGraph x
                 putStr $ pp spl
             Left x -> print x
-
-
 
 mainMutRecToFile :: String -> IO()
 mainMutRecToFile filename = do
@@ -111,13 +109,25 @@ getCyclics (_:xs) = getCyclics xs
 getCyclics [] = []
 
 fromGraph :: [SCC (Decl, IDLoc, [IDLoc])]  -> Either Error SPL
-fromGraph [x] = do 
-    decls <- castCyclicToMutRec x
-    return $ SPL [decls]
-fromGraph (x:xs) = do
-    first <- castCyclicToMutRec x
+fromGraph [] = return (SPL [])
+fromGraph (AcyclicSCC (x,_,_):xs) = do
     (SPL second) <- fromGraph xs
-    return (SPL $ first:second)
+    return (SPL $ x:second)
+fromGraph (CyclicSCC ys:xs) = do
+    (SPL second) <- fromGraph xs
+    decl <- castCyclicToMutRec ys
+    return (SPL (decl:second))
+
+
+
+-- fromGraph :: [SCC (Decl, IDLoc, [IDLoc])]  -> Either Error SPL
+-- fromGraph [x] = do 
+--     decls <- castCyclicToMutRec x
+--     return $ SPL [decls]
+-- fromGraph (x:xs) = do
+--     first <- castCyclicToMutRec x
+--     (SPL second) <- fromGraph xs
+--     return (SPL $ first:second)
         
 onlyFuncMain :: [(Decl, IDLoc, [IDLoc])] -> Bool
 onlyFuncMain [] = True
@@ -125,11 +135,10 @@ onlyFuncMain ((VarMain x,_,_):xs) = False
 onlyFuncMain ((FuncMain x,_,_):xs) = onlyFuncMain xs
 
 
-castCyclicToMutRec :: SCC (Decl, IDLoc, [IDLoc]) -> Either Error Decl
-castCyclicToMutRec (AcyclicSCC (x,_,_))= Right x
-castCyclicToMutRec (CyclicSCC ys) | onlyFuncMain ys =
+castCyclicToMutRec :: [(Decl, IDLoc, [IDLoc])] -> Either Error Decl
+castCyclicToMutRec ys | onlyFuncMain ys =
      Right $ MutRec (map (\(FuncMain f,_,_) -> f) ys)
-castCyclicToMutRec (CyclicSCC ys) =
+castCyclicToMutRec _ =
      Left $ Error (-1) (-1) "Mutual recursion between variables detected. This is not allowed."
 
 mutRec :: SPL -> Either Error SPL
