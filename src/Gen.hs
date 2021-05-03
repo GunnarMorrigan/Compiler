@@ -163,19 +163,18 @@ genStmt (StmtFuncCall funcall _) c _ env =
     genFuncCall funcall c env
 genStmt (StmtReturn exp loc) c (ID id _) env =
     let retLink = "bra " ++ id ++ "End" in case exp of
-    Nothing -> return (retLink:c, env) --"unlink":"ret":c
-    Just e -> gen e (retLink:c) env
+    Nothing -> return (retLink:c, env)
+    Just e -> gen e ("ldr RR":retLink:c) env
 genStmt stmt c _ env = throwError $ Error (-1) (-1) ("Failed to catch the following object:\n" ++ show stmt)
 
 -- MAKE USE OF THE fType in funCall for overloading
 genFuncCall :: FunCall -> [String] -> GenEnv -> Gen ([String], GenEnv)
 genFuncCall (FunCall (ID "print" _) args (Just fType)) c env = undefined 
-genFuncCall (FunCall (ID "isEmpty" _) args (Just fType)) c env = undefined 
+genFuncCall (FunCall (ID "isEmpty" _) args (Just fType)) c env = do
+    return("ldh 0":"ldc 0":"eq":c,env)
 genFuncCall (FunCall id args (Just fType)) c env = do
-    let c' = if isVoidFun fType then c else "ldr RR":c
-    let c'' = (if Prelude.null args then c' else ajs (negate $ length args):c')
-    gen args (("bsr " ++ pp id):c'') env
-
+    let c' = (if Prelude.null args then c else ajs (negate $ length args):c)
+    gen args (("bsr " ++ pp id):c') env
 
 instance GenCode Exp where
     gen (ExpId id field) c env = case Map.lookup id env of
@@ -186,18 +185,20 @@ instance GenCode Exp where
     gen (ExpChar char _) c env = return (ldc (ord char):c, env)
     gen (ExpBracket e) c env = gen e c env
     
-    gen (ExpEmptyList _) c env = return ("":c, env)
+    gen (ExpEmptyList _) c env = 
+            --  Value:Address
+        return ("ldc 0":"ldc 0":"stmh 2":c, env)
 
     gen (ExpTuple (e1, e2) loc (Just (TupleType (t1,t2) _))) c env = do
         let storeTuple = "stmh 2":c
-        combineResult (gen e1 [] env) (gen e2 storeTuple)
+        combineResult (gen e2 [] env) (gen e1 storeTuple)
     
     gen (ExpFunCall funcall _) c env =
         genFuncCall funcall c env
 
     gen (ExpOp2 e1 op e2 loc) c env  = do
-        let args = combineResult (gen e1 [] env) (gen e2 [])
-        combineResult args (gen op ("ldr RR":c))
+        let args = combineResult (gen e2 [] env) (gen e1 [])
+        combineResult args (gen op c)
     gen (ExpOp1 op e loc) c env = case op of
         Neg -> gen e ("neg":c) env
         Not -> gen e ("not":c) env
@@ -212,12 +213,13 @@ instance GenCode Op2Typed where
     gen (Op2 And _) c env = return ("and":c,env)
     gen (Op2 Or _) c env = return ("or":c,env)
 
-    gen (Op2 Con (Just opType)) c env = undefined
+    gen (Op2 Con (Just opType)) c env =
+        return ("swp":"stmh 2":c,env)
 
     -- Should be extended for other types of comparison
     gen (Op2 op (Just (FunType t _))) c env = do
         (func, c', env') <- genCompare op t c env
-        return (bsr func:c', env')
+        return (bsr func:"ajs -2":"ldr RR":c', env')
 
 
 genCompare :: Op2 -> SPLType -> [String] -> GenEnv -> Gen (String, [String], GenEnv)
@@ -231,11 +233,11 @@ genCompare op (TupleType (a,b) _) c env = do
     (bBSRfName, bC, env')  <- genCompare op b [] env
     (aBSRfName, aC, env'') <- genCompare op a bC env'
 
-    let endBranch = (fName++"End:  str RR"):"    unlink":"    ajs -2":"    ret": c
-    let compareB = ["ldl -3","ldc 1","add","ldl -2","ldc 1","add",bBSRfName]
-    let compare = "ldl -3":"ldh 0":"ldl -2":"ldh 0":aBSRfName:"str R6":"ldr R6":"ldr R6": check:compareB
+    let endBranch = [fName++"End:  unlink","    ret"]
+    let compareB = ["ldl -3","ldc 1","sub","ldh 0","ldl -2","ldc 1","sub","ldh 0",bBSRfName,"str RR"]
+    let compare = "ldl -3":"ldh 0":"ldl -2":"ldh 0":aBSRfName:"str RR":"ldr RR":check:compareB
 
-    return (fName, c ++start:compare++endBranch++aC ,env'')
+    return (fName, c ++ start:compare++endBranch++aC ,env'')
 
 
 -- genOverloadedCompare op level fName (ArrayType a _ ) c env = undefined
