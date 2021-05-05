@@ -53,8 +53,8 @@ infixr 4 <<|>
 x <<|> y = Parser $ \case
   ((tokens, line, col) : xs) ->
     case run x ((tokens, line, col) : xs) of
-      Left (Error line' col' m) | line == line' && col == col' -> run y ((tokens, line, col) : xs)
-      Left (Error line' col' m) -> Left (Error line' col' m)
+      Left (Error (Loc line' col') m) | line == line' && col == col' -> run y ((tokens, line, col) : xs)
+      Left (Error (Loc line' col') m) -> Left (Error (Loc line' col') m)
       res -> res
   x -> empty
 
@@ -64,11 +64,11 @@ infixr 4 <|||>
 x <|||> y = Parser $ \case
   ((tokens, line, col) : xs) ->
     case run x ((tokens, line, col) : xs) of
-      Left (Error line' col' m) -> case run y ((tokens, line, col) : xs) of
-        Left (Error line'' col'' m') -> case Error line' col' m `compare` Error line'' col'' m' of
-          LT -> Left $ Error line' col' m
-          GT -> Left $ Error line'' col'' m'
-          EQ -> Left $ Error line' col' m
+      Left (Error (Loc line' col') m) -> case run y ((tokens, line, col) : xs) of
+        Left (Error (Loc line'' col'') m') -> case Error (Loc line' col') m `compare` Error (Loc line'' col'') m' of
+          LT -> Left $ Error (Loc line' col') m
+          GT -> Left $ Error (Loc line'' col'') m'
+          EQ -> Left $ Error (Loc line' col') m
         Right x -> Right x
       Right x -> Right x
   x -> empty
@@ -83,14 +83,14 @@ pToken :: Token -> Parser (Token, Int, Int) Token
 pToken t = Parser $
   \case
     (x, line, col) : xs | x == t -> Right (x, xs)
-    (x, line, col) : xs -> Left $ unexpectedToken t x line col
+    (x, line, col) : xs -> Left $ unexpectedToken t x (Loc line col)
     [] -> Left $ unexpectedEOF t
 
 pTokenGen :: Token -> (Loc -> b) -> Parser (Token, Int, Int) b
 pTokenGen t f = Parser $
   \case
     (x, line, col) : xs | x == t -> Right (f (Loc line col), xs)
-    (x, line, col) : xs -> Left $ unexpectedToken t x line col
+    (x, line, col) : xs -> Left $ unexpectedToken t x (Loc line col)
     [] -> Left $ unexpectedEOF t
 
 locParser :: Parser (Token, Int, Int) Loc
@@ -222,7 +222,7 @@ expInt =
   Parser
     ( \case
         (IntToken c, line, col) : xs -> Right (ExpInt c (Loc line col), xs)
-        (x, line, col) : xs -> Left $ unexpectedToken "Integer" (show x) line col
+        (x, line, col) : xs -> Left $ unexpectedToken "Integer" (show x) (Loc line col)
         [] -> Left $ unexpectedEOF "an Integer"
     )
 
@@ -231,7 +231,7 @@ expChar =
   Parser
     ( \case
         (CharToken c, line, col) : xs -> Right (ExpChar c (Loc line col), xs)
-        (x, line, col) : xs -> Left $ unexpectedToken "Char" (show x) line col
+        (x, line, col) : xs -> Left $ unexpectedToken "Char" (show x) (Loc line col)
         [] -> Left $ unexpectedEOF "an Char"
     )
 
@@ -240,7 +240,7 @@ expBool =
   Parser
     ( \case
         (BoolToken b, line, col) : xs -> Right (ExpBool b (Loc line col), xs)
-        (x, line, col) : xs -> Left $ unexpectedToken "Bool" (show x) line col
+        (x, line, col) : xs -> Left $ unexpectedToken "Bool" (show x) (Loc line col)
         _ -> Left $ unexpectedEOF "an Bool"
     )
 
@@ -342,13 +342,13 @@ actArgs = customSepBy CommaToken (pToken CommaToken) expParser
 idPLoc :: Parser (Token, Int, Int) IDLoc
 idPLoc = Parser $ \case
   (IdToken id, line, col) : xs -> Right (ID id (Loc line col), xs)
-  (x, line, col) : xs -> Left $ unexpectedToken "identifier (ID)" (show x) line col
+  (x, line, col) : xs -> Left $ unexpectedToken "identifier (ID)" (show x) (Loc line col)
   _ -> Left $ unexpectedEOF "identifier (ID)"
 
 idP :: Parser (Token, Int, Int) ID
 idP = Parser $ \case
   (IdToken id, line, col) : xs -> Right (id, xs)
-  (x, line, col) : xs -> Left $ unexpectedToken "identifier (ID)" (show x) line col
+  (x, line, col) : xs -> Left $ unexpectedToken "identifier (ID)" (show x) (Loc line col)
   _ -> Left $ unexpectedEOF "identifier (ID)"
 
 -- =====================================================
@@ -366,7 +366,7 @@ customSepBy sepToken sep elem = Parser $ \input ->
         Right (a, input'') -> run ((b :) <$> customSepBy sepToken sep elem) input''
         Left x ->
           case run elem input' of
-            Right (b', (token, _, _) : xs) -> let ((token', line, col) : xs) = input' in Left $ missingSeparator line col sepToken token'
+            Right (b', (token, _, _) : xs) -> let ((token', line, col) : xs) = input' in Left $ missingSeparator (Loc line col) sepToken token'
             Left x -> Right ([b], input')
     Left x -> Right ([], input)
 

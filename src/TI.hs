@@ -61,7 +61,7 @@ generalizeFuncs env [] = return env
 generalizeFuncs (TypeEnv env) (x:xs) = case Map.lookup x env of
     Just (Scheme _ t) -> let scheme = generalize (TypeEnv env) t in
         generalizeFuncs (TypeEnv $ Map.insert x scheme env) xs
-    _ -> throwError $ Error (getLineNum x) (getColNum x) ("Function " ++ pp x ++  " is mutual recursive and should therefore be in the type environment but it is not.")
+    _ -> throwError $ Error (getLoc x) ("Function " ++ pp x ++  " is mutual recursive and should therefore be in the type environment but it is not.")
 
 -- ===================== Scheme ============================
 data Scheme = Scheme [IDLoc] SPLType
@@ -173,16 +173,16 @@ instance MGU SPLType where
     mgu t1 t2 =  throwError $ generateError t1 t2
     
     generateError t1 t2 = case getLoc t1 `compare` getLoc t2 of
-        LT -> let (Loc line col) = getLoc t2 in Error line col ("Type "++ pp t1 ++" "++ showLoc t2 ++" does not unify with: " ++ pp t2)
-        GT -> let (Loc line col) = getLoc t1 in Error line col ("Type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
+        LT -> Error (getLoc t2) ("Type "++ pp t1 ++" "++ showLoc t2 ++" does not unify with: " ++ pp t2)
+        GT -> Error (getLoc t1) ("Type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
         EQ -> case getLoc t2 of 
-                        (Loc (-1) (-1)) -> Error (-1) (-1) ("Types do not unify: " ++ pp t1 ++ " vs. " ++ pp t2)
-                        (Loc line col) -> Error line col ("Type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
+                        (Loc (-1) (-1)) -> Error defaultLoc ("Types do not unify: " ++ pp t1 ++ " vs. " ++ pp t2)
+                        x -> Error x ("Type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
 
 varBind :: IDLoc -> SPLType -> TI Subst
 varBind id (IdType t) | id == t = return nullSubst
 varBind id (IdType t) = return $ Map.singleton id (IdType t)
-varBind id t | id `Set.member` ftv t = throwError $ Error (-1) (-1) ("occurs check fails: " ++ pp id ++ " vs. " ++ show t)
+varBind id t | id `Set.member` ftv t = throwError $ Error defaultLoc ("occurs check fails: " ++ pp id ++ " vs. " ++ show t)
 varBind id t = return $ Map.singleton id t
 
 -- ===================== Type inference ============================
@@ -290,7 +290,7 @@ tiMutRecFunDecls (TypeEnv env) ((FunDecl funName args Nothing vars stmts):xs) = 
             let funDecl' = FunDecl funName args (Just $ apply cs3 funType) vars' stmts'
 
             return (cs3, apply cs2 env''', funDecl':funDecls')
-        nothing -> throwError $ Error (getLineNum funName) (getColNum funName) "Function is mutual recursive and should therefore be in the type environment but it is not."
+        nothing -> throwError $ Error (getLoc funName) "Function is mutual recursive and should therefore be in the type environment but it is not."
 
 tiFunDecl :: TypeEnv -> FunDecl -> TI (Subst, TypeEnv, FunDecl)
 tiFunDecl env (FunDecl funName args (Just funType) vars stmts) = do
@@ -463,7 +463,7 @@ tiExp (TypeEnv env) (ExpId id (Field fields)) = case Map.lookup id env of
     Just (Scheme ids t) -> do 
         (s1, t', ret) <- getType t fields
         return (s1, ret, ExpId id (Field fields))
-    Nothing -> throwError $ Error (getLineNum id) (getColNum id) ("id: '" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)")
+    Nothing -> throwError $ Error (getLoc id) ("id: '" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet: (i.e. reference before declaration)")
 tiExp _ (ExpInt i loc)  = return (nullSubst, TypeBasic BasicInt loc, ExpInt i loc)
 tiExp _ (ExpBool b loc) = return (nullSubst, TypeBasic BasicBool loc, ExpBool b loc)
 tiExp _ (ExpChar c loc) = return (nullSubst, TypeBasic BasicChar loc, ExpChar c loc)
@@ -498,7 +498,7 @@ tiExp env (ExpOp2 e1 (Op2 op _) e2 loc) = do
             let cs3 = s4 `composeSubst` cs2 
             -- We maybe want to takes these out and let them be function calls. This way we 
             return (cs3, apply cs3 t3, ExpOp2 e1' (Op2 op (Just $ apply cs3 opType)) e2' loc)
-        _ -> throwError $ Error (getLineNum loc) (getColNum loc) ("Operator '"++ pp op ++"' on "++ pp loc ++ " is only supported for basic types Int, Bool and Char per the Grammar of SPL." )
+        _ -> throwError $ Error loc ("Operator '"++ pp op ++"' on "++ pp loc ++ " is only supported for basic types Int, Bool and Char per the Grammar of SPL." )
 tiExp env (ExpOp1 op e loc) = case op of
     Neg -> do 
         (s1, t1, e') <- tiExp env e
@@ -594,19 +594,19 @@ op2Type Con = do
 
 -- ===================== Error Injection ============================
 injectErrLoc :: TI a -> Loc -> TI a
-injectErrLoc runable (Loc line col) = case runTI runable of
+injectErrLoc runable loc = case runTI runable of
     (Right x, state) -> return x
-    (Left (Error _ _ msg), state) -> throwError $ Error line col msg
+    (Left (Error _ msg), state) -> throwError $ Error loc msg
 
 injectErrLocMsg :: TI a -> Loc -> String -> TI a
-injectErrLocMsg runable (Loc line col) m = case runTI runable of
+injectErrLocMsg runable loc m = case runTI runable of
     (Right x, state) -> return x
-    (Left (Error _ _ msg), state) -> throwError $ Error line col m
+    (Left (Error _ msg), state) -> throwError $ Error loc m
 
 injectErrMsgAddition :: TI a -> Loc -> String -> TI a
-injectErrMsgAddition runable (Loc line col) m = case runTI runable of
+injectErrMsgAddition runable loc m = case runTI runable of
     (Right x, state) -> return x
-    (Left (Error _ _ msg), state) -> throwError $ Error line col (m++" "++msg)
+    (Left (Error _ msg), state) -> throwError $ Error loc (m++" "++msg)
 
 
 
