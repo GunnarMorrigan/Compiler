@@ -10,6 +10,7 @@ import TI
 
 import Data.Char
 import Data.List ( intercalate )
+import Data.Set as Set
 import Data.Map as Map
 import Data.Either
 import Data.Bifunctor as BI
@@ -23,42 +24,72 @@ import Debug.Trace
 -- ===== Types ====
 
 data Mem =
-    G Int SPLType |
-    L Int SPLType |
-    H Int SPLType |
-    R5 
+    G Int SPLType | -- Global
+    L Int SPLType | -- Local
+    H Int SPLType | -- Heap
+    R5 -- Global Pointer
     deriving (Show, Eq)
 
 data Scope = Global | Local
-
-type GenState = (Int,Int)
+--               Ifs, Global, Overloaded function calls
+type GenState = (Int, Int, (Map String FunCall, Map String Op2Typed))
 type Gen a = ExceptT Error (State GenState) a
  
 type GenEnv = Map IDLoc Mem
 
 runGen :: Gen a -> (Either Error a, GenState)
 runGen t = runState (runExceptT t) initState
-  where initState = (0,0)
+  where initState = (0, 0, (Map.empty, Map.empty))
 
 -- ===== State manipulation =====
 resetIf :: Gen ()
 resetIf = do
-    (ifS,globalS) <- get
-    put (0,globalS)
+    (ifS,globalS, overloaded) <- get
+    put (0,globalS, overloaded)
 
-newIf :: String -> Gen (String, String)
+newIf :: String -> Gen (String, String, String)
 newIf name = do  
-    (ifS,globalS) <- get
-    put (ifS + 1,globalS)
-    return (name++"_ifTh"++show ifS,name++"_ifCon"++show ifS)
+    (ifS,globalS, overloaded) <- get
+    put (ifS + 1,globalS, overloaded)
+    return (name++"_ifTh"++show ifS, name++"_ifEl"++show ifS ,name++"_ifCon"++show ifS)
 
 newGlobal :: SPLType -> Gen Mem
 newGlobal typ = do
-    (ifS,globalS) <- get
-    put (ifS,globalS + 1)
+    (ifS,globalS, overloaded) <- get
+    put (ifS,globalS + 1, overloaded)
     return $ G globalS typ
 
+insertOp2 :: Op2Typed -> Gen ()
+insertOp2 (Op2 op (Just (FunType t t'))) = do
+    (ifS, globalS, (funcCalls, ops)) <- get
+    put (ifS, globalS, (funcCalls, Map.insert (overloadedOpName op t) (Op2 op (Just (FunType t t'))) ops))
+
+insertFunCall :: FunCall -> Gen ()
+insertFunCall (FunCall (ID id loc) args (Just (FunType t t'))) = do
+    (ifS, globalS, (funcCalls, ops)) <- get
+    let f = Map.insert (overloadedTypeName id t) (FunCall (ID id loc) [] (Just $ FunType t t')) funcCalls
+    put (ifS, globalS, (f, ops))
+
 -- ===== Generation =====
+genAssembly :: SPL -> Either Error [String]
+genAssembly (SPL decls) = do
+    let (rest, main) =  filterMain decls 
+    case runGen (gen rest [] Map.empty) of
+        (Left e, _) -> Left e
+        (Right (ssmCodeWithoutMain, env), _) -> 
+            case main of
+                Nothing -> Left $ Error (-1) (-1) "No main without arguments detected"
+                Just main' -> case runGen (gen main' [] env) of
+                    (Left error, _) -> Left error 
+                    (Right (ssmMain, _), (_, _, (overloadedFuns, overloadedOps))) -> 
+                        Right $ ssmCodeWithoutMain ++ genOverloadedFuns overloadedFuns ++ ssmMain
+    
+
+filterMain :: [Decl] -> ([Decl], Maybe Decl)
+filterMain [] = ([],Nothing)
+filterMain (FuncMain (FunDecl (ID "main" loc) [] (Just fType) vDecls stmts):xs) = let(ys, main) = filterMain xs in (ys, Just (FuncMain(FunDecl (ID "main" loc) [] (Just fType) vDecls stmts)))
+filterMain (x:xs) = let(ys, main) = filterMain xs in (x:ys, main)
+
 class GenCode a where
     gen :: a -> [String] -> GenEnv -> Gen ([String], GenEnv)
 
@@ -69,7 +100,7 @@ instance GenCode a => GenCode [a] where
 
 instance GenCode SPL where
     gen spl c env =
-        let (globals, functions) = sortSPL spl in trace ("SPL globals \n\n" ++ show globals) $ do
+        let (globals, functions) = sortSPL spl in do
         combineResult (genGlobals globals [] env) (gen functions c)
 
 instance GenCode Decl where
@@ -82,16 +113,16 @@ genGlobals globals c env = do
     return ("ldsa 1":store R5:res, env')
 
 genVarDecls :: [VarDecl] -> [String] -> Scope -> GenEnv -> Gen ([String], GenEnv)
-genVarDecls [] c _ env = return (c, env)
+genVarDecls [] c _ env = return (c,  env)
 genVarDecls (x:xs) c s env = do
     combineResult (genVarDecl x [] s env) (genVarDecls xs c s)
 
 genVarDecl :: VarDecl -> [String] -> Scope -> GenEnv -> Gen ([String], GenEnv)
-genVarDecl (VarDeclType t id e) c Global env = trace ("GLOBAL varDecl "++ show id ++ show env) $ do
+genVarDecl (VarDeclType t id e) c Global env = {-- trace ("GLOBAL varDecl "++ show id ++ show env) $ --} do
     mem <- newGlobal t
     let env' = Map.insert id mem env
-    gen e c env'
-    -- UPDATE ENV HIER, dit is een error zodat ik weet dat dit nog moet.
+    let annotedC = ("annote SP 0 0 green \""++pp id ++ "\""):c
+    insertComment (pp (VarDeclType t id e)) (gen e annotedC env')
 genVarDecl (VarDeclType t i e) c Local env = case Map.lookup i env of
     Just memLoc -> gen e (store memLoc:c) env
     Nothing -> error ("Variable " ++ show i ++ " unkown in generator " ++ showLoc i)
@@ -102,7 +133,7 @@ instance GenCode FunDecl where
         resetIf
         let env' = constructEnv env fType [] vDecls
         
-        (res,env'') <- combineResult (genVarDecls vDecls [] Local env') (genStmts stmts ("trap 0":"halt":c) (ID "main" loc))
+        (res,env'') <- combineResult (genVarDecls vDecls [] Local env') (genStmts stmts ("ldr RR":"trap 0":"halt":c) (ID "main" loc))
 
         return (insertLabel "main" (("link " ++ show (length vDecls)):res),env'')
 
@@ -110,7 +141,7 @@ instance GenCode FunDecl where
         resetIf
         let env' = constructEnv env fType args vDecls
         
-        (res,env'') <- combineResult
+        (res, env'') <- combineResult
                             (genVarDecls vDecls [] Local env')
                             (genStmts stmts (genReturn fType name c) (ID name loc))
         
@@ -127,28 +158,32 @@ genStmts :: [Stmt] -> [String] -> IDLoc -> GenEnv -> Gen ([String], GenEnv)
 genStmts [] c id env = return (c, env)
 -- The following two are here and not in genStmt because here we know if we need a continuation for something after the if stmt.
 genStmts ((StmtIf e stmts Nothing loc):xs) c (ID name l) env = do
-    (th, contin) <- newIf name
+    (th, _, contin) <- newIf name
 
     (ifStmt, env') <- combineResult (gen e [brf contin] env) (genStmts stmts [] (ID name l))
     
-    (rest, env'') <- BI.first (insertLabel contin) <$> genStmts xs c (ID name l) env'
+    (rest, env'') <- genStmts xs c (ID name l) env'
+    let rest' = insertLabel contin rest
 
     return $ if Prelude.null xs 
             then (ifStmt, env')
             else (ifStmt ++ rest, env'')
- 
 genStmts ((StmtIf e stmts (Just els) loc):xs) c (ID name l) env = do
-    (th, contin) <- newIf name
+    (th, _, contin) <- newIf name
 
-    (elseStmt, env') <- combineResult (gen e [brt th] env) (genStmts els [bra contin] (ID name l))
+    let elseBranchEnd = if Prelude.null xs then ["bra "++name++"End"] else [bra contin]
 
-    (ifElseStmt, env'') <- BI.first (insertLabel th) <$> genStmts stmts [] (ID name l) env'
+    (elseStmt, env') <- combineResult (gen e [brt th] env) (genStmts els elseBranchEnd (ID name l))
 
-    (rest, env''') <- BI.first (insertLabel contin) <$> genStmts xs c (ID name l) env''
+    (ifElseStmt, env'') <- genStmts stmts [] (ID name l) env'
+    let ifElseStmt' = insertLabel th ifElseStmt
+
+    (rest, env''') <- genStmts xs c (ID name l) env''
+    let rest' = insertLabel contin rest
 
     return $ if Prelude.null xs 
                 then (elseStmt++ifElseStmt++c, env'') 
-                else (elseStmt++ifElseStmt++rest, env''') 
+                else (elseStmt++ifElseStmt++rest', env''') 
 genStmts [StmtReturn exp loc] c id env =
     case exp of
         Nothing -> return (c, env)
@@ -169,16 +204,30 @@ genStmt stmt c _ env = throwError $ Error (-1) (-1) ("Failed to catch the follow
 
 -- MAKE USE OF THE fType in funCall for overloading
 genFuncCall :: FunCall -> [String] -> GenEnv -> Gen ([String], GenEnv)
-genFuncCall (FunCall (ID "print" _) args (Just fType)) c env = undefined 
+genFuncCall (FunCall (ID "print" loc) args (Just (FunType (TypeBasic t loc') t'))) c env =
+    case t of
+        BasicInt  -> return ("trap 0":c, env)
+        BasicChar -> return ("trap 1":c, env)
+        BasicBool -> do
+            let printName = overloadedTypeName "print" (TypeBasic t loc)
+            insertFunCall (FunCall (ID "print" loc) args (Just (FunType (TypeBasic t loc) t')))
+            return (bsr printName:c, env)
+genFuncCall (FunCall (ID "print" loc) args (Just (FunType t t'))) c env = do
+    let printName = overloadedTypeName "print" t
+    insertFunCall (FunCall (ID "print" loc) args (Just (FunType t t')))
+    return (bsr printName:c, env)
 genFuncCall (FunCall (ID "isEmpty" _) args (Just fType)) c env = do
-    return("ldh 0":"ldc 0":"eq":c,env)
+    gen args ("ldh 0":"ldc 0":"eq":c) env
 genFuncCall (FunCall id args (Just fType)) c env = do
     let c' = (if Prelude.null args then c else ajs (negate $ length args):c)
     gen args (("bsr " ++ pp id):c') env
 
 instance GenCode Exp where
-    gen (ExpId id field) c env = case Map.lookup id env of
+    gen (ExpId id (Field [])) c env = case Map.lookup id env of
         Just mem -> return (load mem ++ c, env )
+        Nothing -> error ("Variable " ++ show id ++ " unkown in generator " ++ showLoc id)
+    gen (ExpId id (Field xs)) c env = case Map.lookup id env of
+        Just mem -> return (load mem ++genStandardFunctions xs c, env)
         Nothing -> error ("Variable " ++ show id ++ " unkown in generator " ++ showLoc id)
     gen (ExpInt i _) c env = return (ldc i:c, env)
     gen (ExpBool b _) c env= return ( ldc (if b then -1 else 0  ):c, env)
@@ -203,70 +252,108 @@ instance GenCode Exp where
         Neg -> gen e ("neg":c) env
         Not -> gen e ("not":c) env
 
-instance GenCode Op2Typed where
-    gen (Op2 Plus _) c env = return ("add":c,env)
-    gen (Op2 Min _) c env = return ("sub":c,env)
-    gen (Op2 Mult _) c env = return ("mul":c,env)
-    gen (Op2 Div _) c env = return ("div":c,env)
-    gen (Op2 Mod _) c env = return ("mod":c,env)
+genStandardFunctions :: [StandardFunction] -> [String] -> [String]
+genStandardFunctions xs c = Prelude.foldr genStandardFunction c xs
 
-    gen (Op2 And _) c env = return ("and":c,env)
-    gen (Op2 Or _) c env = return ("or":c,env)
+genStandardFunction :: StandardFunction -> [String] -> [String]
+genStandardFunction (Head _) c = "ldc 1":"sub":"ldh 0":c
+genStandardFunction (Tail _) c = "ldh 0":c
+genStandardFunction (First _) c = "ldh 0":c
+genStandardFunction (Second _) c = "ldc 1":"sub":"ldh 0":c
+
+instance GenCode Op2Typed where
+    gen (Op2 Plus _) c env = return ("add":c, env)
+    gen (Op2 Min _) c env = return ("sub":c, env)
+    gen (Op2 Mult _) c env = return ("mul":c, env)
+    gen (Op2 Div _) c env = return ("div":c, env)
+    gen (Op2 Mod _) c env = return ("mod":c, env)
+
+    gen (Op2 And _) c env = return ("and":c, env)
+    gen (Op2 Or _) c env = return ("or":c, env)
 
     gen (Op2 Con (Just opType)) c env =
         return ("swp":"stmh 2":c,env)
 
     -- Should be extended for other types of comparison
-    gen (Op2 op (Just (FunType t _))) c env = do
-        (func, c', env') <- genCompare op t c env
-        return (bsr func:"ajs -2":"ldr RR":c', env')
+    gen (Op2 op (Just (FunType (TypeBasic _ _) _))) c env = 
+        return (op2Func op:c,env)
+    gen (Op2 op (Just (FunType t t'))) c env = trace ("THIS IS the type:\n"++ show t) $ do
+        let func = overloadedOpName op t
+        return (bsr func:"ajs -2":"ldr RR":c, env)
+
+-- ==================== Overloading functions ====================
+
+overloadedTypeName :: String -> SPLType -> String
+overloadedTypeName start t = start ++ typeToName t
+
+overloadedOpName :: Op2 -> SPLType -> String
+overloadedOpName op t = op2Func op ++ typeToName t
+
+findOverloading :: [Decl] -> (Set FunCall,Set Exp)
+findOverloading [] = (Set.empty, Set.empty)
+findOverloading (x:xs) = findOverloading xs
+
+genOverloadedFuns :: Map String FunCall -> [String]
+genOverloadedFuns funs | Map.null funs  = []
+genOverloadedFuns funs = do
+    let (ssmCode, names) = genOverloadedFun (Map.elemAt 0 funs)
+    let env = Map.filterWithKey (\ k _ -> k `elem` names) funs
+    ssmCode ++ genOverloadedFuns env
+
+genOverloadedFun :: (String, FunCall) -> ([String],[String])
+genOverloadedFun (name, FunCall (ID "print" _) _ (Just (FunType t t'))) = 
+    let (a,_,c) = genPrint t [] in (a,c)
 
 
-genCompare :: Op2 -> SPLType -> [String] -> GenEnv -> Gen (String, [String], GenEnv)
-genCompare op (TypeBasic _ _) c env = return (op2Func op,c,env)
-genCompare op (TupleType (a,b) _) c env = do
-    let fName = op2Func op ++ "Tuple"
-    let check = brf (fName++"End")
+-- genCompare :: Op2 -> SPLType -> [String] -> GenEnv -> Gen (String, [String], GenEnv)
+-- genCompare op (TypeBasic _ _) c env = return (op2Func op,c,env)
+-- genCompare op (TupleType (a,b) _) c env = do
+--     let fName = op2Func op ++ "Tuple"
+--     let check = brf (fName++"End")
 
-    let start = fName++":  link 0"
+--     let start = fName++":  link 0"
 
-    (bBSRfName, bC, env')  <- genCompare op b [] env
-    (aBSRfName, aC, env'') <- genCompare op a bC env'
+--     (bBSRfName, bC, env')  <- genCompare op b [] env
+--     (aBSRfName, aC, env'') <- genCompare op a bC env'
 
-    let endBranch = [fName++"End:  unlink","    ret"]
-    let compareB = ["ldl -3","ldc 1","sub","ldh 0","ldl -2","ldc 1","sub","ldh 0",bBSRfName,"str RR"]
-    let compare = "ldl -3":"ldh 0":"ldl -2":"ldh 0":aBSRfName:"str RR":"ldr RR":check:compareB
+--     let endBranch = [fName++"End:  unlink","    ret"]
+--     let compareB = ["ldl -3","ldc 1","sub","ldh 0","ldl -2","ldc 1","sub","ldh 0",bBSRfName,"str RR"]
+--     let compare = "ldl -3":"ldh 0":"ldl -2":"ldh 0":aBSRfName:"str RR":"ldr RR":check:compareB
 
-    return (fName, c ++ start:compare++endBranch++aC ,env'')
+--     return (fName, c ++ start:compare++endBranch++aC ,env'')
 
+genPrint :: SPLType -> [String] -> ([String], String, [String])
+genPrint (TypeBasic BasicInt _) c = (c,"trap 0" ,[])
+genPrint (TypeBasic BasicChar _) c = (c,"trap 1", []) 
+genPrint (TypeBasic BasicBool _) c = 
+    ("printBool":c, bsr "printBool", ["printBool"])  
+genPrint (TupleType (t1,t2) loc) c  = do
+    let printName = "print" ++ typeToName (TupleType (t1,t2) loc)
 
--- genOverloadedCompare op level fName (ArrayType a _ ) c env = undefined
--- genOverloadedCompare :: Op2 -> Int -> String -> SPLType -> [String] -> GenEnv -> Gen ([String], GenEnv)
--- genOverloadedCompare op level fName (TypeBasic _ _) c env = return (op2Func op:c,env)
--- genOverloadedCompare op level fName (TupleType (a,b) _) c env = do
---     let branch = if level == 0 then c else brf (fName++"End"):c
---     combineResult
---         (genOverloadedCompare op (level+1) fName a [brf (fName++"End")] env)
---         (genOverloadedCompare op (level+1) fName b branch)
--- genOverloadedCompare op level fName (ArrayType a _ ) c env = undefined
+    let (functionT1, printT1, printT1Names) = genPrint t1 c
+    let (functions, printT2, printT2Names) = genPrint t2 functionT1
 
--- genOverloadedFunction :: Op2 -> SPLType -> [String] -> GenEnv -> Gen ([String], GenEnv)
--- genOverloadedFunction op (TypeBasic _ _) c env = return (op2Func op:c,env)
--- genOverloadedFunction op opType c env = do
---     let (FunType argType _) = opType 
---     let fName = op2Func op ++ typeToName argType
---     (functionBody, env') <- genOverloadedCompare 
---                                 op 0
---                                 fName
---                                 argType [] env
---     let returnBody = genReturn opType fName c
---     return ((fName ++ ":  link 0"):functionBody ++ returnBody, env')
+    let functionsC = (printName++":  link 0"): 
+                        openBracket ("ldl -2":"ldh 0":printT1: 
+                        comma ("ldl -2":"ldc 1":"sub":"ldh 0":printT2: 
+                        closeBracket ("unlink":"ret":functions)))
+
+    (functionsC, bsr printName, printName:(printT1Names++printT2Names)) 
+genPrint (ArrayType a1 _) c  = undefined 
+
+openBracket c  = "ldc 40":"trap 1":c
+closeBracket c  = "ldc 41":"trap 1":c
+
+openSqBracket c = "ldc 91":"trap 1":c
+closeSqBracket c = "ldc 93":"trap 1":c
+
+comma c = "ldc 44":"trap 1":c
 
 
 typeToName :: SPLType -> String 
 typeToName (TypeBasic x _) = pp x
-typeToName (TupleType (t1,t2) _) = "Tuple"
-typeToName (ArrayType a1 _) = "Array"
+typeToName (TupleType (t1,t2) _) = "Tuple" ++ typeToName t1 ++ typeToName t2
+typeToName (ArrayType a1 _) = "Array"++ typeToName a1
 typeToName (FunType arg f) = "Func"
 typeToName (Void _) = "Void"
 
@@ -283,7 +370,13 @@ op2Func Neq = "ne"
 combineResult :: Gen ([String], GenEnv) -> (GenEnv -> Gen ([String], GenEnv)) -> Gen ([String], GenEnv)
 combineResult a b = do
     (resA, env) <- a
-    BI.first (resA++) <$> b env 
+    (resB, env') <- b env
+    return (resA++resB, env')
+
+-- combineEF :: Maybe [String] -> Maybe [String] -> Maybe [String]
+-- combineEF Nothing x = x
+-- combineEF x Nothing = x
+-- combineEF (Just x) (Just y) = Just (x++y)
 
 insertLabel :: String -> [String] -> [String]
 insertLabel label (x:xs) = (label++":  "++x):xs
@@ -291,12 +384,15 @@ insertLabel label (x:xs) = (label++":  "++x):xs
 isVoidFun :: SPLType -> Bool
 isVoidFun x = last (getArgsTypes x) `eqType` Void defaultLoc
 
--- globalsRegister :: String
--- globalsRegister = "R5"
+insertComment :: String -> Gen ([String], GenEnv) -> Gen ([String], GenEnv)
+insertComment comment c = BI.first f <$> c
+    where f (x:xs) = (x++" //"++comment):xs
+
+-- insertAnnote :: String Gen ([String], GenEnv) -> Gen ([String], GenEnv)
 
 -- ==================== Environment ====================
 constructEnv :: GenEnv -> SPLType -> [IDLoc] -> [VarDecl] -> GenEnv
-constructEnv env fType xs ys = fromList decls `union` fromList args `union` env
+constructEnv env fType xs ys = Map.fromList decls `Map.union` Map.fromList args `Map.union` env
     where
         args = zipWith3 (\ id loc typ -> (id, L loc typ)) xs [(negate (length xs)-1 )..] (init $ getArgsTypes fType)
         decls = zipWith (\(VarDeclType t id e) b -> (id, L b t) ) ys [1..]
@@ -305,7 +401,7 @@ constructEnv env fType xs ys = fromList decls `union` fromList args `union` env
 load :: Mem -> [String] 
 load (L x _) = ["ldl " ++ show x]
 load (H x _) = undefined
-load (G x _) = case x of
+load (G x t) = case x of
     0 -> load R5++["lda 0"]
     _ -> load R5++["ldc " ++ show x, "add", "lda 0"]
 load R5      = ["ldr R5"]
@@ -315,17 +411,6 @@ store (L x _) = "stl " ++ show x
 store (H x _) = "sth " ++ show x
 store (G x _) = "stl " ++ show x
 store R5      = "str R5"
-
--- ldc 6
--- ldc 5
--- ldsa -1
--- sta 0
--- trap 0
--- Loads 6 and 5 on the stack. Gets the address of the 6.
--- and then sta 0 places the second argument (5) on the first arg (address of the 6)
-
-
-
 
 -- ===== Local =====
 -- Load Local. Pushes a value relative to the markpointer.

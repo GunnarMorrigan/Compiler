@@ -10,7 +10,7 @@ import Parser
 import AST
  
 import System.Exit
-
+import Debug.Trace
 
 class SPLGraph a where
     toGraph :: a -> [(Decl, IDLoc, [IDLoc])]
@@ -67,7 +67,8 @@ instance Callees Exp where
 
 removeMutRec :: [Decl] -> [Decl]
 removeMutRec (MutRec x:xs) = (FuncMain <$> x) ++ removeMutRec xs 
-removeMutRec x = x
+removeMutRec [] = []
+removeMutRec (x:xs) = x:removeMutRec xs
 
 mainMutRec :: String -> IO()
 mainMutRec filename = do
@@ -118,28 +119,16 @@ fromGraph (CyclicSCC ys:xs) = do
     decl <- castCyclicToMutRec ys
     return (SPL (decl:second))
 
-
-
--- fromGraph :: [SCC (Decl, IDLoc, [IDLoc])]  -> Either Error SPL
--- fromGraph [x] = do 
---     decls <- castCyclicToMutRec x
---     return $ SPL [decls]
--- fromGraph (x:xs) = do
---     first <- castCyclicToMutRec x
---     (SPL second) <- fromGraph xs
---     return (SPL $ first:second)
-        
-onlyFuncMain :: [(Decl, IDLoc, [IDLoc])] -> Bool
-onlyFuncMain [] = True
-onlyFuncMain ((VarMain x,_,_):xs) = False
-onlyFuncMain ((FuncMain x,_,_):xs) = onlyFuncMain xs
-
-
 castCyclicToMutRec :: [(Decl, IDLoc, [IDLoc])] -> Either Error Decl
 castCyclicToMutRec ys | onlyFuncMain ys =
      Right $ MutRec (map (\(FuncMain f,_,_) -> f) ys)
 castCyclicToMutRec _ =
      Left $ Error (-1) (-1) "Mutual recursion between variables detected. This is not allowed."
+
+onlyFuncMain :: [(Decl, IDLoc, [IDLoc])] -> Bool
+onlyFuncMain [] = True
+onlyFuncMain ((VarMain x,_,_):xs) = False
+onlyFuncMain ((FuncMain x,_,_):xs) = onlyFuncMain xs
 
 mutRec :: SPL -> Either Error SPL
 mutRec code = fromGraph $ stronglyConnCompR $ toGraph code
