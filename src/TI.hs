@@ -35,7 +35,6 @@ runTI t = runState (runExceptT t) initTIState
 newtype TypeEnv = TypeEnv (Map IDLoc Scheme)
     deriving (Show)
 
-
 insert :: TypeEnv -> IDLoc -> Scheme -> TypeEnv
 insert (TypeEnv env) id scheme = TypeEnv (Map.insert id scheme env)
 
@@ -168,7 +167,7 @@ instance MGU SPLType where
 
     mgu (FunType arg ret) (FunType arg' ret') = do 
         s1 <- mgu arg arg'
-        s2 <- mgu (apply s1 ret) (apply s1 ret')  
+        s2 <- mgu (apply s1 ret) (apply s1 ret')
         return (s2 `composeSubst` s1)
 
     mgu t1 t2 =  throwError $ generateError t1 t2
@@ -486,16 +485,20 @@ tiExp env (ExpTuple (e1, e2) loc Nothing) = do
 tiExp env (ExpOp2 e1 (Op2 op _) e2 loc) = do
     (t1, t2, t3, opType) <- op2Type op
     (s1, t1', e1') <- injectErrLoc (tiExp env e1) (getLoc e1)
-    s2 <- injectErrLoc (mgu t1' (apply s1 t1)) (getLoc e1)
-    let cs1 = s2 `composeSubst` s1
-    
-    (s3, t2', e2') <- injectErrLoc (tiExp (apply cs1 env) e2) (getLoc e2)
-    let cs2 = s3 `composeSubst` cs1
-    
-    s4 <- injectErrLoc (mgu (apply cs2 t2') (apply cs2  t2)) (getLoc e2)
-    let cs3 = s4 `composeSubst` cs2 
-    -- We maybe want to takes these out and let them be function calls. This way we 
-    return (cs3, apply cs3 t3, ExpOp2 e1' (Op2 op (Just $ apply cs3 opType)) e2' loc)
+
+    case t1' of
+        TypeBasic _ _ -> do
+            s2 <- injectErrLoc (mgu t1' (apply s1 t1)) (getLoc e1)
+            let cs1 = s2 `composeSubst` s1
+            
+            (s3, t2', e2') <- injectErrLoc (tiExp (apply cs1 env) e2) (getLoc e2)
+            let cs2 = s3 `composeSubst` cs1
+            
+            s4 <- injectErrLoc (mgu (apply cs2 t2') (apply cs2  t2)) (getLoc e2)
+            let cs3 = s4 `composeSubst` cs2 
+            -- We maybe want to takes these out and let them be function calls. This way we 
+            return (cs3, apply cs3 t3, ExpOp2 e1' (Op2 op (Just $ apply cs3 opType)) e2' loc)
+        _ -> throwError $ Error (getLineNum loc) (getColNum loc) ("Operator '"++ pp op ++"' on "++ pp loc ++ " is only supported for basic types Int, Bool and Char per the Grammar of SPL." )
 tiExp env (ExpOp1 op e loc) = case op of
     Neg -> do 
         (s1, t1, e') <- tiExp env e
@@ -577,6 +580,7 @@ op2Type x | x == Eq || x == Neq = do
     return (tv, tv, t, FunType tv (FunType tv t))
 op2Type x | x == Le || x == Ge || x == Leq || x == Geq  = do
     tv <- newSPLVar
+    -- let arg = TypeBasic tv Loc
     let t = TypeBasic BasicBool defaultLoc
     return (tv, tv, t, FunType tv (FunType tv t))
 op2Type x | x== And || x == Or = 
