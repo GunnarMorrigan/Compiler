@@ -211,8 +211,8 @@ data Op2 =
 
 -- ===================== prettyPrinter ============================
 prettyPrinter :: PrettyPrinter a => [a] -> String
-prettyPrinter (x:xs) = concatMap (\x -> unlines $ Prelude.map ("    "++) (lines $ pp x)) (x:xs)
 prettyPrinter [] = ""
+prettyPrinter (x:xs) = concatMap (\x -> unlines $ Prelude.map ("    "++) (lines $ pp x)) (x:xs)
 
 class PrettyPrinter a where
   pp :: a -> String
@@ -253,8 +253,6 @@ instance PrettyPrinter SPLType where
   pp (TypeBasic x loc) = pp x
   pp (TupleType (a, b) loc) = "(" ++ pp a ++ ", "++pp b ++ ")"
   pp (ArrayType x loc) = "["++pp x++"]"
-  pp (IdType id) = pp id
-  pp (IdType id) = pp id
   pp (IdType id) = pp id
   -- Prints function types haskell style:
   -- pp (FunType arg ret) = pp arg ++ " -> " ++ pp ret
