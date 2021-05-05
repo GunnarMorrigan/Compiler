@@ -77,7 +77,7 @@ genAssembly (SPL decls) = do
     (assemblyGlobals, env) <- gen globals [bsr "main"] Map.empty
     (assemblyFunctions, env') <- gen globals [] env
     case mainDecl of
-        Nothing -> throwError $ Error (-1) (-1) "No main without arguments detected"
+        Nothing -> throwError $ Error defaultLoc "No main without arguments detected"
         Just main -> do
             (assemblyMain, _) <- gen main [] env'
             (_, _, (overloadedFuns, overloadedOps)) <- get 
@@ -139,7 +139,7 @@ instance GenCode FunDecl where
         
         return (insertLabel name (("link " ++ show (length vDecls)):res),env'')
     gen (FunDecl (ID "main" loc) _ _ _ _) _ _ = 
-        throwError $ Error (getLineNum loc) (getColNum loc) "main function can't have arguments, return objects etc."
+        throwError $ Error loc "main function can't have arguments, return objects etc."
 
 genReturn :: SPLType -> String -> [String] -> [String]
 genReturn fType fName c | isVoidFun fType = (fName++"End:    unlink"):"    ret": c
@@ -191,7 +191,7 @@ genStmt (StmtReturn exp loc) c (ID id _) env =
     let retLink = "bra " ++ id ++ "End" in case exp of
     Nothing -> return (retLink:c, env)
     Just e -> gen e ("str RR":retLink:c) env
-genStmt stmt c _ env = throwError $ Error (-1) (-1) ("Failed to catch the following object:\n" ++ show stmt)
+genStmt stmt c _ env = throwError $ Error defaultLoc ("Failed to catch the following object:\n" ++ show stmt)
 
 genFuncCall :: FunCall -> [String] -> GenEnv -> Gen ([String], GenEnv)
 genFuncCall (FunCall (ID "print" loc) args (Just (FunType (TypeBasic t loc') t'))) c env =

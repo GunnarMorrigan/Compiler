@@ -123,7 +123,7 @@ castCyclicToMutRec :: [(Decl, IDLoc, [IDLoc])] -> Either Error Decl
 castCyclicToMutRec ys | onlyFuncMain ys =
      Right $ MutRec (map (\(FuncMain f,_,_) -> f) ys)
 castCyclicToMutRec _ =
-     Left $ Error (-1) (-1) "Mutual recursion between variables detected. This is not allowed."
+     Left $ Error defaultLoc "Mutual recursion between variables detected. This is not allowed."
 
 onlyFuncMain :: [(Decl, IDLoc, [IDLoc])] -> Bool
 onlyFuncMain [] = True
