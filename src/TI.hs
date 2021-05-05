@@ -103,10 +103,10 @@ instance Types SPLType where
     ftv (TupleType (x,y) _) = ftv x `Set.union` ftv y
     ftv (ArrayType x _) = ftv x
     ftv (FunType args ret) = ftv args `Set.union` ftv ret
-    ftv (IdType x _) = Set.singleton x
-    apply s (IdType x t) = case Map.lookup x s of
+    ftv (IdType x ) = Set.singleton x
+    apply s (IdType x) = case Map.lookup x s of
                         Just t -> t
-                        Nothing -> IdType x t
+                        Nothing -> IdType x
     apply s (FunType args ret) = FunType (apply s args) (apply s ret)
     apply s (TupleType (x,y) loc) = TupleType (apply s x, apply s y) loc
     apply s (ArrayType x loc) = ArrayType (apply s x) loc
@@ -118,22 +118,11 @@ instance Types a =>  Types (Maybe a) where
     apply s (Just a) = Just $ apply s a
     apply s Nothing = Nothing
 
-newSPLVarWithClass :: Class -> TI SPLType
-newSPLVarWithClass c =
-    do  s <- get
-        put (s + 1)
-        return $ IdType (idLocCreator (reverse (toTyVar s))) (Just c)
-  where 
-    toTyVar :: Int -> String
-    toTyVar c | c < 26    =  [toEnum (97+c)]
-              | otherwise = let (n, r) = c `divMod` 26
-                            in toEnum (97+r) : toTyVar (n-1)
-
 newSPLVar :: TI SPLType
 newSPLVar =
     do  s <- get
         put (s + 1)
-        return $ IdType (idLocCreator (reverse (toTyVar s))) Nothing
+        return $ IdType (idLocCreator (reverse (toTyVar s)))
   where 
     toTyVar :: Int -> String
     toTyVar c | c < 26    =  [toEnum (97+c)]
@@ -174,8 +163,8 @@ instance MGU SPLType where
         s2 <- mgu r1 r2
         return (s1 `composeSubst` s2)
     mgu (ArrayType x _) (ArrayType y _) = mgu x y
-    mgu (IdType id c) r = varBind id c r
-    mgu l (IdType id c) = varBind id c l
+    mgu (IdType id) r = varBind id r
+    mgu l (IdType id) = varBind id l
 
     mgu (FunType arg ret) (FunType arg' ret') = do 
         s1 <- mgu arg arg'
@@ -191,17 +180,11 @@ instance MGU SPLType where
                         (Loc (-1) (-1)) -> Error (-1) (-1) ("Types do not unify: " ++ pp t1 ++ " vs. " ++ pp t2)
                         (Loc line col) -> Error line col ("Type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
 
-varBind :: IDLoc -> Maybe Class -> SPLType -> TI Subst
-varBind id _ (IdType t _) | id == t = return nullSubst
-varBind id c (IdType t c') = return $ Map.singleton id (IdType t (composeClass c c'))
-varBind id _ t | id `Set.member` ftv t = throwError $ Error (-1) (-1) ("occurs check fails: " ++ pp id ++ " vs. " ++ show t)
-varBind id _ t = return $ Map.singleton id t
-
-composeClass :: Maybe Class -> Maybe Class -> Maybe Class
-composeClass Nothing c = c
-composeClass c Nothing = c
-composeClass c c' | c == c' = c
-composeClass c c' | c /= c' = Just OrdClass
+varBind :: IDLoc -> SPLType -> TI Subst
+varBind id (IdType t) | id == t = return nullSubst
+varBind id (IdType t) = return $ Map.singleton id (IdType t)
+varBind id t | id `Set.member` ftv t = throwError $ Error (-1) (-1) ("occurs check fails: " ++ pp id ++ " vs. " ++ show t)
+varBind id t = return $ Map.singleton id t
 
 -- ===================== Type inference ============================
 tiSPL :: SPL -> TI (Subst, TypeEnv, SPL)
@@ -589,11 +572,11 @@ op2Type x | x == Plus || x == Min || x == Mult || x == Div || x == Mod =
     let t = TypeBasic BasicInt defaultLoc in
     return (t, t, t, FunType t (FunType t t))
 op2Type x | x == Eq || x == Neq = do
-    tv <- newSPLVarWithClass EqClass 
+    tv <- newSPLVar
     let t = TypeBasic BasicBool defaultLoc
     return (tv, tv, t, FunType tv (FunType tv t))
 op2Type x | x == Le || x == Ge || x == Leq || x == Geq  = do
-    tv <- newSPLVarWithClass OrdClass
+    tv <- newSPLVar
     let t = TypeBasic BasicBool defaultLoc
     return (tv, tv, t, FunType tv (FunType tv t))
 op2Type x | x== And || x == Or = 
