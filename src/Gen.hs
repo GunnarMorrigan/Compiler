@@ -482,4 +482,5 @@ mainGen filename = do
                     (Right result,_) -> do
                                 let output = intercalate "\n" result
                                 writeFile "../generated_ssm/gen.ssm" output
+                    (Left x,_) -> putStr $ "ERROR:\n" ++ show x ++ "\n" ++ showPlaceOfError file x
             Left x -> putStr $ "ERROR:\n" ++ show x ++ "\n" ++ showPlaceOfError file x

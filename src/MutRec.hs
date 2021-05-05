@@ -3,8 +3,8 @@ module MutRec where
 
 import Data.Graph as Graph
 
-import Data.Tree
--- import Data.Graph.SCC as SCC
+import GHC.Arr
+
 import Error
 import Parser
 import AST
@@ -130,5 +130,13 @@ onlyFuncMain [] = True
 onlyFuncMain ((VarMain x,_,_):xs) = False
 onlyFuncMain ((FuncMain x,_,_):xs) = onlyFuncMain xs
 
+-- ===== Remove dead code =====
+removeDeadCode :: [(Decl, IDLoc, [IDLoc])] -> [(Decl, IDLoc, [IDLoc])]
+removeDeadCode nodes = do
+    let (graph, getNode, getVertex) = graphFromEdges nodes
+    let Just mainVertex = getVertex (ID "main" defaultLoc)
+    let list = map fst $ filter (\(a,b) -> b == 0 && (a /= mainVertex)) (assocs $ indegree graph)
+    trace ("MAIN: "++ show mainVertex) $ map getNode list
+
 mutRec :: SPL -> Either Error SPL
-mutRec code = fromGraph $ stronglyConnCompR $ toGraph code
+mutRec code = fromGraph $ stronglyConnCompR $ removeDeadCode $ toGraph code
