@@ -1,6 +1,25 @@
-f(x) {
-    var a = 10;
 
+
+main(){
+    print(('a','b'));
+}
+
+/*
+
+var a = 'A';
+var b = 'B';
+var c = [1,2,3];
+
+f(){
+    return c.hd;
+}
+
+compare(a,b){
+
+    return a.fst == b.fst && a.snd == b.snd;
+}
+
+f(x) {
     if (x > a){
         return x * a;
     }
@@ -9,14 +28,8 @@ f(x) {
     }
 }
 
-main(){
-    f(50);
-}
 
 
-
-
-/*
 f(x, y) {
     var z = 4;
     var a = 10;

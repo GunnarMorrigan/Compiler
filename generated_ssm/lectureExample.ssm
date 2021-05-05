@@ -1,0 +1,20 @@
+
+bra main
+f:  link 1
+    ldc 4
+    stl 1
+    ldl -3
+    ldl -2
+    add
+    ldl 1
+    add
+    str RR
+    unlink
+    ret
+main:  ldc 30
+    ldc 8
+    bsr f
+    ajs -2
+    ldr RR
+    trap 0
+    halt

@@ -17,7 +17,7 @@ data Token
   | SemiColToken| CommaToken| IsToken
   | FunTypeToken| ArrowToken| VoidToken| ReturnToken
   | EmptyListToken| BrackOToken| BrackCToken| CBrackOToken| CBrackCToken| SBrackOToken| SBrackCToken
-  | HdToken| TlToken| FstToken| SndToken| IsEmptyToken
+  | HdToken| TlToken| FstToken| SndToken
   | PlusToken| MinToken| MultToken| DivToken| ModToken 
   | EqToken| LeToken | GeToken | LeqToken | GeqToken| NeqToken| AndToken| OrToken| ConstToken| NotToken
   | IdToken String
@@ -50,7 +50,6 @@ instance Show Token where
   show TlToken = ".tl"
   show FstToken = ".fst"
   show SndToken = ".snd"
-  show IsEmptyToken = ".isEmpty"
   show PlusToken = "+"
   show MinToken = "-"
   show MultToken = "*"
@@ -76,7 +75,7 @@ alphaCheck :: [Char] -> Bool
 alphaCheck xs = null xs || not (isAlphaNum (head xs))
 
 acTokens = [VarToken, ReturnToken, VoidToken, BoolToken True, BoolToken False, TypeBoolToken, TypeIntToken, TypeCharToken, IfToken, ElseToken, WhileToken, 
-            HdToken, TlToken, FstToken, SndToken, IsEmptyToken]
+            HdToken, TlToken, FstToken, SndToken]
 tokens = [EmptyListToken, BrackOToken,BrackCToken,CBrackOToken,CBrackCToken,SBrackOToken,SBrackCToken,FunTypeToken,ArrowToken,SemiColToken,EqToken,LeqToken,GeqToken,
           NeqToken,AndToken,OrToken,IsToken,PlusToken,MinToken,MultToken,DivToken,ModToken,LeToken,GeToken,ConstToken,NotToken,CommaToken]
 

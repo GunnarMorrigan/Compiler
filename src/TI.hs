@@ -522,7 +522,7 @@ tiExp env (ExpOp1 op e loc) = case op of
         (s1, t1, e') <- tiExp env e
         s2 <- mgu t1 (TypeBasic BasicBool (getLoc t1))
         return (s2 `composeSubst` s1, t1, ExpOp1 op e' loc)
-tiExp (TypeEnv env) (ExpFunCall (FunCall (ID n l) args Nothing) loc) =  trace ("ExpFunCall "++n++" \n\n" ++printEnv (Map.toList env)) $  case Map.lookup (ID n l) env of
+tiExp (TypeEnv env) (ExpFunCall (FunCall (ID n l) args Nothing) loc) = {-- trace ("ExpFunCall "++n++" \n\n" ++printEnv (Map.toList env)) $ --} case Map.lookup (ID n l) env of
     Just scheme -> do 
         t <- instantiate scheme
         let argTypes = getArgsTypes t
@@ -577,12 +577,6 @@ getType t [Second loc] = do
     let t' = TupleType (a, b) defaultLoc
     s1 <- mgu t t'
     return (s1, apply s1  t', b) 
-getType t [IsEmpty loc] = do
-    tv <- newSPLVar
-    let t' = ArrayType tv defaultLoc
-    let retType = TypeBasic BasicBool defaultLoc
-    s1 <- mgu t t'
-    return (s1, apply s1 t', retType)
 getType t (x:xs) = do
     (s1, t', ret) <- getType t [x]
     (s2, t'', ret') <- getType ret xs
@@ -681,7 +675,7 @@ instance UpdateTypes SPL where
 instance UpdateTypes Decl where
     updateTypes (VarMain varDecl) s env = VarMain $ updateTypes varDecl s env
     updateTypes (FuncMain funDecl) s env = FuncMain $ updateTypes funDecl s env
-    -- updateTypes (MutRec x) s env = MutRec $ updateTypes x s  env
+    updateTypes (MutRec x) s env = trace ("Error in UpdateTypes FunDecl\n" ++ pp (MutRec  x)) undefined 
 
 instance UpdateTypes VarDecl where
     -- updateTypes (VarDeclVar id e) s env = 
@@ -698,6 +692,7 @@ instance UpdateTypes FunDecl where
         let varDecls' = updateTypes varDecls s env
         let stmts' = updateTypes stmts s env
         FunDecl funName args funType varDecls' stmts'
+    -- updateTypes f s env = trace ("Error in UpdateTypes FunDecl\n" ++ pp f) undefined 
     
 instance UpdateTypes Stmt where
     updateTypes (StmtIf e stmts Nothing loc) s env = do

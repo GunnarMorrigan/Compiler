@@ -153,7 +153,7 @@ arrayType :: Parser (Token, Int, Int) SPLType
 arrayType = flip ArrayType <$> locParser <*> (pToken SBrackOToken *> splType <* pToken SBrackCToken)
 
 idType :: Parser (Token, Int, Int) SPLType
-idType = IdType <$> idPLoc <*> pure Nothing
+idType = IdType <$> idPLoc
 
 -- ===== BasicType =====
 basicType :: Parser (Token, Int, Int) BasicType
@@ -327,7 +327,6 @@ standardFunctionP =
     <|> pTokenGen TlToken Tail
     <|> pTokenGen FstToken First
     <|> pTokenGen SndToken Second
-    <|> pTokenGen IsEmptyToken IsEmpty
 
 -- ===================== FunCall ============================
 funCall :: Parser (Token, Int, Int) FunCall
