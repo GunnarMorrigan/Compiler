@@ -26,12 +26,11 @@ import Debug.Trace
 data Mem =
     G Int SPLType | -- Global
     L Int SPLType | -- Local
-    H Int SPLType | -- Heap
-    R5 -- Global Pointer
+    R5              -- Global Pointer
     deriving (Show, Eq)
 
 data Scope = Global | Local
---               Ifs, Global, Overloaded function calls
+--               Ifs, Global, Overloaded functions, overloaded Op2s
 type GenState = (Int, Int, (Map String FunCall, Map String Op2Typed))
 type Gen a = ExceptT Error (State GenState) a
  
@@ -87,7 +86,6 @@ genAssembly spl = do
         Just main -> do
             (assemblyMain, _) <- gen main [] env'
             (_, _, (overloadedFuns, overloadedOps)) <- get 
-            -- trace (show $ genOverloadedFun ( Map.elemAt 0 overloadedFuns) overloadedFuns) return $ assemblyBody ++ assemblyMain
             return $ 
                 (assemblyGlobals ++ assemblyFunctions) ++ 
                     genOverloadedFuns overloadedFuns ++ 
@@ -122,7 +120,7 @@ genVarDecls (x:xs) c s env = do
     combineResult (genVarDecl x [] s env) (genVarDecls xs c s)
 
 genVarDecl :: VarDecl -> [String] -> Scope -> GenEnv -> Gen ([String], GenEnv)
-genVarDecl (VarDeclType t id e) c Global env = {-- trace ("GLOBAL varDecl "++ show id ++ show env) $ --} do
+genVarDecl (VarDeclType t id e) c Global env = do
     mem <- newGlobal t
     let env' = Map.insert id mem env
     let annotedC = ("annote SP 0 0 green \""++pp id ++ "\""):c
@@ -225,7 +223,7 @@ genStmt (StmtReturn exp loc) c (ID id _) env =
     in case exp of
         Nothing -> return (retLink:c, env)
         Just e -> gen e ("str RR":retLink:c) env
-genStmt stmt c _ env = throwError $ Error defaultLoc ("Failed to catch the following object:\n" ++ show stmt)
+genStmt stmt c (ID name loc) env = throwError $ Error defaultLoc ("Failed to catch an statement in function " ++ name ++" object:\n" ++ show stmt)
 
 genFuncCall :: FunCall -> [String] -> GenEnv -> Gen ([String], GenEnv)
 genFuncCall (FunCall (ID "print" loc) args (Just (FunType (TypeBasic t loc') t'))) c env =
@@ -265,7 +263,6 @@ instance GenCode Exp where
         combineResult (gen e2 [] env) (gen e1 storeTuple)   
     gen (ExpFunCall funcall _) c env =
         genFuncCall funcall c env
-
     gen (ExpOp2 e1 op e2 loc) c env  = do
         (operator, env') <- gen op c env
         (secondArg, env'') <- gen e2 operator env'
@@ -326,7 +323,6 @@ instance GenCode Op2Typed where
         return (bsr func:"ajs -2":"ldr RR":c, env)
 
 -- ==================== Overloading functions ====================
-
 overloadedTypeName :: String -> SPLType -> String
 overloadedTypeName start t = start ++ typeToName t
 
@@ -377,11 +373,7 @@ genPrint (ArrayType a loc) c funcs = do
     let printName  = "print" ++ typeToName (ArrayType a loc)
     let (printA, functionT1, funcs') = genPrint a c funcs
 
-    -- let endList = insertLabel "EmptyList" (closeSqBracket ["unlink","ret"])
-    -- let functionsC = (printName++": link 0") : openSqBracket ("ldl -2":"ldc 0":"eq":"brt EmptyList":"ldl -2":"ldh -1":printA:"ldl -2":"ldh 0":bsr printName:endList)
-
     let functionsC = printArray printA printName
-
     (bsr printName, functionsC ++ functionT1 ++ c, Map.delete printName funcs)
 
 printArray :: String -> String -> [String]
@@ -418,7 +410,6 @@ printArray printA printName = [printName ++": link 1",
     "trap 1",
     "unlink",
     "ret"]
-
 
 genCompare :: Op2 -> SPLType -> [String] -> Map String Op2Typed -> (String, [String], Map String Op2Typed)
 genCompare op (TypeBasic BasicBool _) c env = case op of
@@ -527,7 +518,6 @@ insertComment :: String -> Gen ([String], GenEnv) -> Gen ([String], GenEnv)
 insertComment comment c = BI.first f <$> c
     where f (x:xs) = (x++" //"++comment):xs
 
--- insertAnnote :: String Gen ([String], GenEnv) -> Gen ([String], GenEnv)
 -- ==================== Environment ====================
 constructEnv :: GenEnv -> SPLType -> [IDLoc] -> [VarDecl] -> GenEnv
 constructEnv env fType xs ys = Map.fromList decls `Map.union` Map.fromList args `Map.union` env
@@ -538,7 +528,6 @@ constructEnv env fType xs ys = Map.fromList decls `Map.union` Map.fromList args 
 -- ==================== Instructions ====================
 loadAddress :: Mem -> [String] 
 loadAddress (L x _) = ["ldla " ++ show x]
-loadAddress (H x _) = undefined
 loadAddress (G x t) = case x of
     0 -> load R5
     _ -> load R5++["ldc " ++ show x, "add"]
@@ -546,13 +535,11 @@ loadAddress R5      = ["ldr R5"]
 
 load :: Mem -> [String] 
 load (L x _) = ["ldl " ++ show x]
-load (H x _) = undefined
 load (G x t) = load R5++["lda "++show x]
 load R5      = ["ldr R5"]
 
 store :: Mem -> String
 store (L x _) = "stl " ++ show x
-store (H x _) = undefined
 store (G x _) = "stl " ++ show x
 store R5      = "str R5"
 
@@ -584,14 +571,6 @@ lds x = "lds " ++ show x
 ajs :: Int -> String
 ajs x = "ajs " ++ show x
 
--- ===== Heap =====
--- Load from Heap. Pushes a value pointed to by the value at the top of the stack. The pointer value is offset by a constant offset.
-ldh :: Int -> String
-ldh x = "ldl " ++ show x
-
--- Store into Heap. Pops 1 value from the stack and stores it into the heap. Pushes the heap address of that value on the stack.
-sth :: Mem -> String 
-sth (H x _) = "sth " ++ show x
 
 -- ==================== Main ====================
 mainGenTest1 :: IO ()

@@ -45,7 +45,6 @@ data BasicType
   = BasicInt
   | BasicBool
   | BasicChar
-  | General IDLoc
   deriving (Eq, Show)
 
 data Stmt = StmtIf Exp [Stmt] (Maybe [Stmt]) Loc

@@ -20,10 +20,6 @@ import System.Directory
 import Debug.Trace
 
 -- ===================== Type inference data types ============================
-
--- data TIEnv = TIEnv  {}
---     deriving(Show)
-    
 type TIState = Int
 type TI a = ExceptT Error (State TIState) a
 
@@ -153,7 +149,6 @@ instance MGU a => MGU (Maybe a) where
 
 instance MGU SPLType where
     mgu (TypeBasic x _) (TypeBasic y _) | x == y = return nullSubst
-    -- mgu (TypeBasic (General a) _) (TypeBasic y _) = undefined 
     mgu (TypeBasic x loc) (TypeBasic y loc') =  throwError $ generateError (TypeBasic x loc) (TypeBasic y loc')
     
     mgu (Void _) (Void _) = return nullSubst
@@ -325,7 +320,6 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
     let fType = if not (Prelude.null argTypes) then foldr1 FunType (argTypes ++ [retType]) else retType
     let env' = TI.insertID env funName fType -- With only this function inserted
     let env'' = insertMore env' (zip args argTypes) -- With this function + args inserted
-
     (s1, env''', vars') <- tiVarDecls env'' vars -- With this function + args + local varDecls inserted
     
     (s2, t1, stmts') <- tiStmts env''' stmts
@@ -343,12 +337,9 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
 
 tiStmts :: TypeEnv -> [Stmt] -> TI (Subst, Maybe SPLType, [Stmt])
 tiStmts env [e] = do
-    -- trace ("Calling tiStmts with: \n\t" ++ show env ++ "\n\n\t" ++ show e ++ "\n") $
     (s1, t1, stmt') <- tiStmt env e
     return (s1, t1, [stmt'])
-tiStmts env (e:es) = 
-    -- trace ("Calling tiStmts with: \n\t" ++ show env ++ "\n\n\t" ++ show (e:es) ++ "\n") $
-    do
+tiStmts env (e:es) = do
         (s1, t1, stmt') <- tiStmt env e
         (s2, retType, stmts') <- tiStmts (apply s1 env) es
         let cs1 = s2 `composeSubst` s1
@@ -372,7 +363,7 @@ tiStmt env (StmtIf e stmts (Just els) loc) = do
     
     let cs4 = s5 `composeSubst` cs3
     return (cs4, apply cs4 retIf, StmtIf e' ifStmts (Just elseStmts) loc)
-tiStmt env (StmtIf e stmts els loc) | els == Just [] || isNothing els = {-- trace (show $ getLoc e) $ --} do
+tiStmt env (StmtIf e stmts els loc) | els == Just [] || isNothing els = do
     (s1, conditionType, e') <- injectErrLoc (tiExp env e) (getLoc e)
     s2 <- injectErrLocMsg (mgu conditionType (TypeBasic BasicBool defaultLoc)) (getLoc e) ("Given condition does not have type Bool " ++ showLoc e)
     
@@ -426,12 +417,9 @@ typeCheckExps :: IDLoc -> TypeEnv -> [Exp] -> [SPLType] -> TI (Subst, [Exp])
 typeCheckExps id env [] [] = return (nullSubst, [])
 typeCheckExps id env [x] [] = throwError $ funcCallMoreArgs id
 typeCheckExps id env [] [x] = throwError $ funcCallLessArgs id
-typeCheckExps id env (e:es) (t:ts) =
-    -- let ret = runTI (tiExp env e) in trace  (show t ++ "\n" ++ show ret ++ "\n\n") $
-    do 
+typeCheckExps id env (e:es) (t:ts) = do 
     (s1,t1, e') <- injectErrMsgAddition (tiExp env e) (getLoc e) "typeCheckExps"
-    -- s2 <- injectErrLocMsg (mgu (apply s1 t) t1) (getLoc e) ("Argument '"++ pp e ++ "' should have type "++ pp t)
-    s2 <- mgu (apply s1 t) t1
+    s2 <- injectErrLocMsg (mgu (apply s1 t) t1) (getLoc e) ("Argument '"++ pp e ++ "' should have type "++ pp t)
     let cs1 = s2 `composeSubst` s1
     (s3, es') <- typeCheckExps id (apply cs1 env) es ts
     return (s3 `composeSubst` cs1, e':es')
@@ -521,9 +509,6 @@ tiExp (TypeEnv env) (ExpFunCall (FunCall (ID n l) args Nothing) loc) = {-- trace
         let returnType = last argTypes
         return (s1, apply s1 returnType, ExpFunCall (FunCall (ID n l) args' (Just $ apply s1 t)) loc)
     Nothing -> throwError $ refBeforeDec "Function:" (ID n l)
-
-
-
 
 -- ===================== Helper functions ============================
 getFuncTypes :: [FunDecl] -> TI [(IDLoc, SPLType)]
@@ -622,8 +607,6 @@ injectErrMsgAddition runable loc m = case runTI runable of
     (Right x, state) -> return x
     (Left (Error _ msg), state) -> throwError $ Error loc (m++" "++msg)
 
-
-
 -- ===================== Standard Lib Functions ============================
 stdLib :: TI TypeEnv
 stdLib = do
@@ -637,7 +620,6 @@ stdLib = do
     let env'' = TI.insert env' (idLocCreator "print") (generalize env' printType)
     return env''
 
-
 -- ===================== Printing ============================
 printEnv :: [(IDLoc, Scheme)] -> String 
 printEnv [] = ""
@@ -648,8 +630,7 @@ printSubst :: [(IDLoc,SPLType)] -> String
 printSubst [] = ""
 printSubst ((ID id _,t):xs) = id ++ " -> " ++ pp t ++ "\n"++ printSubst xs
 
--- ===================== Type Inference ============================
-
+-- ===================== Main Type Inference ============================
 typeInference :: SPL -> Either Error (Subst, TypeEnv, SPL)
 typeInference code = do
     case runTI (tiSPL code) of
@@ -673,28 +654,21 @@ instance UpdateTypes Decl where
     updateTypes (MutRec x) s env = trace ("Error in UpdateTypes FunDecl\n" ++ pp (MutRec  x)) undefined 
 
 instance UpdateTypes VarDecl where
-    -- updateTypes (VarDeclVar id e) s env = 
-    --     let Just (Scheme _ varType) = find id env in
-    --     VarDeclType varType id e
     updateTypes (VarDeclType t (ID id loc) e) s env = VarDeclType (apply s t) (ID id loc) e
     updateTypes e s env = e
 
 instance UpdateTypes FunDecl where
-    -- updateTypes (FunDecl funName args Nothing varDecls stmts) s env =
-    --     let Just (Scheme _ funType) = find funName env in
-    --     FunDecl funName args (Just funType) (updateTypes varDecls s env) stmts
     updateTypes (FunDecl funName args funType varDecls stmts) s env = do
         let varDecls' = updateTypes varDecls s env
         let stmts' = updateTypes stmts s env
         FunDecl funName args funType varDecls' stmts'
-    -- updateTypes f s env = trace ("Error in UpdateTypes FunDecl\n" ++ pp f) undefined 
     
 instance UpdateTypes Stmt where
     updateTypes (StmtIf e stmts Nothing loc) s env = do
         let e' = updateTypes e s env
         let stmts' = updateTypes stmts s env
         StmtIf e' stmts' Nothing loc
-    updateTypes (StmtIf e stmts (Just els) loc) s env = {-- trace ("If stmt "++ pp e) $ --} do
+    updateTypes (StmtIf e stmts (Just els) loc) s env = do
         let e' = updateTypes e s env
         let stmts' = updateTypes stmts s env
         let els' = updateTypes els s env
@@ -731,12 +705,10 @@ instance UpdateTypes Exp where
     updateTypes e s env = e
     
 instance UpdateTypes FunCall where 
-    updateTypes (FunCall (ID name l) es (Just t)) s env = -- trace ("updateTypes "++name++ pp t) $ 
-        do
+    updateTypes (FunCall (ID name l) es (Just t)) s env = do
         let es' = updateTypes es s env
         FunCall (ID name l) es' (Just $ apply s t)
-    updateTypes (FunCall (ID name l) es Nothing) s env = {-- trace ("updateTypes "++name++ " Nothing!!!!!!!") $ --} FunCall (ID name l) es Nothing 
-    
+    updateTypes (FunCall (ID name l) es Nothing) s env =  FunCall (ID name l) es Nothing 
 
 mainTI filename = do
       -- path <- getCurrentDirectory
