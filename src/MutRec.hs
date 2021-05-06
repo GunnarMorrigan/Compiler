@@ -139,4 +139,5 @@ removeDeadCode nodes = do
     trace ("MAIN: "++ show mainVertex) $ map getNode list
 
 mutRec :: SPL -> Either Error SPL
-mutRec code = fromGraph $ stronglyConnCompR $ removeDeadCode $ toGraph code
+mutRec code = fromGraph $ stronglyConnCompR $ toGraph code
+-- mutRec code = fromGraph $ stronglyConnCompR $ removeDeadCode $ toGraph code
