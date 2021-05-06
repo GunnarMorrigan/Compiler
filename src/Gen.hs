@@ -57,7 +57,7 @@ newWhile :: String -> Gen String
 newWhile name = do
     (ifS, globals, overloaded) <- get
     put (ifS + 1, globals, overloaded)
-    return (name++"While"++show ifS)
+    return (name++"_while"++show ifS)
 
 newGlobal :: SPLType -> Gen Mem
 newGlobal typ = do
@@ -80,7 +80,7 @@ insertFunCall (FunCall (ID id loc) args (Just (FunType t t'))) = do
 genAssembly :: SPL -> Gen [String]
 genAssembly (SPL decls) = do
     let (globals, functions, mainDecl) = sortDecls decls
-    (assemblyGlobals, env) <- gen globals [bsr "main"] Map.empty
+    (assemblyGlobals, env) <- genGlobals globals [bsr "main"] Map.empty
     (assemblyFunctions, env') <- gen functions [] env
     case mainDecl of
         Nothing -> throwError $ Error defaultLoc "No main without arguments detected"
@@ -88,7 +88,7 @@ genAssembly (SPL decls) = do
             (assemblyMain, _) <- gen main [] env'
             (_, _, (overloadedFuns, overloadedOps)) <- get 
             -- trace (show $ genOverloadedFun ( Map.elemAt 0 overloadedFuns) overloadedFuns) return $ assemblyBody ++ assemblyMain
-            return $ (assemblyGlobals ++ assemblyFunctions) ++ genOverloadedFuns overloadedFuns ++ assemblyMain
+            trace (show globals) $ return $ (assemblyGlobals ++ assemblyFunctions) ++ genOverloadedFuns overloadedFuns ++ assemblyMain
 
 class GenCode a where
     gen :: a -> [String] -> GenEnv -> Gen ([String], GenEnv)
@@ -107,8 +107,9 @@ instance GenCode Decl where
     gen (FuncMain funDecl) c = gen funDecl c
 
 genGlobals :: [Decl] -> [String] -> GenEnv -> Gen ([String], GenEnv)
+genGlobals [] c env = return (c,env)
 genGlobals globals c env = do
-    (res, env') <- gen globals ("bra main":c) env
+    (res, env') <- gen globals c env
     return ("ldsa 1":store R5:res, env')
 
 genVarDecls :: [VarDecl] -> [String] -> Scope -> GenEnv -> Gen ([String], GenEnv)
@@ -180,7 +181,17 @@ genStmts ((StmtIf e stmts (Just els) loc):xs) c (ID name l) env = do
 
     return $ if Prelude.null xs 
                 then (elseStmt++ifElseStmt++c, env'') 
-                else (elseStmt++ifElseStmt++rest', env''') 
+                else (elseStmt++ifElseStmt++rest', env''')
+genStmts ((StmtWhile e stmts loc):xs) c (ID fname loc') env = do
+    whileName <- newWhile fname
+    let whileEnd = whileName++"End"
+    let fEnd = fname++"End"
+    (cond, envCond) <- gen e [] env
+    (stmt, envStmt) <- genStmts stmts [] (ID fname loc') env
+    (rst, envRst) <- genStmts xs c (ID fname loc') envStmt
+    return $ if Prelude.null xs
+        then (insertLabel whileName cond ++ [brf fEnd] ++ stmt ++ bra whileName:c, envStmt)
+        else (insertLabel whileName cond ++ [brf whileEnd] ++ stmt ++ bra whileName :insertLabel whileEnd rst, envRst)
 genStmts [StmtReturn exp loc] c id env =
     case exp of
         Nothing -> return (c, env)
@@ -189,18 +200,13 @@ genStmts (x:xs) c id env = do
     combineResult (genStmt x [] id env) (genStmts xs c id) 
 
 genStmt :: Stmt -> [String] -> IDLoc -> GenEnv -> Gen ([String], GenEnv)
-genStmt (StmtWhile e stmts loc) c (ID name loc') env = do
-    whileName <- newWhile name
-    let whileEnd = whileName++"End" 
-    (cond, envCond) <- gen e c env
-    (stmt, envStmt) <- genStmts stmts c (ID name loc') env
-    return (insertLabel whileName cond ++ ["brf "++whileEnd] ++ stmt ++ ("bra "++whileName) :insertLabel whileEnd c, env)
 genStmt (StmtDeclareVar (ID name loc) (Field []) exp) c _ env = 
     case Map.lookup (ID name loc) env of
         Nothing -> throwError $ Error loc ("Variable " ++ name ++ " unkown in generator " ++ showLoc loc) 
         Just mem -> do
-            let var = load mem
-            return (undefined) 
+            let storeVar = loadAddress mem ++ ["sta 0"]
+            (assembly, env') <- gen exp storeVar env
+            return (assembly++c, env') 
 genStmt (StmtDeclareVar (ID name loc) (Field xs) exp) c _ env = 
     case Map.lookup (ID name loc) env of
         Nothing -> throwError $ Error loc ("Variable " ++ name ++ " unkown in generator " ++ showLoc loc) 
@@ -255,8 +261,9 @@ instance GenCode Exp where
     gen (ExpFunCall funcall _) c env =
         genFuncCall funcall c env
     gen (ExpOp2 e1 op e2 loc) c env  = do
-        let args = combineResult (gen e2 [] env) (gen e1 [])
-        combineResult args (gen op c)
+        (operator, env') <- gen op c env
+        (secondArg, env'') <- gen e2 operator env'
+        gen e1 secondArg env''
     gen (ExpOp1 op e loc) c env = case op of
         Neg -> gen e ("neg":c) env
         Not -> gen e ("not":c) env
@@ -265,10 +272,10 @@ genStandardFunctions :: [StandardFunction] -> [String] -> [String]
 genStandardFunctions xs c = Prelude.foldr genStandardFunction c xs
 
 genStandardFunction :: StandardFunction -> [String] -> [String]
-genStandardFunction (Head _) c = "ldc 1":"sub":"ldh 0":c
+genStandardFunction (Head _) c = "ldh -1":c
 genStandardFunction (Tail _) c = "ldh 0":c
 genStandardFunction (First _) c = "ldh 0":c
-genStandardFunction (Second _) c = "ldc 1":"sub":"ldh 0":c
+genStandardFunction (Second _) c = "ldh -1":c
 
 instance GenCode Op2Typed where
     gen (Op2 Plus _) c env = return ("add":c, env)
@@ -342,7 +349,7 @@ genPrint (TupleType (t1,t2) loc) c funcs = do
 
     let functionsC = (printName++":  link 0"): 
                         openBracket ("ldl -2":"ldh 0":printT1: 
-                        comma ("ldl -2":"ldc 1":"sub":"ldh 0":printT2: 
+                        comma ("ldl -2":"ldh -1":printT2: 
                         closeBracket ("unlink":"ret":functions)))
     (bsr printName, functionsC, Map.delete printName funcs'') 
 genPrint (ArrayType a1 _) c funcs = undefined 
@@ -399,7 +406,7 @@ sortSPL (SPL xs) = sortDecls (reverse xs)
 
 sortDecls :: [Decl] -> ([Decl],[Decl], Maybe Decl)
 sortDecls [] = ([],[], Nothing)
-sortDecls (VarMain x:xs) =  BI.first (VarMain x:) (sortDecls xs)
+sortDecls (VarMain x:xs) = let (globals,funcs,main) = sortDecls xs in (VarMain x:globals,funcs,main)
 sortDecls (FuncMain (FunDecl (ID "main" l) [] fType locals stmts):xs) = 
     let (globals,funcs,main) = sortDecls xs 
     in (globals,funcs,Just (FuncMain (FunDecl (ID "main" l) [] fType locals stmts)))
@@ -431,12 +438,18 @@ constructEnv env fType xs ys = Map.fromList decls `Map.union` Map.fromList args 
         decls = zipWith (\(VarDeclType t id e) b -> (id, L b t) ) ys [1..]
 
 -- ==================== Instructions ====================
+loadAddress :: Mem -> [String] 
+loadAddress (L x _) = ["ldla " ++ show x]
+loadAddress (H x _) = undefined
+loadAddress (G x t) = case x of
+    0 -> load R5
+    _ -> load R5++["ldc " ++ show x, "add"]
+loadAddress R5      = ["ldr R5"]
+
 load :: Mem -> [String] 
 load (L x _) = ["ldl " ++ show x]
 load (H x _) = undefined
-load (G x t) = case x of
-    0 -> load R5++["lda 0"]
-    _ -> load R5++["ldc " ++ show x, "add", "lda 0"]
+load (G x t) = load R5++["lda "++show x]
 load R5      = ["ldr R5"]
 
 store :: Mem -> String
