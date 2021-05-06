@@ -70,34 +70,6 @@ removeMutRec (MutRec x:xs) = (FuncMain <$> x) ++ removeMutRec xs
 removeMutRec [] = []
 removeMutRec (x:xs) = x:removeMutRec xs
 
-mainMutRec :: String -> IO()
-mainMutRec filename = do
-       file <- readFile $ "../SPL_test_code/"++filename
-       case tokeniseAndParse mainSegments file of
-           Right (x,xs) -> print ( toGraph x)
-           Left x -> print x
-
-mainMutRecToIO :: String -> IO()
-mainMutRecToIO filename = do
-       file <- readFile $ "../SPL_test_code/"++filename
-       case tokeniseAndParse mainSegments file of
-        --    Right (x,xs) -> let (g, v, f) = graphFromEdges $ toGraph x in print $ scc g
-            Right (x,xs) -> do
-                let Right spl = fromGraph $ stronglyConnCompR $ toGraph x
-                putStr $ pp spl
-            Left x -> print x
-
-mainMutRecToFile :: String -> IO()
-mainMutRecToFile filename = do
-       file <- readFile $ splFilePath++filename
-       case tokeniseAndParse mainSegments file of 
-                Right (x, _) -> do
-                    let Right spl = fromGraph $ stronglyConnCompR $ toGraph x
-                    writeFile "../SPL_test_code/out.spl" $ pp spl
-                Left x -> do
-                    print x
-                    exitFailure
-
 showSCC :: [SCC (Decl, String, [String])] -> IO()
 showSCC [x] = print x
 showSCC (x:xs) = do
@@ -131,13 +103,39 @@ onlyFuncMain ((VarMain x,_,_):xs) = False
 onlyFuncMain ((FuncMain x,_,_):xs) = onlyFuncMain xs
 
 -- ===== Remove dead code =====
-removeDeadCode :: [(Decl, IDLoc, [IDLoc])] -> [(Decl, IDLoc, [IDLoc])]
+removeDeadCode :: [(Decl, IDLoc, [IDLoc])] -> Either Error [(Decl, IDLoc, [IDLoc])]
 removeDeadCode nodes = do
     let (graph, getNode, getVertex) = graphFromEdges nodes
-    let Just mainVertex = getVertex (ID "main" defaultLoc)
-    let list = map fst $ filter (\(a,b) -> b == 0 && (a /= mainVertex)) (assocs $ indegree graph)
-    trace ("MAIN: "++ show mainVertex) $ map getNode list
+    case getVertex (ID "main" defaultLoc) of
+        Nothing -> Left $ Error defaultLoc "Required main function not found."
+        Just mainVertex -> 
+            let code = reachable graph mainVertex 
+            in Right $ map getNode code
+
+
+mainMutRecToIO :: String -> IO()
+mainMutRecToIO filename = do
+       file <- readFile $ "../SPL_test_code/"++filename
+       case tokeniseAndParse mainSegments file of
+        --    Right (x,xs) -> let (g, v, f) = graphFromEdges $ toGraph x in print $ scc g
+            Right (x,xs) -> do
+                let Right graph = removeDeadCode $ toGraph x
+                let Right spl = fromGraph $ stronglyConnCompR graph
+                putStr $ pp spl
+            Left x -> print x
+
+mainMutRecToFile :: String -> IO()
+mainMutRecToFile filename = do
+       file <- readFile $ splFilePath++filename
+       case tokeniseAndParse mainSegments file of 
+                Right (x, _) -> do
+                    let Right spl = fromGraph $ stronglyConnCompR $ toGraph x
+                    writeFile "../SPL_test_code/out.spl" $ pp spl
+                Left x -> do
+                    print x
+                    exitFailure
 
 mutRec :: SPL -> Either Error SPL
-mutRec code = fromGraph $ stronglyConnCompR $ toGraph code
--- mutRec code = fromGraph $ stronglyConnCompR $ removeDeadCode $ toGraph code
+mutRec code = do
+    graph <- removeDeadCode $ toGraph code
+    fromGraph $ stronglyConnCompR graph

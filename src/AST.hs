@@ -246,7 +246,7 @@ instance PrettyPrinter SPLType where
   pp (IdType id) = pp id
   -- Prints function types haskell style:
   -- pp (FunType arg ret) = pp arg ++ " -> " ++ pp ret
-  pp (FunType arg ret) = let args = getArgsTypes (FunType arg ret) in pp (init args) ++ " -> " ++ pp (last args)
+  pp (FunType arg ret) = let args = getArgsTypes (FunType arg ret) in concatMap (\x -> pp x ++ " "  ) (init args) ++ "-> " ++ pp (last args)
   pp (Void x) = "Void"
 
 
@@ -322,3 +322,20 @@ instance PrettyPrinter Op2 where
   pp And = "&&" -- Bool -> Bool -> Bool
   pp Or = "||" -- Bool -> Bool -> Bool
   pp Con = ":" -- a -> [a] -> [a]
+
+  -- ==================== Sorting SPL ====================
+filterMain :: [Decl] -> ([Decl], Maybe Decl)
+filterMain [] = ([],Nothing)
+filterMain (FuncMain (FunDecl (ID "main" loc) [] (Just fType) vDecls stmts):xs) = let(ys, main) = filterMain xs in (ys, Just (FuncMain(FunDecl (ID "main" loc) [] (Just fType) vDecls stmts)))
+filterMain (x:xs) = let(ys, main) = filterMain xs in (x:ys, main)
+
+sortSPL :: SPL -> ([Decl],[Decl], Maybe Decl)
+sortSPL (SPL xs) = sortDecls (reverse xs)
+
+sortDecls :: [Decl] -> ([Decl],[Decl], Maybe Decl)
+sortDecls [] = ([],[], Nothing)
+sortDecls (VarMain x:xs) = let (globals,funcs,main) = sortDecls xs in (VarMain x:globals,funcs,main)
+sortDecls (FuncMain (FunDecl (ID "main" l) [] fType locals stmts):xs) = 
+    let (globals,funcs,main) = sortDecls xs 
+    in (globals,funcs,Just (FuncMain (FunDecl (ID "main" l) [] fType locals stmts)))
+sortDecls (FuncMain x:xs) = let (globals,funcs,main) = sortDecls xs in (globals,FuncMain x:funcs,main)
