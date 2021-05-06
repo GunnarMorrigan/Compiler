@@ -53,6 +53,12 @@ newIf name = do
     put (ifS + 1,globalS, overloaded)
     return (name++"_ifTh"++show ifS, name++"_ifEl"++show ifS ,name++"_ifCon"++show ifS)
 
+newWhile :: String -> Gen String
+newWhile name = do
+    (ifS, globals, overloaded) <- get
+    put (ifS + 1, globals, overloaded)
+    return (name++"While"++show ifS)
+
 newGlobal :: SPLType -> Gen Mem
 newGlobal typ = do
     (ifS,globalS, overloaded) <- get
@@ -183,14 +189,25 @@ genStmts (x:xs) c id env = do
     combineResult (genStmt x [] id env) (genStmts xs c id) 
 
 genStmt :: Stmt -> [String] -> IDLoc -> GenEnv -> Gen ([String], GenEnv)
-genStmt (StmtWhile e stmts loc) c id env = undefined
-genStmt (StmtDeclareVar (ID name loc) field exp) c _ env = undefined
+genStmt (StmtWhile e stmts loc) c (ID name loc') env = do
+    whileName <- newWhile name
+    (cond, envCond) <- gen e c env
+    (stmt, envStmt) <- genStmts stmts c (ID name loc') env
+    return (insertLabel whileName cond++ stmt ++ ("bra "++whileName) :c, env)
+-- genStmt (StmtDeclareVar (ID name loc) (Field []) exp) c _ env = 
+genStmt (StmtDeclareVar (ID name loc) (Field xs) exp) c _ env = 
+    case Map.lookup (ID name loc) env of
+        Nothing -> throwError $ Error loc ("Variable " ++ name ++ " unkown in generator " ++ showLoc loc) 
+        Just mem -> do
+            let var = load mem ++ genStandardFunctions xs c
+            return (undefined) 
 genStmt (StmtFuncCall funcall _) c _ env = 
     genFuncCall funcall c env
 genStmt (StmtReturn exp loc) c (ID id _) env =
-    let retLink = "bra " ++ id ++ "End" in case exp of
-    Nothing -> return (retLink:c, env)
-    Just e -> gen e ("str RR":retLink:c) env
+    let retLink = "bra " ++ id ++ "End" 
+    in case exp of
+        Nothing -> return (retLink:c, env)
+        Just e -> gen e ("str RR":retLink:c) env
 genStmt stmt c _ env = throwError $ Error defaultLoc ("Failed to catch the following object:\n" ++ show stmt)
 
 genFuncCall :: FunCall -> [String] -> GenEnv -> Gen ([String], GenEnv)
@@ -218,7 +235,7 @@ instance GenCode Exp where
         Just mem -> return (load mem ++ c, env )
         Nothing -> error ("Variable " ++ show id ++ " unkown in generator " ++ showLoc id)
     gen (ExpId id (Field xs)) c env = case Map.lookup id env of
-        Just mem -> return (load mem ++genStandardFunctions xs c, env)
+        Just mem -> return (load mem ++ genStandardFunctions xs c, env)
         Nothing -> error ("Variable " ++ show id ++ " unkown in generator " ++ showLoc id)
     gen (ExpInt i _) c env = return (ldc i:c, env)
     gen (ExpBool b _) c env= return ( ldc (if b then -1 else 0  ):c, env)
@@ -260,20 +277,18 @@ instance GenCode Op2Typed where
     gen (Op2 Con (Just opType)) c env =
         return ("swp":"stmh 2":c,env)
 
-    -- Should be extended for other types of comparison
     gen (Op2 op (Just (FunType (TypeBasic BasicBool _) _))) c env = 
         case op of
             Le  -> return ("gt":c,env)
             Ge  -> return ("lt":c,env)
             Leq -> return ("ge":c,env)
             Geq -> return ("ne":c,env)
-            Eq  -> return ("eq":c,env)
-            Neq -> return ("ne":c,env)
+            _   -> return (op2Func op:c,env)
     gen (Op2 op (Just (FunType (TypeBasic _ _) _))) c env = 
         return (op2Func op:c,env)
-    gen (Op2 op (Just (FunType t t'))) c env = trace ("THIS IS the type:\n"++ show t) $ do
-        let func = overloadedOpName op t
-        return (bsr func:"ajs -2":"ldr RR":c, env)
+    -- gen (Op2 op (Just (FunType t t'))) c env = trace ("THIS IS the type:\n"++ show t) $ do
+    --     let func = overloadedOpName op t
+    --     return (bsr func:"ajs -2":"ldr RR":c, env)
 
 -- ==================== Overloading functions ====================
 
@@ -283,15 +298,15 @@ overloadedTypeName start t = start ++ typeToName t
 overloadedOpName :: Op2 -> SPLType -> String
 overloadedOpName op t = op2Func op ++ typeToName t
 
-genOverloadedOps :: Map String Op2Typed -> [String]
-genOverloadedOps ops | Map.null ops  = []
-genOverloadedOps ops = do
-    let (ssmCode, names) = genOverloadedOp (Map.elemAt 0 ops)
-    let env = Map.filterWithKey (\ k _ -> k `elem` names) ops
-    ssmCode ++ genOverloadedOps env
+-- genOverloadedOps :: Map String Op2Typed -> [String]
+-- genOverloadedOps ops | Map.null ops  = []
+-- genOverloadedOps ops = do
+--     let (ssmCode, names) = genOverloadedOp (Map.elemAt 0 ops)
+--     let env = Map.filterWithKey (\ k _ -> k `elem` names) ops
+--     ssmCode ++ genOverloadedOps env
 
-genOverloadedOp :: (String, Op2Typed) -> ([String],[String])
-genOverloadedOp = undefined 
+-- genOverloadedOp :: (String, Op2Typed) -> ([String],[String])
+-- genOverloadedOp = undefined 
 
 genOverloadedFuns :: Map String FunCall -> [String]
 genOverloadedFuns funcs | Map.null funcs  = []
@@ -307,10 +322,10 @@ genPrint :: SPLType -> [String] -> Map String FunCall -> (String, [String], Map 
 genPrint (TypeBasic BasicInt _) c funcs = ("trap 0", c ,funcs)
 genPrint (TypeBasic BasicChar _) c funcs = ("trap 1", c, funcs) 
 genPrint (TypeBasic BasicBool _) c funcs = do
-    let functionsC = "printBool:  link 0":"ldl -2":"brf False":
+    let functionsC = "printBool:  link 0":"ldl -2":"brf printFalse":
                         "ldc 101":"ldc 117":"ldc 114":"ldc 84":
                             "trap 1":"trap 1":"trap 1":"trap 1":"unlink":"ret":
-                        "False:  ldc 101":"ldc 115":"ldc 108":"ldc 97":"ldc 70":
+                        "printFalse:  ldc 101":"ldc 115":"ldc 108":"ldc 97":"ldc 70":
                             "trap 1":"trap 1":"trap 1":"trap 1":"trap 1":"unlink":"ret":c
     (bsr "printBool", functionsC, Map.delete "printBool" funcs)
 genPrint (TupleType (t1,t2) loc) c funcs = do
@@ -420,7 +435,7 @@ load R5      = ["ldr R5"]
 
 store :: Mem -> String
 store (L x _) = "stl " ++ show x
-store (H x _) = "sth " ++ show x
+store (H x _) = undefined
 store (G x _) = "stl " ++ show x
 store R5      = "str R5"
 

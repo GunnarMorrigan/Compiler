@@ -1,7 +1,11 @@
-
+f(){
+    return 10;
+}
 
 main(){
     print(('a','b'));
+    print('\n');
+    print(False);
 }
 
 /*

@@ -94,7 +94,7 @@ tokenise ('\t' : xs) line col = tokenise xs line (col + 4)
 tokenise ('\n' : xs) line col = tokenise xs (line + 1) 1
 tokenise ('\'' : x : '\'' : xs) line col = ((CharToken x, line, col) :) <$> tokenise xs line (col + 3)
 tokenise ('\'' : '\\': x : '\'' : xs) line col = ((CharToken (toChar ['\\', x ]), line, col):) <$> tokenise xs line (col + 3)
-  where toChar s = fst . head $ readLitChar s 
+  where toChar s = fst . head $ readLitChar s
 tokenise input line col = tokenise2 acTokens tokens input line col
   
 tokenise2 :: [Token] -> [Token] -> String -> Int -> Int -> Either Error [(Token, Int, Int)]

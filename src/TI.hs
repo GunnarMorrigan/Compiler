@@ -470,7 +470,7 @@ tiExp _ (ExpChar c loc) = return (nullSubst, TypeBasic BasicChar loc, ExpChar c 
 tiExp env (ExpBracket e) = do
     (s1, t1, e') <- tiExp env e
     return (s1, t1, ExpBracket e')
-tiExp env (ExpList [] loc _) = trace "Removed ExpList [] because lists [1,2,3] are converted to 1:2:3:[] " undefined 
+tiExp env (ExpList [] loc _) = throwError $ Error loc "Removed ExpList [] because lists as [1,2,3] are converted to 1:2:3:[]" 
 tiExp env (ExpEmptyList loc) = do 
       tv <- newSPLVar
       return (nullSubst, ArrayType tv defaultLoc, ExpEmptyList loc)
