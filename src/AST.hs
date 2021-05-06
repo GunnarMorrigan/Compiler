@@ -85,6 +85,31 @@ data IDLoc = ID String Loc
 instance Ord IDLoc where
   compare (ID id loc) (ID id' loc') = id `compare` id'
 
+-- ===================== FunCall and Operators ============================
+
+data FunCall
+    = FunCall IDLoc [Exp] (Maybe SPLType)
+    deriving (Show, Eq)
+
+-- ==== Op1 ====
+data Op1 = Neg | Not deriving (Eq, Show)
+
+
+data Op2Typed = Op2 Op2 (Maybe SPLType)
+  deriving (Show, Eq)
+
+-- ==== Op2 ====
+data Op2 = 
+  Plus|Min|Mult|Div|Mod|
+  
+  Le|Ge|Leq|Geq|Eq|Neq|
+  
+  And|Or|
+  
+  Con
+  deriving (Show, Eq)
+
+
 -- ===================== Loc ============================
 data Loc = Loc Int Int
     deriving (Eq, Ord, Show)
@@ -173,30 +198,6 @@ instance LOC Exp where
   getColNum (ExpEmptyList loc) = getColNum loc
   getColNum (ExpList _ loc _) = getColNum loc
   getColNum (ExpTuple _ loc _) = getColNum loc
-
--- ===================== FunCall and Operators ============================
-
-data FunCall
-    = FunCall IDLoc [Exp] (Maybe SPLType)
-    deriving (Show, Eq)
-
--- ==== Op1 ====
-data Op1 = Neg | Not deriving (Eq, Show)
-
-
-data Op2Typed = Op2 Op2 (Maybe SPLType)
-  deriving (Show, Eq)
-
--- ==== Op2 ====
-data Op2 = 
-  Plus|Min|Mult|Div|Mod|
-  
-  Le|Ge|Leq|Geq|Eq|Neq|
-  
-  And|Or|
-  
-  Con
-  deriving (Show, Eq)
 
 -- ===================== prettyPrinter ============================
 prettyPrinter :: PrettyPrinter a => [a] -> String
