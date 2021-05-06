@@ -198,7 +198,8 @@ stmtDeclareVar =
   StmtDeclareVar
     <$> idPLoc
     <*> fieldP
-    <*> (pToken IsToken *> expParser <* pToken SemiColToken)
+    <*> (pToken IsToken *> expParser <* pToken SemiColToken) 
+    <*> pure Nothing
 
 stmtFuncCall :: Parser (Token, Int, Int) Stmt
 stmtFuncCall = flip StmtFuncCall <$> locParser <*> funCall <* pToken SemiColToken

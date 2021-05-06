@@ -153,6 +153,7 @@ instance MGU a => MGU (Maybe a) where
 
 instance MGU SPLType where
     mgu (TypeBasic x _) (TypeBasic y _) | x == y = return nullSubst
+    -- mgu (TypeBasic (General a) _) (TypeBasic y _) = undefined 
     mgu (TypeBasic x loc) (TypeBasic y loc') =  throwError $ generateError (TypeBasic x loc) (TypeBasic y loc')
     
     mgu (Void _) (Void _) = return nullSubst
@@ -402,14 +403,14 @@ tiStmt env (StmtReturn (Just e) loc) = do
     (s1, t1, e') <- tiExp env e
     return (s1, Just t1, StmtReturn (Just e') loc)
 
-tiStmt (TypeEnv env) (StmtDeclareVar id (Field []) e) = case Map.lookup id env of
+tiStmt (TypeEnv env) (StmtDeclareVar id (Field []) e _) = case Map.lookup id env of
     Just (Scheme ids t) -> do
         (s1, t1, e') <- tiExp (TypeEnv env) e
         s2 <- mgu (apply s1 t) t1
         let cs1 = s2 `composeSubst` s1
-        return (cs1, Nothing, StmtDeclareVar id (Field []) e')
+        return (cs1, Nothing, StmtDeclareVar id (Field []) e' (Just t1))
     Nothing -> throwError $ refBeforeDec "Variable:" id
-tiStmt (TypeEnv env) (StmtDeclareVar id (Field fields) e) = case Map.lookup id env of
+tiStmt (TypeEnv env) (StmtDeclareVar id (Field fields) e _) = case Map.lookup id env of
     Just (Scheme ids t) -> do
         (s1, t1, e') <- tiExp (TypeEnv env) e
         (s2, t', ret) <- getType t fields
@@ -418,7 +419,7 @@ tiStmt (TypeEnv env) (StmtDeclareVar id (Field fields) e) = case Map.lookup id e
         let cs2 = s3 `composeSubst` cs1
         s4 <- mgu (apply cs2 t') t
         let cs3 = s4 `composeSubst` cs2
-        return (cs3, Nothing, StmtDeclareVar id (Field fields) e')
+        return (cs3, Nothing, StmtDeclareVar id (Field fields) e' (Just $ apply cs3 ret))
     Nothing -> throwError $ refBeforeDec "Variable:" id
 
 typeCheckExps :: IDLoc -> TypeEnv -> [Exp] -> [SPLType] -> TI (Subst, [Exp])
@@ -486,19 +487,19 @@ tiExp env (ExpOp2 e1 (Op2 op _) e2 loc) = do
     (t1, t2, t3, opType) <- op2Type op
     (s1, t1', e1') <- injectErrLoc (tiExp env e1) (getLoc e1)
 
-    case t1' of
-        TypeBasic _ _ -> do
-            s2 <- injectErrLoc (mgu t1' (apply s1 t1)) (getLoc e1)
-            let cs1 = s2 `composeSubst` s1
-            
-            (s3, t2', e2') <- injectErrLoc (tiExp (apply cs1 env) e2) (getLoc e2)
-            let cs2 = s3 `composeSubst` cs1
-            
-            s4 <- injectErrLoc (mgu (apply cs2 t2') (apply cs2  t2)) (getLoc e2)
-            let cs3 = s4 `composeSubst` cs2 
-            -- We maybe want to takes these out and let them be function calls. This way we 
-            return (cs3, apply cs3 t3, ExpOp2 e1' (Op2 op (Just $ apply cs3 opType)) e2' loc)
-        _ -> throwError $ Error loc ("Operator '"++ pp op ++"' on "++ pp loc ++ " is only supported for basic types Int, Bool and Char per the Grammar of SPL." )
+    -- case t1' of
+    --     TypeBasic _ _ -> do
+    s2 <- injectErrLoc (mgu t1' (apply s1 t1)) (getLoc e1)
+    let cs1 = s2 `composeSubst` s1
+    
+    (s3, t2', e2') <- injectErrLoc (tiExp (apply cs1 env) e2) (getLoc e2)
+    let cs2 = s3 `composeSubst` cs1
+    
+    s4 <- injectErrLoc (mgu (apply cs2 t2') (apply cs2  t2)) (getLoc e2)
+    let cs3 = s4 `composeSubst` cs2 
+    -- We maybe want to takes these out and let them be function calls. This way we 
+    return (cs3, apply cs3 t3, ExpOp2 e1' (Op2 op (Just $ apply cs3 opType)) e2' loc)
+        -- _ -> throwError $ Error loc ("Operator '"++ pp op ++"' on "++ pp loc ++ " is only supported for basic types Int, Bool and Char per the Grammar of SPL." )
 tiExp env (ExpOp1 op e loc) = case op of
     Neg -> do 
         (s1, t1, e') <- tiExp env e
@@ -691,9 +692,9 @@ instance UpdateTypes Stmt where
         let stmts' = updateTypes stmts s env
         let els' = updateTypes els s env
         StmtIf e' stmts' (Just els') loc
-    updateTypes (StmtDeclareVar id fields e) s env = do
+    updateTypes (StmtDeclareVar id fields e typ) s env = do
         let e' = updateTypes e s env
-        StmtDeclareVar id fields e'
+        StmtDeclareVar id fields e' (apply s typ)
     updateTypes (StmtFuncCall fCall loc) s env = do
         let fCall' = updateTypes fCall s env
         StmtFuncCall fCall' loc
