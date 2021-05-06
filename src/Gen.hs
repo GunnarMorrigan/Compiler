@@ -81,7 +81,7 @@ genAssembly :: SPL -> Gen [String]
 genAssembly (SPL decls) = do
     let (globals, functions, mainDecl) = sortDecls decls
     (assemblyGlobals, env) <- gen globals [bsr "main"] Map.empty
-    (assemblyFunctions, env') <- gen globals [] env
+    (assemblyFunctions, env') <- gen functions [] env
     case mainDecl of
         Nothing -> throwError $ Error defaultLoc "No main without arguments detected"
         Just main -> do
@@ -191,10 +191,16 @@ genStmts (x:xs) c id env = do
 genStmt :: Stmt -> [String] -> IDLoc -> GenEnv -> Gen ([String], GenEnv)
 genStmt (StmtWhile e stmts loc) c (ID name loc') env = do
     whileName <- newWhile name
+    let whileEnd = whileName++"End" 
     (cond, envCond) <- gen e c env
     (stmt, envStmt) <- genStmts stmts c (ID name loc') env
-    return (insertLabel whileName cond++ stmt ++ ("bra "++whileName) :c, env)
--- genStmt (StmtDeclareVar (ID name loc) (Field []) exp) c _ env = 
+    return (insertLabel whileName cond ++ ["brf "++whileEnd] ++ stmt ++ ("bra "++whileName) :insertLabel whileEnd c, env)
+genStmt (StmtDeclareVar (ID name loc) (Field []) exp) c _ env = 
+    case Map.lookup (ID name loc) env of
+        Nothing -> throwError $ Error loc ("Variable " ++ name ++ " unkown in generator " ++ showLoc loc) 
+        Just mem -> do
+            let var = load mem
+            return (undefined) 
 genStmt (StmtDeclareVar (ID name loc) (Field xs) exp) c _ env = 
     case Map.lookup (ID name loc) env of
         Nothing -> throwError $ Error loc ("Variable " ++ name ++ " unkown in generator " ++ showLoc loc) 
