@@ -31,15 +31,6 @@ data SPLType
   | Void Loc
   deriving (Eq, Show)
 
--- instance Eq SPLType where
---   (==) (TypeBasic l loc) (TypeBasic r loc') = l == r
---   (==) (TupleType (a,b) loc) (TupleType (c,d) loc') = (==) a c && (==) b d
---   (==) (ArrayType a loc) (ArrayType b loc') = (==) a b
---   (==) (IdType l c) (IdType r c') = True
---   (==) (FunType arg ret) (FunType arg' ret') = (==) arg arg' && (==) ret ret'
---   (==) (Void x) (Void x') = True
---   (==) _ _ = False
-
 eqType :: SPLType -> SPLType -> Bool
 eqType (TypeBasic l loc) (TypeBasic r loc') = l == r
 eqType (TupleType (a,b) loc) (TupleType (c,d) loc') = eqType a c && eqType b d
@@ -54,11 +45,12 @@ data BasicType
   = BasicInt
   | BasicBool
   | BasicChar
+  | General IDLoc
   deriving (Eq, Show)
 
 data Stmt = StmtIf Exp [Stmt] (Maybe [Stmt]) Loc
           | StmtWhile Exp [Stmt] Loc 
-          | StmtDeclareVar IDLoc Field Exp
+          | StmtDeclareVar IDLoc Field Exp (Maybe SPLType)
           | StmtFuncCall FunCall Loc
           | StmtReturn (Maybe Exp) Loc
           deriving (Eq, Show)
@@ -278,7 +270,7 @@ instance PrettyPrinter Stmt where
         Nothing -> ""
   pp (StmtWhile e s _) = 
     "while (" ++ pp e ++ ") {\n" ++  prettyPrinter s ++"}"
-  pp (StmtDeclareVar id f e) = pp id ++ pp f ++ " = " ++ pp e ++ ";"
+  pp (StmtDeclareVar id f e _) = pp id ++ pp f ++ " = " ++ pp e ++ ";"
   pp (StmtFuncCall c _) = pp c ++ ";"
   pp (StmtReturn e _) = "return" ++ maybe "" ((" "++) . pp) e ++ ";"
 
