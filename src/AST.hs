@@ -94,7 +94,6 @@ data IDLoc = ID String Loc
 instance Ord IDLoc where
   compare (ID id loc) (ID id' loc') = id `compare` id'
 
-
 -- ===================== Loc ============================
 data Loc = Loc Int Int
     deriving (Eq, Ord, Show)
@@ -144,7 +143,6 @@ instance LOC SPLType where
   getColNum (TypeBasic _ loc) = getColNum loc
   getColNum (IdType idloc) = getColNum idloc
   getColNum (Void loc) = getColNum loc
-
 
 instance LOC Exp where
   showLoc x = let Loc line col = getLoc x in "on Line " ++ show line ++ " and, Col "++ show col
