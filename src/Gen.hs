@@ -78,8 +78,8 @@ insertFunCall (FunCall (ID id loc) args (Just (FunType t t'))) = do
 
 -- ===== Generation =====
 genAssembly :: SPL -> Gen [String]
-genAssembly (SPL decls) = do
-    let (globals, functions, mainDecl) = sortDecls decls
+genAssembly spl = do
+    let (globals, functions, mainDecl) = sortSPL spl
     (assemblyGlobals, env) <- genGlobals globals [bsr "main"] Map.empty
     (assemblyFunctions, env') <- gen functions [] env
     case mainDecl of
@@ -500,7 +500,7 @@ typeToName (TupleType (t1,t2) _) = "Tuple" ++ typeToName t1 ++ typeToName t2
 typeToName (ArrayType a1 _) = "Array"++ typeToName a1
 typeToName (FunType arg f) = "Func"
 typeToName (Void _) = "Void"
-typeToName x = trace ("Error we did not catch type"++ pp x) undefined 
+typeToName x = trace ("Error we did not catch type "++ pp x) undefined 
 
 op2Func :: Op2 -> String
 op2Func Le  = "lt"
@@ -509,23 +509,6 @@ op2Func Leq = "le"
 op2Func Geq = "ge"
 op2Func Eq  = "eq"
 op2Func Neq = "ne"
-
--- ==================== Sorting ====================
-filterMain :: [Decl] -> ([Decl], Maybe Decl)
-filterMain [] = ([],Nothing)
-filterMain (FuncMain (FunDecl (ID "main" loc) [] (Just fType) vDecls stmts):xs) = let(ys, main) = filterMain xs in (ys, Just (FuncMain(FunDecl (ID "main" loc) [] (Just fType) vDecls stmts)))
-filterMain (x:xs) = let(ys, main) = filterMain xs in (x:ys, main)
-
-sortSPL :: SPL -> ([Decl],[Decl], Maybe Decl)
-sortSPL (SPL xs) = sortDecls (reverse xs)
-
-sortDecls :: [Decl] -> ([Decl],[Decl], Maybe Decl)
-sortDecls [] = ([],[], Nothing)
-sortDecls (VarMain x:xs) = let (globals,funcs,main) = sortDecls xs in (VarMain x:globals,funcs,main)
-sortDecls (FuncMain (FunDecl (ID "main" l) [] fType locals stmts):xs) = 
-    let (globals,funcs,main) = sortDecls xs 
-    in (globals,funcs,Just (FuncMain (FunDecl (ID "main" l) [] fType locals stmts)))
-sortDecls (FuncMain x:xs) = let (globals,funcs,main) = sortDecls xs in (globals,FuncMain x:funcs,main)
 
 -- ==================== Helper functions ====================
 combineResult :: Gen ([String], GenEnv) -> (GenEnv -> Gen ([String], GenEnv)) -> Gen ([String], GenEnv)
@@ -620,7 +603,7 @@ mainGenTest1  = do
                 let (Right result,_) = res
                 let output = intercalate "\n" (fst result)
                 writeFile "../generated_ssm/gen.ssm" output
-            Left x -> putStr $ "ERROR:\n" ++ show x ++ "\n" ++ showPlaceOfError file x
+            Left x -> putStr $ "\nError:\n" ++ show x ++ "\n" ++ showPlaceOfError file x
 
 mainGen :: String -> IO ()
 mainGen filename = do
@@ -632,4 +615,4 @@ mainGen filename = do
                                 let output = intercalate "\n" result
                                 writeFile "../generated_ssm/gen.ssm" output
                     (Left x,_) -> putStr $ "ERROR:\n" ++ show x ++ "\n" ++ showPlaceOfError file x
-            Left x -> putStr $ "ERROR:\n" ++ show x ++ "\n" ++ showPlaceOfError file x
+            Left x -> putStr $ "\nError:\n" ++ show x ++ "\n" ++ showPlaceOfError file x

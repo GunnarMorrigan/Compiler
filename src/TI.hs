@@ -487,8 +487,6 @@ tiExp env (ExpOp2 e1 (Op2 op _) e2 loc) = do
     (t1, t2, t3, opType) <- op2Type op
     (s1, t1', e1') <- injectErrLoc (tiExp env e1) (getLoc e1)
 
-    -- case t1' of
-    --     TypeBasic _ _ -> do
     s2 <- injectErrLoc (mgu t1' (apply s1 t1)) (getLoc e1)
     let cs1 = s2 `composeSubst` s1
     
@@ -497,8 +495,14 @@ tiExp env (ExpOp2 e1 (Op2 op _) e2 loc) = do
     
     s4 <- injectErrLoc (mgu (apply cs2 t2') (apply cs2  t2)) (getLoc e2)
     let cs3 = s4 `composeSubst` cs2 
-    -- We maybe want to takes these out and let them be function calls. This way we 
-    return (cs3, apply cs3 t3, ExpOp2 e1' (Op2 op (Just $ apply cs3 opType)) e2' loc)
+
+    let finalOpType = apply cs3 opType
+    if containsIDType finalOpType 
+        then throwError $ 
+            Error loc ("Operator '" ++ pp op ++ "' does not support 'polymorphic' overloading, "++ showLoc loc ++
+                        "\nDeriving the fully rigid type of this operator is not possible."++
+                        "\nProviding a rigid type will prevent solve this error.")
+        else return (cs3, apply cs3 t3, ExpOp2 e1' (Op2 op (Just finalOpType)) e2' loc)
         -- _ -> throwError $ Error loc ("Operator '"++ pp op ++"' on "++ pp loc ++ " is only supported for basic types Int, Bool and Char per the Grammar of SPL." )
 tiExp env (ExpOp1 op e loc) = case op of
     Neg -> do 
@@ -517,6 +521,9 @@ tiExp (TypeEnv env) (ExpFunCall (FunCall (ID n l) args Nothing) loc) = {-- trace
         let returnType = last argTypes
         return (s1, apply s1 returnType, ExpFunCall (FunCall (ID n l) args' (Just $ apply s1 t)) loc)
     Nothing -> throwError $ refBeforeDec "Function:" (ID n l)
+
+
+
 
 -- ===================== Helper functions ============================
 getFuncTypes :: [FunDecl] -> TI [(IDLoc, SPLType)]
@@ -581,7 +588,6 @@ op2Type x | x == Eq || x == Neq = do
     return (tv, tv, t, FunType tv (FunType tv t))
 op2Type x | x == Le || x == Ge || x == Leq || x == Geq  = do
     tv <- newSPLVar
-    -- let arg = TypeBasic tv Loc
     let t = TypeBasic BasicBool defaultLoc
     return (tv, tv, t, FunType tv (FunType tv t))
 op2Type x | x== And || x == Or = 
@@ -592,6 +598,13 @@ op2Type Con = do
     let t = ArrayType tv defaultLoc
     return (tv, t, t, FunType tv (FunType t t))
 
+containsIDType :: SPLType -> Bool
+containsIDType (Void _) = False
+containsIDType (TypeBasic _ _) = False
+containsIDType (IdType _) = True
+containsIDType (TupleType (t1, t2) _) = containsIDType t1 || containsIDType t2
+containsIDType (ArrayType a1 _) = containsIDType a1
+containsIDType (FunType arg f) = containsIDType arg || containsIDType f
 
 -- ===================== Error Injection ============================
 injectErrLoc :: TI a -> Loc -> TI a
@@ -642,12 +655,6 @@ typeInference code = do
     case runTI (tiSPL code) of
         (Right (s1, env, SPL code'), _) -> Right (s1, env, updateTypes (SPL $ removeMutRec code') s1 env)
         (Left x, _) -> Left x
-
--- typeInferenceEnv :: SPL -> Either Error TypeEnv
--- typeInferenceEnv (SPL code) = do
---     case runTI (tiSPL (TypeEnv Map.empty) (SPL code)) of
---         (Right env, _) -> Right env 
---         (Left x, _) -> Left x
 
 class UpdateTypes a where
     updateTypes :: a -> Subst -> TypeEnv -> a
@@ -741,13 +748,3 @@ mainTI filename = do
                 putStr $ "\nEnv:\n" ++ printEnv (Map.toList env)
                 putStr $ "\nSubst:\n" ++ printSubst (Map.toList s1)
             Left x -> putStr $ show x ++ "\n" ++ showPlaceOfError file x
-
-
--- mainTIEnv filename = do
---       -- path <- getCurrentDirectory
---       -- print path
---       file <- readFile  ("../SPL_test_code/" ++ filename)
---       case tokeniseAndParse mainSegments file >>= (mutRec . fst) >>= typeInferenceEnv of 
---             Right x -> print x
---             Left x -> putStr $ show x ++ "\n" ++ showPlaceOfError file x
-
