@@ -1,29 +1,4 @@
 ldsa 1
 str R5
-bra main
-main:  link 0
-ldc 98
-ldc 97
-stmh 2
-bsr printTupleCharChar
-printTupleCharChar:  link 0
-ldc 40
-trap 1
-ldl -2
-ldh 0
-trap 1
-ldc 44
-trap 1
-ldl -2
 ldc 1
-sub
-ldh 0
-trap 1
-ldc 41
-trap 1
-unlink
-ret
-ldr RR
-trap 0
-halt
-
+ldc 2
