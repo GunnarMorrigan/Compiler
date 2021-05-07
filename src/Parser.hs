@@ -170,7 +170,7 @@ basicChar = BasicChar <$ pToken TypeCharToken
 
 -- ===================== Statements ============================
 stmt :: Parser (Token, Int, Int) Stmt
-stmt = stmtReturn <|> stmtFuncCall <|> stmtDeclareVar <|> stmtIf <|> stmtWhile
+stmt = stmtReturn <|> stmtFuncCall <|> stmtAssignVar <|> stmtIf <|> stmtWhile
 
 stmtIf :: Parser (Token, Int, Int) Stmt
 stmtIf =
@@ -193,9 +193,9 @@ stmtWhile =
     <*> (pToken WhileToken *> pToken BrackOToken *> expParser <* pToken BrackCToken)
     <*> (pToken CBrackOToken *> many' stmt <* pToken CBrackCToken)
 
-stmtDeclareVar :: Parser (Token, Int, Int) Stmt
-stmtDeclareVar =
-  StmtDeclareVar
+stmtAssignVar :: Parser (Token, Int, Int) Stmt
+stmtAssignVar =
+  StmtAssignVar
     <$> idPLoc
     <*> fieldP
     <*> (pToken IsToken *> expParser <* pToken SemiColToken) 

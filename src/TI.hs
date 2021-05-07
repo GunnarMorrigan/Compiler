@@ -402,14 +402,14 @@ tiStmt env (StmtReturn (Just e) loc) = do
     (s1, t1, e') <- tiExp env e
     return (s1, Just t1, StmtReturn (Just e') loc)
 
-tiStmt (TypeEnv env) (StmtDeclareVar id (Field []) e _) = case Map.lookup id env of
+tiStmt (TypeEnv env) (StmtAssignVar id (Field []) e _) = case Map.lookup id env of
     Just (Scheme ids t) -> do
         (s1, t1, e') <- tiExp (TypeEnv env) e
         s2 <- mgu (apply s1 t) t1
         let cs1 = s2 `composeSubst` s1
-        return (cs1, Nothing, StmtDeclareVar id (Field []) e' (Just t1))
+        return (cs1, Nothing, StmtAssignVar id (Field []) e' (Just t1))
     Nothing -> throwError $ refBeforeDec "Variable:" id
-tiStmt (TypeEnv env) (StmtDeclareVar id (Field fields) e _) = case Map.lookup id env of
+tiStmt (TypeEnv env) (StmtAssignVar id (Field fields) e _) = case Map.lookup id env of
     Just (Scheme ids t) -> do
         (s1, t1, e') <- tiExp (TypeEnv env) e
         (s2, t', ret) <- getType t fields
@@ -418,7 +418,7 @@ tiStmt (TypeEnv env) (StmtDeclareVar id (Field fields) e _) = case Map.lookup id
         let cs2 = s3 `composeSubst` cs1
         s4 <- mgu (apply cs2 t') t
         let cs3 = s4 `composeSubst` cs2
-        return (cs3, Nothing, StmtDeclareVar id (Field fields) e' (Just $ apply cs3 ret))
+        return (cs3, Nothing, StmtAssignVar id (Field fields) e' (Just $ apply cs3 ret))
     Nothing -> throwError $ refBeforeDec "Variable:" id
 
 typeCheckExps :: IDLoc -> TypeEnv -> [Exp] -> [SPLType] -> TI (Subst, [Exp])
@@ -601,7 +601,7 @@ findOverFuncsStmt :: Stmt -> ([Exp], [FunCall])
 findOverFuncsStmt  (StmtIf e stmts (Just els) loc) = combineOverFuncs (findOverFuncsStmts els)  $ combineOverFuncs (findOverFuncsExp e) (findOverFuncsStmts stmts)
 findOverFuncsStmt  (StmtIf e stmts Nothing loc) = combineOverFuncs (findOverFuncsExp e) (findOverFuncsStmts stmts)
 findOverFuncsStmt  (StmtWhile e stmts loc) = combineOverFuncs (findOverFuncsExp e) (findOverFuncsStmts stmts)
-findOverFuncsStmt  (StmtDeclareVar id fields e _) =  findOverFuncsExp e
+findOverFuncsStmt  (StmtAssignVar id fields e _) =  findOverFuncsExp e
 findOverFuncsStmt  (StmtFuncCall (FunCall (ID "print" l) args (Just t)) loc) | containsIDType t = ([],[FunCall (ID "print" l) args (Just t)])
 findOverFuncsStmt  (StmtReturn (Just e) loc) = findOverFuncsExp e
 findOverFuncsStmt  _ = ([],[])
@@ -707,9 +707,9 @@ instance UpdateTypes Stmt where
         let stmts' = updateTypes stmts s env
         let els' = updateTypes els s env
         StmtIf e' stmts' (Just els') loc
-    updateTypes (StmtDeclareVar id fields e typ) s env = do
+    updateTypes (StmtAssignVar id fields e typ) s env = do
         let e' = updateTypes e s env
-        StmtDeclareVar id fields e' (apply s typ)
+        StmtAssignVar id fields e' (apply s typ)
     updateTypes (StmtFuncCall fCall loc) s env = do
         let fCall' = updateTypes fCall s env
         StmtFuncCall fCall' loc

@@ -1,4 +1,48 @@
 ldsa 1
 str R5
-ldc 1
-ldc 2
+ldc 4 //Bool b = equal(4,4) /*:: Int Int -> Bool*/;
+ldc 4
+bsr equal
+ajs -2
+ldr RR
+annote SP 0 0 green "b"
+bsr main
+equal:  link 0
+ldl -3
+ldl -2
+eq
+equalEnd:  str RR
+    unlink
+    ret
+printBool:  link 0
+ldl -2
+brf printFalse
+ldc 101
+ldc 117
+ldc 114
+ldc 84
+trap 1
+trap 1
+trap 1
+trap 1
+unlink
+ret
+printFalse:  ldc 101
+ldc 115
+ldc 108
+ldc 97
+ldc 70
+trap 1
+trap 1
+trap 1
+trap 1
+trap 1
+unlink
+ret
+main:  link 0
+ldr R5
+lda 0
+bsr printBool
+ajs -1
+trap 0
+halt

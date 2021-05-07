@@ -49,7 +49,7 @@ data BasicType
 
 data Stmt = StmtIf Exp [Stmt] (Maybe [Stmt]) Loc
           | StmtWhile Exp [Stmt] Loc 
-          | StmtDeclareVar IDLoc Field Exp (Maybe SPLType)
+          | StmtAssignVar IDLoc Field Exp (Maybe SPLType)
           | StmtFuncCall FunCall Loc
           | StmtReturn (Maybe Exp) Loc
           deriving (Eq, Show)
@@ -270,7 +270,7 @@ instance PrettyPrinter Stmt where
         Nothing -> ""
   pp (StmtWhile e s _) = 
     "while (" ++ pp e ++ ") {\n" ++  prettyPrinter s ++"}"
-  pp (StmtDeclareVar id f e _) = pp id ++ pp f ++ " = " ++ pp e ++ ";"
+  pp (StmtAssignVar id f e _) = pp id ++ pp f ++ " = " ++ pp e ++ ";"
   pp (StmtFuncCall c _) = pp c ++ ";"
   pp (StmtReturn e _) = "return" ++ maybe "" ((" "++) . pp) e ++ ";"
 
