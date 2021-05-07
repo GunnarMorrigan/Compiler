@@ -50,7 +50,7 @@ instance Callees Stmt where
     getCallees (StmtIf e xs (Just ys) _) = getCallees e ++ getCallees xs ++ getCallees ys
     getCallees (StmtIf e xs Nothing _) = getCallees e ++ getCallees xs
     getCallees (StmtWhile e xs _) = getCallees e ++ getCallees xs
-    getCallees (StmtDeclareVar id _ e _) = id:getCallees e
+    getCallees (StmtAssignVar id _ e _) = id:getCallees e
     getCallees (StmtFuncCall (FunCall id e _) _) = id:getCallees e
     getCallees (StmtReturn (Just e) _) = getCallees e
     getCallees (StmtReturn Nothing _) = []
