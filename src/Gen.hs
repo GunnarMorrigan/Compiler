@@ -202,14 +202,14 @@ genStmts (x:xs) c id env = do
     combineResult (genStmt x [] id env) (genStmts xs c id) 
 
 genStmt :: Stmt -> [String] -> IDLoc -> GenEnv -> Gen ([String], GenEnv)
-genStmt (StmtDeclareVar (ID name loc) (Field []) exp t) c _ env = 
+genStmt (StmtAssignVar (ID name loc) (Field []) exp t) c _ env = 
     case Map.lookup (ID name loc) env of
         Nothing -> throwError $ Error loc ("Variable " ++ name ++ " unkown in generator " ++ showLoc loc) 
         Just mem -> do
             let storeVar = loadAddress mem ++ ["sta 0"]
             (assembly, env') <- gen exp storeVar env
             return (assembly++c, env') 
-genStmt (StmtDeclareVar (ID name loc) (Field xs) exp (Just t)) c _ env = 
+genStmt (StmtAssignVar (ID name loc) (Field xs) exp (Just t)) c _ env = 
     case Map.lookup (ID name loc) env of
         Nothing -> throwError $ Error loc ("Variable " ++ name ++ " unkown in generator " ++ showLoc loc) 
         Just mem -> do

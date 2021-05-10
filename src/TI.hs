@@ -341,7 +341,6 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
     else
         trace ("HELLO \n"++show polyExp) $ return (cs2, TI.insert (apply cs2 env) funName func, FunDecl funName args (Just funType') vars' stmts')
 
-    
 
 tiStmts :: TypeEnv -> [Stmt] -> TI (Subst, Maybe SPLType, [Stmt])
 tiStmts env [e] = do
