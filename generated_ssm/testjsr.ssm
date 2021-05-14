@@ -1,0 +1,12 @@
+ldc 10
+ldc 11
+ldc 12
+ldc 9
+jsr
+ldc 4
+ldc 2
+test: link 0
+ldl -2
+ldl -1
+add
+trap 0

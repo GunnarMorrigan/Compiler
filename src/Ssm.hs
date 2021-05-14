@@ -6,11 +6,14 @@ newtype SSM =  SSM [Idecl]
   deriving (Show, Eq)
 
 data Idecl = 
-    Global [Instruct] |
-    Function String [Instruct] String [Instruct]
+    SSMGlobal [Instruct] |
+    SSMFunction String [Instruct]
+    -- Function String [Instruct] String [Instruct]
     deriving (Show, Eq)
 
 data Instruct = 
+    LDAL String | -- Load address of label to make high order functions possible. 
+    LABEL Instruct | -- this instruction has a label in front of the actual instruction.
     LDC Int |
     LDS Int |
     LDMS Int |
