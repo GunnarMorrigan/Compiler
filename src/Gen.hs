@@ -79,7 +79,7 @@ insertFunCall (FunCall (ID id loc) args (Just (FunType t t'))) = do
 genAssembly :: SPL -> Gen [String]
 genAssembly spl = do
     let (globals, functions, mainDecl) = sortSPL spl
-    (assemblyGlobals, env) <- genGlobals globals [bsr "main"] Map.empty
+    (assemblyGlobals, env) <- genGlobals globals [bra "main"] Map.empty
     (assemblyFunctions, env') <- gen functions [] env
     case mainDecl of
         Nothing -> throwError $ Error defaultLoc "No main without arguments detected"

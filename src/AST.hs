@@ -329,13 +329,13 @@ filterMain [] = ([],Nothing)
 filterMain (FuncMain (FunDecl (ID "main" loc) [] (Just fType) vDecls stmts):xs) = let(ys, main) = filterMain xs in (ys, Just (FuncMain(FunDecl (ID "main" loc) [] (Just fType) vDecls stmts)))
 filterMain (x:xs) = let(ys, main) = filterMain xs in (x:ys, main)
 
-sortSPL :: SPL -> ([Decl],[Decl], Maybe Decl)
+sortSPL :: SPL -> ([VarDecl],[FunDecl], Maybe FunDecl)
 sortSPL (SPL xs) = sortDecls (reverse xs)
 
-sortDecls :: [Decl] -> ([Decl],[Decl], Maybe Decl)
+sortDecls :: [Decl] -> ([VarDecl],[FunDecl], Maybe FunDecl)
 sortDecls [] = ([],[], Nothing)
-sortDecls (VarMain x:xs) = let (globals,funcs,main) = sortDecls xs in (VarMain x:globals,funcs,main)
+sortDecls (VarMain x:xs) = let (globals,funcs,main) = sortDecls xs in (x:globals,funcs,main)
 sortDecls (FuncMain (FunDecl (ID "main" l) [] fType locals stmts):xs) = 
     let (globals,funcs,main) = sortDecls xs 
-    in (globals,funcs,Just (FuncMain (FunDecl (ID "main" l) [] fType locals stmts)))
-sortDecls (FuncMain x:xs) = let (globals,funcs,main) = sortDecls xs in (globals,FuncMain x:funcs,main)
+    in (globals,funcs,Just (FunDecl (ID "main" l) [] fType locals stmts))
+sortDecls (FuncMain x:xs) = let (globals,funcs,main) = sortDecls xs in (globals,x:funcs,main)
