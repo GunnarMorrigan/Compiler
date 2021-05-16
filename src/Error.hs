@@ -28,11 +28,17 @@ instance Alternative (Either Error) where
   Left _ <|> e2 = e2
   e1 <|> _ = e1
 
+
+showPlacesOfErrors :: String -> [Error] -> String
+showPlacesOfErrors code' errs = intercalate "\n\n" $ map (showPlaceOfError code') errs
+
+
 showPlaceOfError :: String -> Error -> String
-showPlaceOfError code' (Error (Loc (-1) (-1)) msg) = ""
+showPlaceOfError code' (Error (Loc (-1) (-1)) msg) = msg
 showPlaceOfError code' (Error (Loc line col) msg) =
-    -- dropWhile isSpace $
+    
     let code = replaceTab code' in
+    msg ++ "\n" ++
     (if line == 1 then "" else lines code !! (line - 2) ++ "\n" )
     ++ lines code !! (line - 1) ++ "\n"
     ++ replicate (if col > 2 then col-2 else 0) ' ' ++ "^^^\n"

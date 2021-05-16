@@ -326,8 +326,8 @@ standardFunctionP :: Parser (Token, Int, Int) StandardFunction
 standardFunctionP =
   pTokenGen HdToken Head
     <|> pTokenGen TlToken Tail
-    <|> pTokenGen FstToken First
-    <|> pTokenGen SndToken Second
+    <|> pTokenGen FstToken Fst
+    <|> pTokenGen SndToken Snd
 
 -- ===================== FunCall ============================
 funCall :: Parser (Token, Int, Int) FunCall

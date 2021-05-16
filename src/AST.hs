@@ -75,8 +75,8 @@ newtype Field
 data StandardFunction
     = Head Loc
     | Tail Loc
-    | First Loc
-    | Second Loc
+    | Fst Loc
+    | Snd Loc
     deriving (Eq, Show)
 
 type ID = String
@@ -293,8 +293,8 @@ instance PrettyPrinter Field where
 instance PrettyPrinter StandardFunction where
   pp (Head _) = ".hd"
   pp (Tail _) = ".tl"
-  pp (First _) = ".fst"
-  pp (Second _) = ".snd"
+  pp (Fst _) = ".fst"
+  pp (Snd _) = ".snd"
 
 instance PrettyPrinter IDLoc where
   pp (ID id (Loc line col)) = id
