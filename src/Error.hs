@@ -72,4 +72,4 @@ refBeforeDec s id = Error (getLoc id) (s++"'" ++ pp id ++ "', referenced " ++ sh
 doubleDef id = Error (getLoc id) ("Variable: " ++ showIDLoc id ++ ", already exists in the type environment. (i.e. double decleration)")
 
 funcCallMoreArgs id = Error (getLoc id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too many arguments.")
-funcCallLessArgs id = Error (getLoc id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too many arguments.")
+funcCallLessArgs id = Error (getLoc id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too few arguments.")
