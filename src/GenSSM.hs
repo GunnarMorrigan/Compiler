@@ -579,7 +579,7 @@ compArray op compareA compName  =
     LDL 3,
     LDL 4,
     Ssm.OR,
-    BRT (compName++"Ret"), -- if op == Le || op == Ge then BRT (compName++"Ret") else BRF (compName++"Ret"),
+    BRT (compName++"Ret"),
     LDL 1,
     LDH (-1),
     LDL 2,
@@ -587,7 +587,7 @@ compArray op compareA compName  =
     compareA,
     STR RR,
     LDR RR,
-    BRF (compName++"End"),
+    if op == Geq then BRF (compName++"End") else BRT (compName++"End"),
     LDL 1, --14
     LDH 0, --12
     STL 1, --10
