@@ -8,8 +8,16 @@ import Data.List
 import Data.Char
 import Control.Applicative
 
-data Error = Error Loc String
+data Error = 
+  Error Loc String
+  | Errors [Error]
   -- deriving (Show)
+
+instance Semigroup Error where
+  (<>) (Error loc s) (Error loc' s') = Errors [Error loc s,Error loc' s']
+  (<>) (Errors errs) (Error loc' s') = Errors $ errs ++ [Error loc' s']
+  (<>) (Error loc s) (Errors errs)   = Errors $ Error loc s:errs
+  (<>) (Errors errs) (Errors errs')  = Errors $ errs ++ errs'
 
 instance Eq Error where
   (==) (Error (Loc line col) m) (Error (Loc line' col') m') =  line == line' && col == col'
@@ -19,6 +27,7 @@ instance Ord Error where
 
 instance Show Error where
   show (Error _ message) = message
+  show (Errors errs) = intercalate "\n" (map show errs)
   -- show (Error (-1) (-1) message) = message
   -- show (Error (Loc line col) message) = message ++ ", on line: " ++show line ++ " and character: " ++ show col 
 
@@ -28,11 +37,20 @@ instance Alternative (Either Error) where
   Left _ <|> e2 = e2
   e1 <|> _ = e1
 
+
+showError :: String -> Error -> String
+showError code (Error loc s) = showPlaceOfError code (Error loc s)
+showError code (Errors errs) = showPlacesOfErrors code errs
+
+showPlacesOfErrors :: String -> [Error] -> String
+showPlacesOfErrors code' errs = intercalate "\n\n" $ map (showPlaceOfError code') errs
+
 showPlaceOfError :: String -> Error -> String
-showPlaceOfError code' (Error (Loc (-1) (-1)) msg) = ""
+showPlaceOfError code' (Error (Loc (-1) (-1)) msg) = msg
 showPlaceOfError code' (Error (Loc line col) msg) =
-    -- dropWhile isSpace $
+    
     let code = replaceTab code' in
+    msg ++ "\n" ++
     (if line == 1 then "" else lines code !! (line - 2) ++ "\n" )
     ++ lines code !! (line - 1) ++ "\n"
     ++ replicate (if col > 2 then col-2 else 0) ' ' ++ "^^^\n"
@@ -66,4 +84,4 @@ refBeforeDec s id = Error (getLoc id) (s++"'" ++ pp id ++ "', referenced " ++ sh
 doubleDef id = Error (getLoc id) ("Variable: " ++ showIDLoc id ++ ", already exists in the type environment. (i.e. double decleration)")
 
 funcCallMoreArgs id = Error (getLoc id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too many arguments.")
-funcCallLessArgs id = Error (getLoc id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too many arguments.")
+funcCallLessArgs id = Error (getLoc id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too few arguments.")

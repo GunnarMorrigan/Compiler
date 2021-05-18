@@ -6,7 +6,7 @@ import AST
 import Error
 import Parser
 import MutRec
-import TI
+import TIMul
 import Ssm
 
 import Data.Char
@@ -293,9 +293,9 @@ genSFuncsAddress xs c =
 genSFuncsOffSet :: [StandardFunction] -> Int
 genSFuncsOffSet [] = 0
 genSFuncsOffSet ((Head _):xs) = genSFuncsOffSet xs - 1
-genSFuncsOffSet ((Second _):xs) = genSFuncsOffSet xs - 1
+genSFuncsOffSet ((Snd _):xs) = genSFuncsOffSet xs - 1
 genSFuncsOffSet ((Tail _):xs) = genSFuncsOffSet xs
-genSFuncsOffSet ((First _):xs) = genSFuncsOffSet xs
+genSFuncsOffSet ((Fst _):xs) = genSFuncsOffSet xs
 
 genStandardFunctions :: [StandardFunction] -> [Instruct] -> [Instruct]
 genStandardFunctions xs c = Prelude.foldr genStandardFunction c xs
@@ -303,8 +303,8 @@ genStandardFunctions xs c = Prelude.foldr genStandardFunction c xs
 genStandardFunction :: StandardFunction -> [Instruct] -> [Instruct]
 genStandardFunction (Head _) c = LDH (-1):c
 genStandardFunction (Tail _) c = LDH 0:c
-genStandardFunction (First _) c = LDH 0:c
-genStandardFunction (Second _) c = LDH (-1):c
+genStandardFunction (Fst _) c = LDH 0:c
+genStandardFunction (Snd _) c = LDH (-1):c
 
 
 genOp2Typed (Op2 Plus _) c env = return (ADD:c, env)
