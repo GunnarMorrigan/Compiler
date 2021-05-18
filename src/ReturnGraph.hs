@@ -1,5 +1,6 @@
 module ReturnGraph where
 
+import Error
 import Lexer
 import AST
 import Parser
@@ -7,8 +8,8 @@ import TI
 
 import Data.Bifunctor
 import Data.Map as Map
-import Error
 import Data.Maybe
+import Data.These
 
 class ReturnGraph a where
     rtga :: a -> Either Error a
@@ -24,15 +25,15 @@ instance ReturnGraph Decl where
 instance ReturnGraph FunDecl where
     rtga (FunDecl fname args ftype vars stmts) = case rtgaStmts stmts fname ftype of
         Nothing -> Right (FunDecl fname args ftype vars stmts)
-        Just (Error a b x) -> Left (Error a b x)
+        Just (Error a b) -> Left (Error a b)
 
 rtgaStmtsForLevel :: [Stmt] -> IDLoc -> Maybe SPLType -> Either Error Bool
-rtgaStmtsForLevel stmts (ID fname (Loc line col)) fType = case Prelude.filter isValidReturn stmts of
+rtgaStmtsForLevel stmts (ID fname loc) fType = case Prelude.filter isValidReturn stmts of
             [] -> case fType of
                 Nothing -> Right True 
                 (Just x) -> case last (getArgsTypes x) of
                     (Void _) -> Right True 
-                    t -> Left (missingReturn fname t line col )
+                    t -> Left (missingReturn fname t loc )
             xs ->  if allTheSame (Prelude.map isVoidReturn xs) 
                     then case fType of
                         Nothing -> if allTheSame (Prelude.map isVoidReturn xs) 
@@ -109,9 +110,10 @@ gMain1 filename = do
               Left x -> do print x
 
 gHelp :: SPL -> Either Error (Map IDLoc Scheme)
-gHelp code = let (res, s) = runTI (tiSPL (TypeEnv Map.empty) code )
+gHelp code = let (res, s) = runTI (tiSPL code )
     in case res of
-            Right (TypeEnv env) -> Right env
-            (Left (Error a b x)) -> Left (Error a b x)
+            That (_,TypeEnv env,_) -> Right env
+            (This err) -> Left err
+            (These err _) -> Left err
 
 

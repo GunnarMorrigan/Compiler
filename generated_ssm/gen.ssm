@@ -1,11 +1,254 @@
-ldc 0
-ldc 0
-ldc 0
-ldc 0
-ldc 0
-ldc 0
-ldc 0
-ldr PC
-ldc 4
-sub
-jsr 
+LDSA 1
+STR R5
+LDC 9 //[Int] c = (9 : []);
+LDC 0
+STMH 2
+LDC 10 //[Int] e = (10 : (10 : []));
+LDC 10
+LDC 0
+STMH 2
+STMH 2
+LDC 8 //[Int] f = (8 : (10 : []));
+LDC 10
+LDC 0
+STMH 2
+STMH 2
+LDC 10 //[Int] x = (10 : (8 : []));
+LDC 8
+LDC 0
+STMH 2
+STMH 2
+LDC 10 //[Int] z = (10 : (9 : []));
+LDC 9
+LDC 0
+STMH 2
+STMH 2
+BRA main
+_printBool:  LINK 0
+	LDL -2
+	BRF _printFalse
+	LDC 101
+	LDC 117
+	LDC 114
+	LDC 84
+	TRAP 1
+	TRAP 1
+	TRAP 1
+	TRAP 1
+	UNLINK
+	RET
+	_printFalse:  LDC 101
+	LDC 115
+	LDC 108
+	LDC 97
+	LDC 70
+	TRAP 1
+	TRAP 1
+	TRAP 1
+	TRAP 1
+	TRAP 1
+	UNLINK
+	RET
+_gtArrayInt:  LINK 4
+	LDL -3
+	STL 1
+	LDL -2
+	STL 2
+	LDL 1 //End of first list?
+	LDC 0
+	EQ
+	STL 3
+	LDL 2 //End of sec list?
+	LDC 0
+	EQ
+	STL 4
+	LDL 3
+	LDL 4
+	OR
+	BRT _gtArrayIntRet
+	LDL 1
+	LDH -1
+	LDL 2
+	LDH -1
+	GT
+	STR RR
+	LDR RR
+	BRF _gtArrayIntEnd
+	LDL 1
+	LDH 0
+	STL 1
+	LDL 2
+	LDH 0
+	STL 2
+	LDR PC
+	LDC 50
+	SUB
+	STR PC
+	_gtArrayIntRet:  LDC 0
+	STR RR
+	LDL 3
+	LDL 4
+	AND
+	BRT _gtArrayIntEnd
+	LDC 0
+	STR RR
+	LDL 3
+	LDC -1
+	EQ
+	BRT _gtArrayIntEnd
+	LDR RR
+	NOT
+	STR RR
+	_gtArrayIntEnd:  UNLINK
+	RET
+_ltArrayInt:  LINK 4
+	LDL -3
+	STL 1
+	LDL -2
+	STL 2
+	LDL 1 //End of first list?
+	LDC 0
+	EQ
+	STL 3
+	LDL 2 //End of sec list?
+	LDC 0
+	EQ
+	STL 4
+	LDL 3
+	LDL 4
+	OR
+	BRT _ltArrayIntRet
+	LDL 1
+	LDH -1
+	LDL 2
+	LDH -1
+	LT
+	STR RR
+	LDR RR
+	BRT _ltArrayIntEnd
+	LDL 1
+	LDH 0
+	STL 1
+	LDL 2
+	LDH 0
+	STL 2
+	LDR PC
+	LDC 50
+	SUB
+	STR PC
+	_ltArrayIntRet:  LDC 0
+	STR RR
+	LDL 3
+	LDL 4
+	AND
+	BRT _ltArrayIntEnd
+	LDC -1
+	STR RR
+	LDL 3
+	LDC -1
+	EQ
+	BRT _ltArrayIntEnd
+	LDR RR
+	NOT
+	STR RR
+	_ltArrayIntEnd:  UNLINK
+	RET
+main:  LINK 0
+	LDR R5
+	LDA 0
+	LDR R5
+	LDA 0
+	BSR _gtArrayInt
+	AJS -2
+	LDR RR
+	BSR _printBool
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDR R5
+	LDA 0
+	LDR R5
+	LDA 0
+	BSR _ltArrayInt
+	AJS -2
+	LDR RR
+	BSR _printBool
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDR R5
+	LDA 0
+	LDR R5
+	LDA 1
+	BSR _ltArrayInt
+	AJS -2
+	LDR RR
+	BSR _printBool
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDR R5
+	LDA 0
+	LDR R5
+	LDA 1
+	BSR _gtArrayInt
+	AJS -2
+	LDR RR
+	BSR _printBool
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDR R5
+	LDA 1
+	LDR R5
+	LDA 1
+	BSR _gtArrayInt
+	AJS -2
+	LDR RR
+	BSR _printBool
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDR R5
+	LDA 1
+	LDR R5
+	LDA 1
+	BSR _ltArrayInt
+	AJS -2
+	LDR RR
+	BSR _printBool
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDR R5
+	LDA 2
+	LDR R5
+	LDA 0
+	BSR _ltArrayInt
+	AJS -2
+	LDR RR
+	BSR _printBool
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDR R5
+	LDA 2
+	LDR R5
+	LDA 0
+	BSR _gtArrayInt
+	AJS -2
+	LDR RR
+	BSR _printBool
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDR R5
+	LDA 3
+	LDR R5
+	LDA 4
+	BSR _ltArrayInt
+	AJS -2
+	LDR RR
+	BSR _printBool
+	AJS -1
+	HALT

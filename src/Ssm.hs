@@ -4,6 +4,8 @@ import AST
 
 import Prelude hiding ( EQ, LT, GT )
 import Data.List ( intercalate )
+import Data.Map
+import Data.Bifunctor as BI
 
 data SSM =  SSM [SsmGlobal] [SsmFunction]
   deriving (Show, Eq)
@@ -21,7 +23,8 @@ data SsmFunction = Function String [Instruct]
     deriving (Show, Eq)
 
 data Instruct = 
-    LDAL String | -- Load address of label to make high order functions possible. 
+    LDALc String | -- Load address of label to make high order functions possible. 
+    ResPoint String Instruct |
     LABEL String Instruct | -- this instruction has a label in front of the actual instruction.
     COMMENT Instruct String | -- this instruction contains a comment
     LDC Int |
@@ -86,11 +89,16 @@ data Register =
     R5 | R6 | R7
     deriving (Show, Eq)
 
-nullary = [SWP, ADD, MUL, SUB, DIV, MOD, AND, OR, XOR, EQ, NE, LT, LE, GT, NEG, NOT, JSR, RET, UNLINK, NOP, HALT]
+nullary = [SWP, ADD, MUL, SUB, DIV, MOD, AND, OR, XOR, EQ, NE, LT, LE, GT, GE, NEG, NOT, JSR, RET, UNLINK, NOP, HALT]
 unary = undefined 
 
 size :: Instruct -> Int
 size a | a `elem` nullary = 1
+size (LDALc _) = 2
+size (ResPoint _ i) = Ssm.size i
+size (LABEL _ i) = Ssm.size i
+size (COMMENT i _) = Ssm.size i
+
 size (SWPRR _ _) = 3
 -- size (LDMH _ _) = 3
 size (LDRR _ _) = 3
@@ -101,12 +109,40 @@ size (LDML _ _) = 3
 size (STMS _ _) = 3
 size _ = 2
 
+class Assemble a where
+    assemble :: a -> [Instruct]
 
+instance Assemble a => Assemble [a] where
+    assemble xs = concatMap assemble xs
+
+instance Assemble SSM where
+    assemble (SSM globals functions) =
+        if Prelude.null globals  
+            then
+                BRA "main":assemble functions
+            else 
+                [LDSA 1,STR R5]++
+                assemble globals ++ 
+                [BRA "main"] ++
+                assemble functions
+
+instance Assemble SsmGlobal where
+    assemble  (Global inst) = inst
+
+instance Assemble SsmFunction where
+    assemble  (Function name (i:inst)) = LABEL name i:inst
+
+findLocations :: [Instruct] -> Int -> Map String Int
+findLocations (ResPoint key i:xs) loc = singleton key loc `union` findLocations xs (loc + Ssm.size i)
+findLocations (LABEL key i:xs) loc = singleton key loc `union` findLocations xs (loc + Ssm.size i)
+findLocations (x:xs) loc = findLocations xs (loc + Ssm.size x)
 
 instance PrettyPrinter SSM where
    pp (SSM globals functions) = 
-       if null globals  
-            then pp functions
+       if Prelude.null globals  
+            then
+                pp (BRA "main")++ "\n" ++ 
+                pp functions
             else 
                 pp [LDSA 1,STR R5] ++ "\n" ++ pp globals ++"\n" ++ 
                 pp (BRA "main")++ "\n" ++  
@@ -116,10 +152,11 @@ instance PrettyPrinter SsmGlobal where
    pp (Global inst) = pp inst
        
 instance PrettyPrinter SsmFunction where
-   pp (Function s (i:is)) = intercalate "\n" $ pp i : map (('\t':) . pp) is
+   pp (Function s (i:is)) = intercalate "\n" $ pp i : Prelude.map (('\t':) . pp) is
 
 instance PrettyPrinter Instruct where
-    pp (LDAL s) = undefined
+    pp (LDALc s) = undefined
+    pp (ResPoint key i) = pp i
 
     pp ADD = "ADD"
     pp MUL = "MUL"

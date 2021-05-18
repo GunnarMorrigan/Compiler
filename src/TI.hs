@@ -9,7 +9,6 @@ import MutRec
 import Data.Map as Map
 import Data.Set as Set
 import Data.Maybe
-
 import Data.These
 
 import Control.Applicative
@@ -17,32 +16,18 @@ import Control.Monad.Reader
 import Control.Monad.Except
 import Control.Monad.Chronicle
 import Control.Monad.State
+
 import System.Exit
 import System.Directory
-
 import Debug.Trace
 
 -- ===================== Type inference data types ============================
--- type TIState = Int
--- type TI a = ExceptT Error (State TIState) a
-
--- runTI :: TI a -> (Either Error a, TIState)
--- runTI t = runState (runExceptT t) initTIState
---   where initTIState = 0
-
-
 type TIState = Int
 type TI a = ChronicleT Error (State TIState) a
-
--- ChronicleT [Error] (State TIState) (These [Error] b0)
 
 runTI :: TI a -> (These Error a, TIState)
 runTI t = runState (runChronicleT t) initTIState
   where initTIState = 0
-
-
-dictate' :: (Semigroup c, Monad m) => c -> a -> ChronicleT c m a
-dictate' c a = ChronicleT $ return (These c a)
 
 -- ===================== TypeEnv ============================
 newtype TypeEnv = TypeEnv (Map IDLoc Scheme)
@@ -375,7 +360,7 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
         dictate (Error defaultLoc ("WE GOT ONE BOYS" ++ pp funName)) >>
         return (nullSubst, env, FunDecl funName args Nothing vars stmts)
     else
-        trace ("HELLO \n"++show polyExp) $ return (cs2, TI.insert (apply cs2 env) funName func, FunDecl funName args (Just funType') vars' stmts')
+        trace "No 'poly' overloading \n" $ return (cs2, TI.insert (apply cs2 env) funName func, FunDecl funName args (Just funType') vars' stmts')
 
 
 tiStmts :: TypeEnv -> [Stmt] -> TI (Subst, Maybe SPLType, [Stmt])
@@ -554,10 +539,10 @@ tiExp env (ExpOp2 e1 (Op2 op loc') e2 loc) = do
     let cs3 = s4 `composeSubst` cs2
 
     let finalOpType = apply cs3 opType
-    -- if containsIDType finalOpType
-    --     then dictate $
-    --         Error loc ("Operator '" ++ pp op ++"' "++ showLoc loc++" does not support 'polymorphic' like overloading. " ++
-    --                     "\nProviding a rigid type will solve this error.")
+    -- if isComplexType (apply cs3 t1) && isOrd op
+    --     then 
+    --         dictate (Error loc ("Operator '" ++ pp op ++"' "++ showLoc loc++" does not support 'polymorphic' like overloading. " ++
+    --                     "\nProviding a rigid type will solve this error.")) >> return def
     --     else 
     return (cs3, apply cs3 t3, ExpOp2 e1' (Op2 op (Just finalOpType)) e2' loc)
         -- _ -> dictate $ Error loc ("Operator '"++ pp op ++"' on "++ pp loc ++ " is only supported for basic types Int, Bool and Char per the Grammar of SPL." )
@@ -582,6 +567,18 @@ tiExp (TypeEnv env) (ExpFunCall (FunCall (ID n l) args Nothing) loc) = {-- trace
         dictate (refBeforeDec "Function:" (ID n l)) >> return (nullSubst, t, ExpFunCall (FunCall (ID n l) args Nothing) loc)
 
 -- ===================== Helper functions ============================
+isComplexType :: SPLType -> Bool
+isComplexType (ArrayType _ _) = True
+isComplexType (TupleType _ _) = True
+isComplexType _ = False
+
+isOrd :: Op2 -> Bool 
+isOrd Leq = True
+isOrd Geq = True
+isOrd Le = True
+isOrd Ge = True
+isOrd _ = False
+
 getFuncTypes :: [FunDecl] -> TI [(IDLoc, SPLType)]
 getFuncTypes [] = return []
 getFuncTypes ((FunDecl funName args (Just fType) vars stmts):xs) = do

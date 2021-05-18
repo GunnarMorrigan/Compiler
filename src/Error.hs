@@ -6,6 +6,7 @@ import AST
 
 import Data.List
 import Data.Char
+
 import Control.Applicative
 
 data Error = 
@@ -36,7 +37,6 @@ instance Alternative (Either Error) where
   Left x <|> Left y = Left $ max x y
   Left _ <|> e2 = e2
   e1 <|> _ = e1
-
 
 showError :: String -> Error -> String
 showError code (Error loc s) = showPlaceOfError code (Error loc s)

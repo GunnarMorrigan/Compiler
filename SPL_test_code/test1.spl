@@ -1,14 +1,90 @@
 var a = 10;
-var b = equal(4,4);
+var b = True;
+var c = [9];
+var d = (1,False);
+var e = [10,10];
+var f = [8,10];
 
+var x = [10,8];
+var z = [10,9];
 
 main(){
-    print();
-    print(b);
+    /* */
+    //print([]>=[]); // True
+    //print('\n');
+    //print([]>[]); // False
+    //print('\n');
+    //print([]>c); // False
+    //print('\n');
+    //print([]<c); // True
+    //print('\n');
+    print(c>c); // False
+    print('\n');
+    print(c<c); // False
+    print('\n');
+    print(c<e); // True
+    print('\n');
+    print(c>e); // False
+    print('\n');
+    print(e>e); // False
+    print('\n');
+    print(e<e); // False
+    print('\n');
+    print(f<c); // True
+    print('\n');
+    print(f>c); // False
+    print('\n');
+    print(x<z); // True
+
+    //print(c<=e); // True
+    //print('\n');
+    //print(c>=e); // False
+    //print('\n');
+    //print('\n');
+    //print(f>=c); // False  X
+    //print('\n');
+    //print(e>=e); // True
+    //print('\n');
+    //print(e<=e); // True
+    //print('\n');
+    //print(f<=c); // True
+    //print('\n');
+
 }
 
-
 /*
+    print('\n');
+    print([]>c); // False
+    print('\n');
+    print([]<c); // True
+    print('\n');
+    print(c>c); // False
+    print('\n');
+    print(c<c); // False
+    print('\n');
+    print(c<e); // True
+    print('\n');
+    print(c>e); // False
+    print('\n');
+    print(e>e); // False
+    print('\n');
+    print(e<e); // False
+    print('\n');
+    print(f<c); // True 
+    print('\n');
+    print(f>c); // False
+    print('\n');
+
+
+
+    print(a);
+    print('\n');
+    print(b);
+    print('\n');
+    print(c);
+    print('\n');
+    print(d);
+
 
 equal(x, y) {
     return x == y;
