@@ -282,9 +282,9 @@ genSFuncsAddress xs c =
 genSFuncsOffSet :: [StandardFunction] -> Int
 genSFuncsOffSet [] = 0
 genSFuncsOffSet ((Head _):xs) = genSFuncsOffSet xs - 1
-genSFuncsOffSet ((Second _):xs) = genSFuncsOffSet xs - 1
+genSFuncsOffSet ((Snd _):xs) = genSFuncsOffSet xs - 1
 genSFuncsOffSet ((Tail _):xs) = genSFuncsOffSet xs
-genSFuncsOffSet ((First _):xs) = genSFuncsOffSet xs
+genSFuncsOffSet ((Fst _):xs) = genSFuncsOffSet xs
 
 genStandardFunctions :: [StandardFunction] -> [String] -> [String]
 genStandardFunctions xs c = Prelude.foldr genStandardFunction c xs
@@ -292,8 +292,8 @@ genStandardFunctions xs c = Prelude.foldr genStandardFunction c xs
 genStandardFunction :: StandardFunction -> [String] -> [String]
 genStandardFunction (Head _) c = "ldh -1":c
 genStandardFunction (Tail _) c = "ldh 0":c
-genStandardFunction (First _) c = "ldh 0":c
-genStandardFunction (Second _) c = "ldh -1":c
+genStandardFunction (Fst _) c = "ldh 0":c
+genStandardFunction (Snd _) c = "ldh -1":c
 
 instance GenCode Op2Typed where
     gen (Op2 Plus _) c env = return ("add":c, env)

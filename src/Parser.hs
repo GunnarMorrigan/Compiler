@@ -3,20 +3,21 @@
 
 module Parser where
 
+import Error
+import Lexer
 import AST
-import Control.Applicative
-import Control.Monad
+
 import Data.Char
 import Data.Function
 import Data.Functor
 import Data.List
-import Data.Typeable
-import Debug.Trace
-import Error
-import Lexer
+
+import Control.Applicative
+import Control.Monad
+
 import System.Directory
 import System.Exit ( exitFailure )
-import Prelude
+import Debug.Trace
 
 -- ======================================== Parser ========================================
 newtype Parser s a = Parser {run :: [s] -> Either Error (a, [s])}

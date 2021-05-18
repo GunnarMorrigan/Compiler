@@ -1,0 +1,96 @@
+var a = 10;
+var b = equal(4,4);
+
+equal(x, y) {
+    return x == y;
+}
+
+correct(x, y) :: Int Int -> Bool {
+    return equal(x, y);
+}
+
+
+main(){
+    print(b);
+}
+
+
+/*
+
+f(list){
+    var tempList = list;
+    print('[');
+    while(!isEmpty(tempList)) {
+        print(tempList.hd);
+        if (!isEmpty(list.tl)){
+            print(',');
+        }
+        tempList = tempList.tl;
+    }
+    print(']');
+}
+
+
+
+
+equal(x, y) {
+    return x == y;
+}
+
+correct(x, y) :: Int Int -> Bool {
+    return 
+}
+
+var a = [(1,2),(3,4),(4,5)];
+
+main(){
+    a.hd = (6,7);
+    //print(x.fst);
+}
+
+f() {
+    var x = 1;
+    while(x > 0) {
+        print(9);
+    }
+    print('\n');
+}
+
+main() {
+    f();
+}
+
+var a = 'A';
+var b = 'B';
+var c = [1,2,3];
+
+f(){
+    return c.hd;
+}
+
+compare(a,b){
+
+    return a.fst == b.fst && a.snd == b.snd;
+}
+
+f(x) {
+    if (x > a){
+        return x * a;
+    }
+    else{
+        return 5;
+    }
+}
+
+
+
+f(x, y) {
+    var z = 4;
+    var a = 10;
+    return y + x + z * a;
+}
+
+main(){
+    f(30,8);
+}
+*/
