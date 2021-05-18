@@ -9,8 +9,8 @@ import Data.Char
 import Control.Applicative
 
 data Error = 
-  Error Loc String
-  | Errors [Error]
+  Error Loc String|
+  Errors [Error]
   -- deriving (Show)
 
 instance Semigroup Error where

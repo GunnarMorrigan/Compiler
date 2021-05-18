@@ -1,15 +1,6 @@
 var a = 10;
 var b = equal(4,4);
 
-
-main(){
-    print();
-    print(b);
-}
-
-
-/*
-
 equal(x, y) {
     return x == y;
 }
@@ -19,9 +10,12 @@ correct(x, y) :: Int Int -> Bool {
 }
 
 
+main(){
+    print(b);
+}
 
 
-
+/*
 
 f(list){
     var tempList = list;

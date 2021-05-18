@@ -6,7 +6,7 @@ import AST
 import Error
 import Parser
 import MutRec
-import TIMul
+import TI
 import Ssm
 
 import Data.Char
@@ -24,7 +24,6 @@ import Debug.Trace
 import Prelude hiding ()
 
 -- ===== Types ====
-
 data Mem =
     G Int SPLType | -- Global
     L Int SPLType | -- Local
@@ -96,11 +95,6 @@ genSPL spl = do
                     genOverloadedOps overloadedOps ++
                     [assemblyMain]
 
-
--- genDecl :: Decl -> [Instruct] -> Scope -> GenEnv -> Gen ([Instruct], GenEnv)
--- genDecl (VarMain varDecl) c s env = genVarDecl varDecl c s env
--- genDecl (FuncMain funDecl) c s env = genFunDecl funDecl env
-
 genGlobals :: [VarDecl] -> GenEnv -> Gen ([SsmGlobal], GenEnv)
 genGlobals [] env = return ([],env)
 genGlobals (g:gs) env = do
@@ -124,14 +118,12 @@ genVarDecl (VarDeclType t i e) c LocalScope env = case Map.lookup i env of
     Nothing -> error ("Variable " ++ show i ++ " unkown in generator " ++ showLoc i)
 genVarDecl (VarDeclVar _ _) c _ env = undefined
 
-
 genFunDecls :: [FunDecl] -> GenEnv -> Gen ([SsmFunction], GenEnv)
 genFunDecls [] env = return ([],env)
 genFunDecls (f:fs) env = do
     (f', env') <- genFunDecl f env
     (res, env') <- genFunDecls fs env
     return (f':res, env')
-
 
 genFunDecl :: FunDecl -> GenEnv -> Gen (SsmFunction, GenEnv)
 genFunDecl (FunDecl (ID "main" loc) [] (Just fType) vDecls stmts) env = do
@@ -255,7 +247,6 @@ genExps (x:xs) c env = do
     (res, env'') <- genExps xs c env'
     return (ass++res, env'')
 
-
 genExp :: Exp -> [Instruct] -> GenEnv -> Gen ([Instruct], GenEnv)
 genExp (ExpId id (Field [])) c env = case Map.lookup id env of
     Just mem -> return (load mem ++ c, env )
@@ -306,7 +297,7 @@ genStandardFunction (Tail _) c = LDH 0:c
 genStandardFunction (Fst _) c = LDH 0:c
 genStandardFunction (Snd _) c = LDH (-1):c
 
-
+genOp2Typed :: Op2Typed -> [Instruct] -> b -> Gen ([Instruct], b)
 genOp2Typed (Op2 Plus _) c env = return (ADD:c, env)
 genOp2Typed (Op2 Min _) c env = return (SUB:c, env)
 genOp2Typed (Op2 Mult _) c env = return (MUL:c, env)
@@ -591,8 +582,20 @@ lds x = "lds " ++ show x
 ajs :: Int -> String
 ajs x = "ajs " ++ show x
 
-
 -- ==================== Main ====================
+main :: IO ()
+main = do
+      file <- readFile "../SPL_test_code/test1.spl"
+      case tokeniseAndParse mainSegments file >>= (mutRec . fst) >>= typeInference of
+            Right(_, _, spl) ->
+                case runGen $ genSPL spl of
+                    (Right result,_) -> do
+                                let output = pp result
+                                writeFile "../generated_ssm/gen.ssm" output
+                    (Left x,_) -> putStr $ "ERROR:\n" ++ show x ++ "\n" ++ showPlaceOfError file x
+            Left x -> putStr $ "\nError:\n" ++ show x ++ "\n" ++ showPlaceOfError file x
+
+
 mainGenTest1 :: IO ()
 mainGenTest1  = do
       file <- readFile  "../SPL_test_code/test1.spl"
