@@ -463,6 +463,10 @@ genCompare op (ArrayType a loc) = do
     let (opExecA, functions') = genCompare op a
     (BSR opName,[Function opName (compArray op opExecA opName)])
 
+dualityOP Ge = Geq 
+dualityOP Le = Le 
+dualityOP x = x
+
 compArray :: Op2 -> Instruct -> String -> [Instruct]
 compArray op compareA compName | op == Eq || op == Neq = 
     [LABEL compName (LINK 2),
@@ -550,12 +554,6 @@ compArray op compareA compName  =
     --End of comparison
     LABEL (compName++"End") UNLINK,
     RET]
-
-
-defFromOp Leq = -1
-defFromOp Le = -1
-defFromOp Ge = 0
-defFromOp Geq = 0
 
 openBracket c  = LDC 40:TRAP 1:c
 closeBracket c  = LDC 41:TRAP 1:c

@@ -21,6 +21,13 @@ import Debug.Trace
 
 -- ======================================== Parser ========================================
 newtype Parser s a = Parser {run :: [s] -> Either Error (a, [s])}
+-- newtype Parser s a = Parser {runLast :: [s] -> Either Error ((a,s), [s])}
+-- newtype Parser s a = Parser {run :: [s] -> Either Error (a, [s])}
+
+-- runLast :: [s] -> Either Error ((a,s), [s])
+-- runLast = Parser $ \input -> do
+--     (out, input') <- p input
+--     Right (f out, input')
 
 instance Functor (Parser s) where
   fmap f (Parser p) = Parser $ \input -> do
@@ -50,12 +57,13 @@ instance Monad (Parser s) where
 -- Making error returning from many possible.
 infixr 4 <<|>
 
-(<<|>) :: Parser (Token, Int, Int) r -> Parser (Token, Int, Int) r -> Parser (Token, Int, Int) r
+(<<|>) :: Parser (Token, Loc, Loc) r -> Parser (Token, Loc, Loc) r -> Parser (Token, Loc, Loc) r
 x <<|> y = Parser $ \case
-  ((tokens, line, col) : xs) ->
-    case run x ((tokens, line, col) : xs) of
-      Left (Error (Loc line' col') m) | line == line' && col == col' -> run y ((tokens, line, col) : xs)
-      Left (Error (Loc line' col') m) -> Left (Error (Loc line' col') m)
+  ((tokens, Loc line col, locb) : xs) ->
+    case run x ((tokens, Loc line col, locb) : xs) of
+      Left (Error (Loc line' col') m) | line == line' && col == col' -> run y ((tokens, Loc line col, locb) : xs)
+      Left (ErrorD (DLoc (Loc line' col') _) m) | line == line' && col == col' -> run y ((tokens, Loc line col, locb) : xs)
+      Left x -> Left x
       res -> res
   x -> empty
 
@@ -77,31 +85,51 @@ x <|||> y = Parser $ \case
 pChainl :: Parser s (a -> a -> a) -> Parser s a -> Parser s a
 pChainl x p = foldl (&) <$> p <*> many (flip <$> x <*> p)
 
-op :: Parser (Token, Int, Int) Op2 -> Parser (Token, Int, Int) (Exp -> Exp -> Exp)
-op p = (\a b c d -> ExpOp2 c (Op2 b Nothing) d a) <$> locParser <*> p
+op :: Parser (Token, Loc, Loc) Op2 -> Parser (Token, Loc, Loc) (Exp -> Exp -> Exp)
+op p = lastLocExtreme $ (\a b c d -> ExpOp2 a c (Op2 b Nothing) d) <$> firstLocParser <*> p
 
-pToken :: Token -> Parser (Token, Int, Int) Token
+lastLocExtreme :: Parser (Token, Loc, Loc) (Exp -> Exp -> Loc -> Exp) -> Parser (Token, Loc, Loc) (Exp -> Exp -> Exp)
+lastLocExtreme p = Parser $ \input ->
+    case run (pLastLocParser p) input of
+        Right ((f,loc),remainingTokens) -> Right (\a b -> f a b loc,remainingTokens)
+        Left x -> Left x
+
+
+pToken :: Token -> Parser (Token, Loc, Loc) Token
 pToken t = Parser $
   \case
-    (x, line, col) : xs | x == t -> Right (x, xs)
-    (x, line, col) : xs -> Left $ unexpectedToken t x (Loc line col)
+    (x, loca, locb) : xs | x == t -> Right (x, xs)
+    (x, loca, locb) : xs -> Left $ unexpectedToken t x (DLoc loca locb)
     [] -> Left $ unexpectedEOF t
 
-pTokenGen :: Token -> (Loc -> b) -> Parser (Token, Int, Int) b
+pTokenGen :: Token -> (Loc -> Loc -> b) -> Parser (Token, Loc, Loc) b
 pTokenGen t f = Parser $
   \case
-    (x, line, col) : xs | x == t -> Right (f (Loc line col), xs)
-    (x, line, col) : xs -> Left $ unexpectedToken t x (Loc line col)
+    (x, loca, locb) : xs | x == t -> Right (f loca locb, xs)
+    (x, loca, locb) : xs -> Left $ unexpectedToken t x (DLoc loca locb)
     [] -> Left $ unexpectedEOF t
 
-locParser :: Parser (Token, Int, Int) Loc
-locParser = Parser $
+-- pTokenGenOffset :: Token -> (Loc -> Loc -> b) -> Int -> Parser (Token, Loc, Loc) b
+-- pTokenGenOffset t f offset = Parser $
+--   \case
+--     (x, line, col) : xs | x == t -> Right (f (Loc line col) (Loc line (col+offset)), xs)
+--     (x, line, col) : xs -> Left $ unexpectedToken t x (Loc line col)
+--     [] -> Left $ unexpectedEOF t
+
+firstLocParser :: Parser (Token, Loc, Loc) Loc
+firstLocParser = Parser $
   \case
-    (x, line, col) : xs -> Right (Loc line col, (x, line, col) : xs)
+    (x, loca, locb) : xs -> Right (loca, (x, loca, locb) : xs)
+    [] -> Left $ unexpectedEOF ""
+
+lastLocParser :: Parser (Token, Loc, Loc) Loc
+lastLocParser = Parser $
+  \case
+    (x, loca, locb) : xs -> Right (locb, (x, loca, locb) : xs)
     [] -> Left $ unexpectedEOF ""
 
 -- ===================== VarDecl ============================
-varDecl :: Parser (Token, Int, Int) VarDecl
+varDecl :: Parser (Token, Loc, Loc) VarDecl
 varDecl =
  VarDeclType <$> rigidType <*> idPLoc <*> varAss <|> 
   VarDeclVar <$> (pToken VarToken *> idPLoc) <*> varAss
@@ -109,7 +137,7 @@ varDecl =
     varAss = pToken IsToken *> expParser <* pToken SemiColToken
 
 -- ===================== FunDecl ============================
-funDecl :: Parser (Token, Int, Int) FunDecl
+funDecl :: Parser (Token, Loc, Loc) FunDecl
 funDecl =
   FunDecl
     <$> idPLoc
@@ -122,79 +150,80 @@ funDecl =
 -- ===================== Types ============================
 
 -- ===== FunType =====
-funType :: Parser (Token, Int, Int) (Maybe SPLType)
+funType :: Parser (Token, Loc, Loc) (Maybe SPLType)
 funType = Parser $ \case
-  (FunTypeToken, line, col) : xs -> do
+  (FunTypeToken, loca, locb) : xs -> do
     (ys, rest) <- run (many splType) xs
     let ret = if length ys > 1 then foldr1 FunType ys else head ys
     Right (Just ret, rest)
+    --undefined 
   x -> Right (Nothing, x)
 
 -- ===== RetType =====
-retType :: Parser (Token, Int, Int) SPLType
+retType :: Parser (Token, Loc, Loc) SPLType
 retType = pToken ArrowToken *> splType
 
-voidType :: Parser (Token, Int, Int) SPLType
+voidType :: Parser (Token, Loc, Loc) SPLType
 voidType = pTokenGen VoidToken Void
 
 -- ===== Type =====
-splType :: Parser (Token, Int, Int) SPLType
+splType :: Parser (Token, Loc, Loc) SPLType
 splType = rigidType <|> idType <|> voidType <|> retType
 
-rigidType :: Parser (Token, Int, Int) SPLType
+rigidType :: Parser (Token, Loc, Loc) SPLType
 rigidType = typeBasic <|> tupleType <|> arrayType
 
-typeBasic :: Parser (Token, Int, Int) SPLType
-typeBasic = flip TypeBasic <$> locParser <*> basicType
+typeBasic :: Parser (Token, Loc, Loc) SPLType
+typeBasic = (\a (b,c) -> TypeBasic a b c ) <$> firstLocParser <*> pLastLocParser basicType
 
-tupleType :: Parser (Token, Int, Int) SPLType
-tupleType = flip TupleType <$> locParser <*> (pToken BrackOToken *> ((,) <$> splType <* pToken CommaToken <*> splType) <* pToken BrackCToken)
+tupleType :: Parser (Token, Loc, Loc) SPLType
+tupleType = (\a (b,c) -> TupleType a b c ) <$> firstLocParser <*> pLastLocParser (pToken BrackOToken *> ((,) <$> splType <* pToken CommaToken <*> splType) <* pToken BrackCToken)
 
-arrayType :: Parser (Token, Int, Int) SPLType
-arrayType = flip ArrayType <$> locParser <*> (pToken SBrackOToken *> splType <* pToken SBrackCToken)
+arrayType :: Parser (Token, Loc, Loc) SPLType
+arrayType = (\a (b,c) -> ArrayType a b c) <$> firstLocParser <*> pLastLocParser (pToken SBrackOToken *> splType <* pToken SBrackCToken)
 
-idType :: Parser (Token, Int, Int) SPLType
+idType :: Parser (Token, Loc, Loc) SPLType
 idType = IdType <$> idPLoc
 
 -- ===== BasicType =====
-basicType :: Parser (Token, Int, Int) BasicType
+basicType :: Parser (Token, Loc, Loc) BasicType
 basicType = basicInt <|> basicBool <|> basicChar
 
-basicInt :: Parser (Token, Int, Int) BasicType
+basicInt :: Parser (Token, Loc, Loc) BasicType
 basicInt = BasicInt <$ pToken TypeIntToken
 
-basicBool :: Parser (Token, Int, Int) BasicType
+basicBool :: Parser (Token, Loc, Loc) BasicType
 basicBool = BasicBool <$ pToken TypeBoolToken
 
-basicChar :: Parser (Token, Int, Int) BasicType
+basicChar :: Parser (Token, Loc, Loc) BasicType
 basicChar = BasicChar <$ pToken TypeCharToken
 
 -- ===================== Statements ============================
-stmt :: Parser (Token, Int, Int) Stmt
+stmt :: Parser (Token, Loc, Loc) Stmt
 stmt = stmtReturn <|> stmtFuncCall <|> stmtAssignVar <|> stmtIf <|> stmtWhile
 
-stmtIf :: Parser (Token, Int, Int) Stmt
+stmtIf :: Parser (Token, Loc, Loc) Stmt
 stmtIf =
   (\a b c d -> StmtIf b c d a)
-    <$> locParser
+    <$> firstLocParser
     <*> (pToken IfToken *> pToken BrackOToken *> expParser <* pToken BrackCToken)
     <*> (pToken CBrackOToken *> many' stmt <* pToken CBrackCToken)
     <*> stmtElse
 
-stmtElse :: Parser (Token, Int, Int) (Maybe [Stmt])
+stmtElse :: Parser (Token, Loc, Loc) (Maybe [Stmt])
 stmtElse = Parser $ \case
   (ElseToken, line, col) : xs -> do
     (ys, rest) <- run (pToken CBrackOToken *> many' stmt <* pToken CBrackCToken) xs
     Right (Just ys, rest)
   x -> Right (Nothing, x)
 
-stmtWhile :: Parser (Token, Int, Int) Stmt
+stmtWhile :: Parser (Token, Loc, Loc) Stmt
 stmtWhile =
-  (\a b c -> StmtWhile b c a) <$> locParser
+  (\a b c -> StmtWhile b c a) <$> firstLocParser
     <*> (pToken WhileToken *> pToken BrackOToken *> expParser <* pToken BrackCToken)
     <*> (pToken CBrackOToken *> many' stmt <* pToken CBrackCToken)
 
-stmtAssignVar :: Parser (Token, Int, Int) Stmt
+stmtAssignVar :: Parser (Token, Loc, Loc) Stmt
 stmtAssignVar =
   StmtAssignVar
     <$> idPLoc
@@ -202,66 +231,66 @@ stmtAssignVar =
     <*> (pToken IsToken *> expParser <* pToken SemiColToken) 
     <*> pure Nothing
 
-stmtFuncCall :: Parser (Token, Int, Int) Stmt
-stmtFuncCall = flip StmtFuncCall <$> locParser <*> funCall <* pToken SemiColToken
+stmtFuncCall :: Parser (Token, Loc, Loc) Stmt
+stmtFuncCall = flip StmtFuncCall <$> firstLocParser <*> funCall <* pToken SemiColToken
 
-stmtReturn :: Parser (Token, Int, Int) Stmt
+stmtReturn :: Parser (Token, Loc, Loc) Stmt
 stmtReturn =
-  flip StmtReturn <$> locParser
+  flip StmtReturn <$> firstLocParser
     <*> ( (Nothing <$ pToken ReturnToken <* pToken SemiColToken)
             <|> (Just <$> (pToken ReturnToken *> expParser) <* pToken SemiColToken)
         )
 
 -- ===================== Expressions ============================
-expParser :: Parser (Token, Int, Int) Exp
+expParser :: Parser (Token, Loc, Loc) Exp
 expParser = pOr
 
-expId :: Parser (Token, Int, Int) Exp
+expId :: Parser (Token, Loc, Loc) Exp
 expId = ExpId <$> idPLoc <*> fieldP
 
-expInt :: Parser (Token, Int, Int) Exp
+expInt :: Parser (Token, Loc, Loc) Exp
 expInt =
   Parser
     ( \case
-        (IntToken c, line, col) : xs -> Right (ExpInt c (Loc line col), xs)
-        (x, line, col) : xs -> Left $ unexpectedToken "Integer" (show x) (Loc line col)
+        (IntToken i, loca, locb) : xs -> Right (ExpInt loca i locb, xs)
+        (x, loca, locb) : xs -> Left $ unexpectedToken "Integer" (show x) (DLoc loca locb)
         [] -> Left $ unexpectedEOF "an Integer"
     )
 
-expChar :: Parser (Token, Int, Int) Exp
+expChar :: Parser (Token, Loc, Loc) Exp
 expChar =
   Parser
     ( \case
-        (CharToken c, line, col) : xs -> Right (ExpChar c (Loc line col), xs)
-        (x, line, col) : xs -> Left $ unexpectedToken "Char" (show x) (Loc line col)
+        (CharToken c, loca, locb) : xs -> Right (ExpChar loca c locb, xs)
+        (x, loca, locb) : xs -> Left $ unexpectedToken "Char" (show x) (DLoc loca locb)
         [] -> Left $ unexpectedEOF "an Char"
     )
 
-expBool :: Parser (Token, Int, Int) Exp
+expBool :: Parser (Token, Loc, Loc) Exp
 expBool =
   Parser
     ( \case
-        (BoolToken b, line, col) : xs -> Right (ExpBool b (Loc line col), xs)
-        (x, line, col) : xs -> Left $ unexpectedToken "Bool" (show x) (Loc line col)
+        (BoolToken b, loca, locb) : xs -> Right (ExpBool loca b locb, xs)
+        (x, loca, locb) : xs -> Left $ unexpectedToken "Bool" (show x) (DLoc loca locb)
         _ -> Left $ unexpectedEOF "an Bool"
     )
 
-expBracket :: Parser (Token, Int, Int) Exp
+expBracket :: Parser (Token, Loc, Loc) Exp
 expBracket = pToken BrackOToken *> expParser <* pToken BrackCToken
 
--- pOr :: Parser (Token, Int, Int) Exp
-pOr :: Parser (Token, Int, Int) Exp
+-- pOr :: Parser (Token, Loc, Loc) Exp
+pOr :: Parser (Token, Loc, Loc) Exp
 pOr = pChainl (op (Or <$ pToken OrToken)) pAnd
 
-pAnd :: Parser (Token, Int, Int) Exp
+pAnd :: Parser (Token, Loc, Loc) Exp
 pAnd = pChainl (op (And <$ pToken AndToken)) pConst
 
-pConst :: Parser (Token, Int, Int) Exp
-pConst = ((\f a b c d -> f b c d a) ExpOp2 <$> locParser <*> basicExpParser <*> (Op2 Con Nothing <$ pToken ConstToken) <*> expParser) <|> pComp
+pConst :: Parser (Token, Loc, Loc) Exp
+pConst = ((\a b c (d,e) -> ExpOp2 a b c d e)  <$> firstLocParser <*> basicExpParser <*> (Op2 Con Nothing <$ pToken ConstToken) <*> pLastLocParser expParser) <|> pComp
 
 -- pConst = pChainl (op (Con <$ pToken ConstToken)) pComp
 
-pComp :: Parser (Token, Int, Int) Exp
+pComp :: Parser (Token, Loc, Loc) Exp
 pComp = pChainl operators pPlusMin
   where
     operators =
@@ -272,14 +301,14 @@ pComp = pChainl operators pPlusMin
         <|> op (Geq <$ pToken GeqToken)
         <|> op (Neq <$ pToken NeqToken)
 
-pPlusMin :: Parser (Token, Int, Int) Exp
+pPlusMin :: Parser (Token, Loc, Loc) Exp
 pPlusMin = pChainl operators pMultDivMod
   where
     operators =
       op (Min <$ pToken MinToken)
         <|> op (Plus <$ pToken PlusToken)
 
-pMultDivMod :: Parser (Token, Int, Int) Exp
+pMultDivMod :: Parser (Token, Loc, Loc) Exp
 pMultDivMod = pChainl operators basicExpParser
   where
     operators =
@@ -287,26 +316,26 @@ pMultDivMod = pChainl operators basicExpParser
         <|> op (Div <$ pToken DivToken)
         <|> op (Mod <$ pToken ModToken)
 
-expOp1 :: Parser (Token, Int, Int) Exp
-expOp1 = (\f a b c -> f b c a) ExpOp1 <$> locParser <*> (Neg <$ pToken MinToken <|> Not <$ pToken NotToken) <*> expParser
+expOp1 :: Parser (Token, Loc, Loc) Exp
+expOp1 = (\a b (c,d) -> ExpOp1 a b c d)  <$> firstLocParser <*> (Neg <$ pToken MinToken <|> Not <$ pToken NotToken) <*> pLastLocParser expParser
 
-expEmptyList :: Parser (Token, Int, Int) Exp
+expEmptyList :: Parser (Token, Loc, Loc) Exp
 expEmptyList = pTokenGen EmptyListToken ExpEmptyList
 
-expList :: Parser (Token, Int, Int) Exp
-expList = flip ExpList <$> locParser <*> (pToken SBrackOToken *> expList <* pToken SBrackCToken) <*> pure Nothing
+expList :: Parser (Token, Loc, Loc) Exp
+expList = (\a (b,c) -> ExpList a b c)  <$> firstLocParser <*> pLastLocParser (pToken SBrackOToken *> expList <* pToken SBrackCToken) <*> pure Nothing 
   where
     expList = customSepBy CommaToken (pToken CommaToken) expParser
 
-expTuple :: Parser (Token, Int, Int) Exp
-expTuple = flip ExpTuple <$> locParser <*> tuple <*> pure Nothing
+expTuple :: Parser (Token, Loc, Loc) Exp
+expTuple = (\a (b,c) -> ExpTuple a b c) <$> firstLocParser <*> pLastLocParser tuple <*> pure Nothing
   where
     tuple = pToken BrackOToken *> ((,) <$> expParser <* pToken CommaToken <*> expParser) <* pToken BrackCToken
 
-expFunCall :: Parser (Token, Int, Int) Exp
-expFunCall = flip ExpFunCall <$> locParser <*> funCall
+expFunCall :: Parser (Token, Loc, Loc) Exp
+expFunCall = (\a (b,c) -> ExpFunCall a b c  ) <$> firstLocParser <*> pLastLocParser funCall
 
-basicExpParser :: Parser (Token, Int, Int) Exp
+basicExpParser :: Parser (Token, Loc, Loc) Exp
 basicExpParser =
   expBracket
     <|> expFunCall
@@ -320,10 +349,10 @@ basicExpParser =
     <|> expId
 
 -- ===================== Field ============================
-fieldP :: Parser (Token, Int, Int) Field
+fieldP :: Parser (Token, Loc, Loc) Field
 fieldP = Field <$> many standardFunctionP
 
-standardFunctionP :: Parser (Token, Int, Int) StandardFunction
+standardFunctionP :: Parser (Token, Loc, Loc) StandardFunction
 standardFunctionP =
   pTokenGen HdToken Head
     <|> pTokenGen TlToken Tail
@@ -331,7 +360,7 @@ standardFunctionP =
     <|> pTokenGen SndToken Snd
 
 -- ===================== FunCall ============================
-funCall :: Parser (Token, Int, Int) FunCall
+funCall :: Parser (Token, Loc, Loc) FunCall
 funCall = FunCall <$> idPLoc <*> (pToken BrackOToken *> actArgs <* pToken BrackCToken) <*> pure Nothing
 
 -- ===================== ActArgs ============================
@@ -341,26 +370,42 @@ actArgs = customSepBy CommaToken (pToken CommaToken) expParser
 
 -- ===================== ID ============================
 
-idPLoc :: Parser (Token, Int, Int) IDLoc
+idPLoc :: Parser (Token, Loc, Loc) IDLoc
 idPLoc = Parser $ \case
-  (IdToken id, line, col) : xs -> Right (ID id (Loc line col), xs)
-  (x, line, col) : xs -> Left $ unexpectedToken "identifier (ID)" (show x) (Loc line col)
-  _ -> Left $ unexpectedEOF "identifier (ID)"
+    (IdToken id, loca, locb) : xs -> Right (ID loca id locb, xs)
+    (x, loca, locb) : xs -> Left $ unexpectedToken "identifier (ID)" (show x) (DLoc loca locb)
+    _ -> Left $ unexpectedEOF "identifier (ID)"
 
-idP :: Parser (Token, Int, Int) ID
+idP :: Parser (Token, Loc, Loc) ID
 idP = Parser $ \case
-  (IdToken id, line, col) : xs -> Right (id, xs)
-  (x, line, col) : xs -> Left $ unexpectedToken "identifier (ID)" (show x) (Loc line col)
-  _ -> Left $ unexpectedEOF "identifier (ID)"
+    (IdToken id, loca, locb) : xs -> Right (id, xs)
+    (x, loca, locb) : xs -> Left $ unexpectedToken "identifier (ID)" (show x) (DLoc loca locb)
+    _ -> Left $ unexpectedEOF "identifier (ID)"
+
+-- ========================== Helper Functions ==========================
+pLastLocParser :: Parser (Token, Loc, Loc) a -> Parser (Token, Loc, Loc) (a,Loc)
+pLastLocParser (Parser p) = Parser $ 
+    \input -> case p input of
+        Right (a,remainingTokens) -> 
+            case getLastLoc input (head remainingTokens) of 
+                Just loc -> return ((a,loc),remainingTokens)
+                Nothing -> Left $ Error defaultLoc "Could not find last loc in parser"
+        Left x -> Left x
+
+getLastLoc :: [(Token, Loc , Loc)] -> (Token, Loc , Loc) -> Maybe Loc
+getLastLoc [] _ = Nothing
+getLastLoc ((_,_,alocy):(_,blocx,blocy):xs) (_,wanta,wantb) | blocx == wanta && blocy == wantb = Just alocy
+getLastLoc (_:xs) x = getLastLoc xs x
+
 
 -- =====================================================
-mainSegments :: Parser (Token, Int, Int) SPL
+mainSegments :: Parser (Token, Loc, Loc) SPL
 mainSegments = SPL <$> all' (FuncMain <$> funDecl <|> VarMain <$> varDecl)
 
-sepBy :: Parser (Token, Int, Int) a -> Parser (Token, Int, Int) b -> Parser (Token, Int, Int) [b]
+sepBy :: Parser (Token, Loc, Loc) a -> Parser (Token, Loc, Loc) b -> Parser (Token, Loc, Loc) [b]
 sepBy sep elem = ((:) <$> elem <*> many (sep *> elem)) <|> pure []
 
-customSepBy :: Token -> Parser (Token, Int, Int) a -> Parser (Token, Int, Int) b -> Parser (Token, Int, Int) [b]
+customSepBy :: Token -> Parser (Token, Loc, Loc) a -> Parser (Token, Loc, Loc) b -> Parser (Token, Loc, Loc) [b]
 customSepBy sepToken sep elem = Parser $ \input ->
   case run elem input of
     Right (b, input') ->
@@ -368,17 +413,17 @@ customSepBy sepToken sep elem = Parser $ \input ->
         Right (a, input'') -> run ((b :) <$> customSepBy sepToken sep elem) input''
         Left x ->
           case run elem input' of
-            Right (b', (token, _, _) : xs) -> let ((token', line, col) : xs) = input' in Left $ missingSeparator (Loc line col) sepToken token'
+            Right (b', (token, _, _) : xs) -> let ((token', loca, locb) : xs) = input' in Left $ missingSeparator (DLoc loca locb) sepToken token'
             Left x -> Right ([b], input')
     Left x -> Right ([], input)
 
-many'' :: Parser (Token, Int, Int) a -> Parser (Token, Int, Int) [a]
+many'' :: Parser (Token, Loc, Loc) a -> Parser (Token, Loc, Loc) [a]
 many'' p = ((:) <$> p <*> many p) <<|> pure []
 
-many' :: Parser (Token, Int, Int) a -> Parser (Token, Int, Int) [a]
+many' :: Parser (Token, Loc, Loc) a -> Parser (Token, Loc, Loc) [a]
 many' p = ((:) <$> p <*> many' p) <<|> pure []
 
-some' :: Parser (Token, Int, Int) a -> Parser (Token, Int, Int) [a]
+some' :: Parser (Token, Loc, Loc) a -> Parser (Token, Loc, Loc) [a]
 some' p = (:) <$> p <*> many' p
 
 all' :: Parser s a -> Parser s [a]
@@ -389,7 +434,7 @@ all' p = (:) <$> p <*> all p
         [] -> Right ([], [])
         xs -> run (all' p) xs
 
-tokeniseAndParse :: Parser (Token, Int, Int) a -> [Char] -> Either Error (a, [(Token, Int, Int)])
+tokeniseAndParse :: Parser (Token, Loc, Loc) a -> [Char] -> Either Error (a, [(Token, Loc, Loc)])
 tokeniseAndParse parser x = runTokenise x >>= run parser
 
 splFilePath = "../SPL_test_code/"

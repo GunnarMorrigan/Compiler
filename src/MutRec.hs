@@ -56,12 +56,12 @@ instance Callees Stmt where
     getCallees (StmtReturn Nothing _) = []
 
 instance Callees Exp where
-    getCallees (ExpFunCall (FunCall id e _) _) = id : getCallees e
-    getCallees (ExpOp2 e1 op e2 _) = getCallees e1 ++ getCallees e2
-    getCallees (ExpOp1 op e _) = getCallees e
+    getCallees (ExpFunCall _ (FunCall id e _) _) = id : getCallees e
+    getCallees (ExpOp2 _ e1 op e2 _) = getCallees e1 ++ getCallees e2
+    getCallees (ExpOp1 _ op e _) = getCallees e
     getCallees (ExpBracket e) = getCallees e
-    getCallees (ExpList e _ _) = getCallees e
-    getCallees (ExpTuple (e1, e2) _ _) = getCallees e1 ++ getCallees e2
+    getCallees (ExpList _ e _ _) = getCallees e
+    getCallees (ExpTuple _ (e1, e2) _ _) = getCallees e1 ++ getCallees e2
     getCallees (ExpId id fields) = [id]
     getCallees _ = []
 
@@ -106,7 +106,7 @@ onlyFuncMain ((FuncMain x,_,_):xs) = onlyFuncMain xs
 removeDeadCode :: [(Decl, IDLoc, [IDLoc])] -> Either Error [(Decl, IDLoc, [IDLoc])]
 removeDeadCode nodes = do
     let (graph, getNode, getVertex) = graphFromEdges nodes
-    case getVertex (ID "main" defaultLoc) of
+    case getVertex (ID defaultLoc "main" defaultLoc) of
         Nothing -> Left $ Error defaultLoc "Required main function not found."
         Just mainVertex -> 
             let code = reachable graph mainVertex 

@@ -11,7 +11,7 @@ import Control.Applicative
 
 data Error = 
   Error Loc String|
-  -- ErrorD ErrorLoc String|
+  ErrorD ErrorLoc String|
   Errors [Error]
   -- deriving (Show)
 
@@ -65,24 +65,27 @@ replaceTab (x:xs)  = x:replaceTab xs
 defaultLoc :: Loc
 defaultLoc = Loc (-1) (-1)
 
+defaultErrorLoc :: ErrorLoc
+defaultErrorLoc = DLoc defaultLoc defaultLoc
+
 -- ========== Parser Errors ==========
-missingSeparator loc sepToken token = Error loc ("Expected separator '"++ show sepToken ++ "' but found '" ++ show token ++ "' on " ++ show loc)
-unexpectedToken expected found loc = Error loc ("Expected: '"++show expected++"' but found: '" ++ show found ++ "' on " ++ show loc)
+missingSeparator loc sepToken token = ErrorD loc ("Expected separator '"++ show sepToken ++ "' but found '" ++ show token ++ "' on " ++ show loc)
+unexpectedToken expected found loc = ErrorD loc ("Expected: '"++show expected++"' but found: '" ++ show found ++ "' on " ++ show loc)
 unexpectedEOF expected = Error defaultLoc ("Unexpected EOF, expected: "++show expected++".")
 
 -- ========== Parser Errors ==========
-missingReturn :: String -> SPLType  -> Loc -> Error
-missingReturn fName t loc = Error loc ("Missing return statement in function '" ++ fName ++ "' on " ++ show loc ++ ", expected return statement of type " ++ pp t ++ " but got no return, please add a return statement to the function")  
-conflictingReturn :: String -> Loc -> Error 
-conflictingReturn fName loc = Error loc ("Found conflicting return types on " ++ show loc ++", types Void and non Void for function '" ++ fName ++ "'") 
-expectedReturn :: String -> SPLType -> String -> Loc -> Error
-expectedReturn fName expect got loc = Error loc ("Expected function '" ++ fName ++ "' on " ++ show loc ++ " to return " ++ pp expect ++" but returned " ++ got)
+missingReturn :: String -> SPLType  -> ErrorLoc -> Error
+missingReturn fName t loc = ErrorD loc ("Missing return statement in function '" ++ fName ++ "' on " ++ show loc ++ ", expected return statement of type " ++ pp t ++ " but got no return, please add a return statement to the function")  
+conflictingReturn :: String -> ErrorLoc -> Error 
+conflictingReturn fName loc = ErrorD loc ("Found conflicting return types on " ++ show loc ++", types Void and non Void for function '" ++ fName ++ "'") 
+expectedReturn :: String -> SPLType -> String -> ErrorLoc -> Error
+expectedReturn fName expect got loc = ErrorD loc ("Expected function '" ++ fName ++ "' on " ++ show loc ++ " to return " ++ pp expect ++" but returned " ++ got)
 
 -- ========== TI Errors ==========
 refBeforeDec :: (LOC a, PrettyPrinter a) => String -> a -> Error
-refBeforeDec s id = Error (getLoc id) (s++"'" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet. (i.e. reference before declaration)")
+refBeforeDec s id = ErrorD (getDLoc id) (s++"'" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet. (i.e. reference before declaration)")
 
-doubleDef id = Error (getLoc id) ("Variable: " ++ showIDLoc id ++ ", already exists in the type environment. (i.e. double decleration)")
+doubleDef id = ErrorD (getDLoc id) ("Variable: " ++ showIDLoc id ++ ", already exists in the type environment. (i.e. double decleration)")
 
-funcCallMoreArgs id = Error (getLoc id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too many arguments.")
-funcCallLessArgs id = Error (getLoc id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too few arguments.")
+funcCallMoreArgs id = ErrorD (getDLoc id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too many arguments.")
+funcCallLessArgs id = ErrorD (getDLoc id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too few arguments.")

@@ -76,12 +76,14 @@ instance Show Token where
 alphaCheck :: [Char] -> Bool
 alphaCheck xs = null xs || not (isAlphaNum (head xs))
 
+acTokens :: [Token]
 acTokens = [VarToken, ReturnToken, VoidToken, BoolToken True, BoolToken False, TypeBoolToken, TypeIntToken, TypeCharToken, IfToken, ElseToken, WhileToken, 
             HdToken, TlToken, FstToken, SndToken]
+tokens :: [Token]
 tokens = [EmptyListToken, BrackOToken,BrackCToken,CBrackOToken,CBrackCToken,SBrackOToken,SBrackCToken,FunTypeToken,ArrowToken,SemiColToken,EqToken,LeqToken,GeqToken,
           NeqToken,AndToken,OrToken,IsToken,PlusToken,MinToken,MultToken,DivToken,ModToken,LeToken,GeToken,ConstToken,NotToken,CommaToken]
 
-tokenise:: String -> Int -> Int -> These Error [(Token, Int, Int)]
+tokenise:: String -> Int -> Int -> These Error [(Token, Loc, Loc)]
 tokenise ('/' : '*' : xs) line col = gulp xs line col
   where
     gulp ('*' : '/' : rest) line col = tokenise rest line (col + 2)
@@ -93,15 +95,15 @@ tokenise ('/' : '/' : xs) line col = tokenise (dropWhile (/= '\n') xs) line 1
 tokenise (' ' : xs) line col = tokenise xs line (col + 1)
 tokenise ('\t' : xs) line col = tokenise xs line (col + 4)
 tokenise ('\n' : xs) line col = tokenise xs (line + 1) 1
-tokenise ('\'' : x : '\'' : xs) line col = ((CharToken x, line, col) :) <$> tokenise xs line (col + 3)
-tokenise ('\'' : '\\': x : '\'' : xs) line col = ((CharToken (toChar ['\\', x ]), line, col):) <$> tokenise xs line (col + 3)
+tokenise ('\'' : x : '\'' : xs) line col = ((CharToken x, Loc line col, Loc line (col + 3)) :) <$> tokenise xs line (col + 3)
+tokenise ('\'' : '\\': x : '\'' : xs) line col = ((CharToken (toChar ['\\', x ]), Loc line col, Loc line (col + 3)):) <$> tokenise xs line (col + 3)
   where toChar s = fst . head $ readLitChar s
 tokenise input line col = tokenise2 acTokens tokens input line col
   
-tokenise2 :: [Token] -> [Token] -> String -> Int -> Int -> These Error [(Token, Int, Int)]
-tokenise2 (at:art) ts (stripPrefix (show at) -> Just rc) l c | alphaCheck rc =  ((at, l, c) :) <$> tokenise rc l (c + length (show at))
+tokenise2 :: [Token] -> [Token] -> String -> Int -> Int -> These Error [(Token, Loc, Loc)]
+tokenise2 (at:art) ts (stripPrefix (show at) -> Just rc) l c | alphaCheck rc =  ((at, Loc l c, Loc l (c + length (show at))) :) <$> tokenise rc l (c + length (show at))
 tokenise2 (at:art) ts x l c = tokenise2 art ts x l c
-tokenise2 ats (t:rt) (stripPrefix (show t) -> Just rc) l c =  ((t, l, c) :) <$> tokenise rc l (c + length (show t))
+tokenise2 ats (t:rt) (stripPrefix (show t) -> Just rc) l c =  ((t, Loc l c, Loc l (c + length (show t))) :) <$> tokenise rc l (c + length (show t))
 tokenise2 ats (t:rt) x l c = tokenise2 ats rt x l c
 
 tokenise2 _ _ (c : xs) line col
@@ -116,7 +118,7 @@ tokenise2 _ _ [] line col = That []
 
 stringToCode x = Code <$> concat $ zipWith (\s line -> zip3 s (repeat line) [1 ..]) (lines x) [1 ..]
 
-runTokenise :: String -> Either Error [(Token, Int, Int)]
+runTokenise :: String -> Either Error [(Token, Loc, Loc)]
 runTokenise x = 
     case tokenise x 1 1 of
         That tokens -> Right tokens
@@ -129,5 +131,5 @@ mainLex filename = do
             Left err -> putStrLn $ showError file err
             Right a -> print a
 
-spanToken ::  (Char -> Bool) -> Int -> Int -> ([Char] -> Token) -> [Char] -> These Error [(Token, Int, Int)]
-spanToken p line col t = (\(ds, rest) -> ((t ds, line, col) :) <$> tokenise rest line (col + length ds)) . span p
+spanToken ::  (Char -> Bool) -> Int -> Int -> ([Char] -> Token) -> [Char] -> These Error [(Token, Loc, Loc)]
+spanToken p line col t = (\(ds, rest) -> ((t ds, Loc line col, Loc line (col + length ds)) :) <$> tokenise rest line (col + length ds)) . span p

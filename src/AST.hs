@@ -23,21 +23,21 @@ data FunDecl = FunDecl IDLoc [IDLoc] (Maybe SPLType) [VarDecl] [Stmt] --Line
 
 
 data SPLType 
-  = TypeBasic BasicType Loc
-  | TupleType (SPLType, SPLType) Loc
-  | ArrayType SPLType Loc
+  = TypeBasic Loc BasicType Loc
+  | TupleType Loc (SPLType, SPLType) Loc
+  | ArrayType Loc SPLType Loc
   | IdType IDLoc
   | FunType SPLType SPLType
-  | Void Loc
+  | Void Loc Loc
   deriving (Eq, Show)
 
 eqType :: SPLType -> SPLType -> Bool
-eqType (TypeBasic l loc) (TypeBasic r loc') = l == r
-eqType (TupleType (a,b) loc) (TupleType (c,d) loc') = eqType a c && eqType b d
-eqType (ArrayType a loc) (ArrayType b loc') = eqType a b
+eqType (TypeBasic _ l loc) (TypeBasic _ r loc') = l == r
+eqType (TupleType _ (a,b) loc) (TupleType _ (c,d) loc') = eqType a c && eqType b d
+eqType (ArrayType _ a loc) (ArrayType _ b loc') = eqType a b
 eqType (IdType l) (IdType r) = True
 eqType (FunType arg ret) (FunType arg' ret') = eqType arg arg' && eqType ret ret'
-eqType (Void x) (Void x') = True
+eqType (Void _ _) (Void _ _) = True
 eqType _ _ = False
 
 
@@ -56,16 +56,16 @@ data Stmt = StmtIf Exp [Stmt] (Maybe [Stmt]) Loc
 
 data Exp
   = ExpId IDLoc Field
-  | ExpInt Int Loc
-  | ExpBool Bool Loc
-  | ExpChar Char Loc
+  | ExpInt Loc Int Loc
+  | ExpBool Loc Bool Loc
+  | ExpChar Loc Char Loc
   | ExpBracket Exp
-  | ExpOp2 Exp Op2Typed Exp Loc
-  | ExpOp1 Op1 Exp Loc
-  | ExpFunCall FunCall Loc
-  | ExpEmptyList Loc
-  | ExpList [Exp] Loc (Maybe SPLType)
-  | ExpTuple (Exp, Exp) Loc (Maybe SPLType)
+  | ExpOp2 Loc Exp Op2Typed Exp Loc
+  | ExpOp1 Loc Op1 Exp Loc
+  | ExpFunCall Loc FunCall Loc
+  | ExpEmptyList Loc Loc
+  | ExpList Loc [Exp] Loc (Maybe SPLType)
+  | ExpTuple Loc (Exp, Exp) Loc (Maybe SPLType)
   deriving(Eq, Show)
 
 newtype Field
@@ -73,17 +73,17 @@ newtype Field
   deriving (Eq, Show)
 
 data StandardFunction
-    = Head Loc
-    | Tail Loc
-    | Fst Loc
-    | Snd Loc
+    = Head Loc Loc
+    | Tail Loc Loc
+    | Fst Loc Loc
+    | Snd Loc Loc
     deriving (Eq, Show)
 
 type ID = String
-data IDLoc = ID String Loc
+data IDLoc = ID Loc String Loc
   deriving (Show, Eq)
 instance Ord IDLoc where
-  compare (ID id _) (ID id' _) = id `compare` id'
+  compare (ID _ id _) (ID _ id' _) = id `compare` id'
 
 -- ===================== FunCall and Operators ============================
 
@@ -115,90 +115,107 @@ data Loc =
   Loc Int Int
   deriving (Eq, Ord, Show)
 
+data ErrorLoc =
+  -- SLoc Loc Int |    -- Single Loc, used when length of object is known
+  DLoc Loc Loc      -- Double Loc, used when length of object is not known
+  deriving (Show, Eq)
+
 class LOC a where
   showLoc :: a -> String
-  getLoc :: a -> Loc
+  getDLoc :: a -> ErrorLoc
+  getFstLoc :: a -> Loc
+  getSndLoc :: a -> Loc
   getLineNum:: a -> Int
   getColNum:: a -> Int
 
 instance LOC Loc where
   showLoc (Loc line col) = "on Line " ++ show line ++ " and, Col "++ show col
-  getLoc x = x
+  getDLoc x = undefined
+  getFstLoc x = x
+  getSndLoc x = x
   getLineNum (Loc line col) = line
   getColNum (Loc line col) = col
 
 instance LOC IDLoc where
-  showLoc (ID id loc) = showLoc loc
-  getLoc (ID id loc) = getLoc loc
-  getLineNum (ID id loc) = getLineNum loc 
-  getColNum (ID id loc) = getColNum loc 
+  showLoc (ID loc id loc') = showLoc loc
+  getDLoc (ID loc id _) = getDLoc loc
+  getFstLoc x = let (DLoc a _) = getDLoc x in a
+  getSndLoc x = let (DLoc _ b) = getDLoc x in b
+  getLineNum (ID loc id _) = getLineNum loc 
+  getColNum (ID loc id _) = getColNum loc 
 
 showIDLoc :: IDLoc -> String
-showIDLoc (ID  id (Loc line col)) | line > 0 && col > 0 = id ++ " on Line " ++ show line ++ " and, Col "++ show col++"."
-showIDLoc (ID  id (Loc line col)) = id
+showIDLoc (ID (Loc line col)  id _) | line > 0 && col > 0 = id ++ " on Line " ++ show line ++ " and, Col "++ show col++"."
+showIDLoc (ID (Loc line col)  id _) = id
 
 idLocCreator :: String -> IDLoc
-idLocCreator s = ID s (Loc (-1) (-1))
+idLocCreator s = ID (Loc (-1) (-1)) s (Loc (-1) (-1))
 
 instance LOC SPLType where
-  showLoc x = let Loc line col = getLoc x in "on Line " ++ show line ++ " and, Col "++ show col
+  showLoc x = let DLoc loc _ = getDLoc x in showLoc loc
 
-  getLoc (TypeBasic _ loc) = loc
-  getLoc (ArrayType _ loc) =  loc
-  getLoc (TupleType _ loc) =  loc
-  getLoc (IdType idloc) =  getLoc idloc
-  getLoc (Void loc) = loc
+  getDLoc (TypeBasic locA  _ locB) = DLoc locA locB
+  getDLoc (ArrayType locA  _ locB) =  DLoc locA locB
+  getDLoc (TupleType locA  _ locB) =  DLoc locA locB
+  getDLoc (IdType idloc) =  getDLoc idloc
+  getDLoc (Void locA locB) = DLoc locA locB
 
-  getLineNum (TypeBasic _ loc) = getLineNum loc
-  getLineNum (ArrayType _ loc) = getLineNum loc
-  getLineNum (TupleType _ loc) = getLineNum loc
+  getFstLoc x = let (DLoc a _) = getDLoc x in a
+  getSndLoc x = let (DLoc _ b) = getDLoc x in b
+
+  getLineNum (TypeBasic locA  _ locBc) = getLineNum locA
+  getLineNum (ArrayType locA  _ locB) = getLineNum locA
+  getLineNum (TupleType locA  _ locB) = getLineNum locA
   getLineNum (IdType idloc) = getLineNum idloc
-  getLineNum (Void loc) = getLineNum loc
+  getLineNum (Void locA locB) = getLineNum locA
 
-  getColNum (ArrayType _ loc) = getColNum loc
-  getColNum (TupleType _ loc) = getColNum loc
-  getColNum (TypeBasic _ loc) = getColNum loc
+  getColNum (ArrayType locA  _ locB) = getColNum locA
+  getColNum (TupleType locA  _ locB) = getColNum locA
+  getColNum (TypeBasic locA  _ locB) = getColNum locA
   getColNum (IdType idloc) = getColNum idloc
-  getColNum (Void loc) = getColNum loc
+  getColNum (Void locA locB) = getColNum locA
 
 instance LOC Exp where
-  showLoc x = let Loc line col = getLoc x in "on Line " ++ show line ++ " and, Col "++ show col
+  showLoc x = let DLoc loc _ = getDLoc x in showLoc loc
 
-  getLoc (ExpId idloc _) = getLoc idloc
-  getLoc (ExpInt  _ loc) = loc
-  getLoc (ExpBool _ loc) = loc
-  getLoc (ExpChar _ loc) = loc
-  getLoc (ExpBracket e) =  getLoc e
-  getLoc (ExpOp2 _ _ _ loc) = loc
-  getLoc (ExpOp1 _ _ loc) =   loc
-  getLoc (ExpFunCall _ loc) = loc
-  getLoc (ExpEmptyList loc) = loc
-  getLoc (ExpList _ loc _) = loc
-  getLoc (ExpTuple _ loc _) = loc
+  getDLoc (ExpId idloc _) = getDLoc idloc
+  getDLoc (ExpInt locA  _ locB) = DLoc locA locB
+  getDLoc (ExpBool locA _ locB) = DLoc locA locB
+  getDLoc (ExpChar locA _ locB) = DLoc locA locB
+  getDLoc (ExpBracket e) =  getDLoc e
+  getDLoc (ExpOp2 locA _ _ _ locB) = DLoc locA locB
+  getDLoc (ExpOp1 locA _ _ locB) = DLoc locA locB
+  getDLoc (ExpFunCall locA _ locB) = DLoc locA locB
+  getDLoc (ExpEmptyList locA locB) = DLoc locA locB
+  getDLoc (ExpList locA _ locB _) = DLoc locA locB
+  getDLoc (ExpTuple locA _ locB _) = DLoc locA locB
+
+  getFstLoc x = let (DLoc a _) = getDLoc x in a
+  getSndLoc x = let (DLoc _ b) = getDLoc x in b
 
   getLineNum (ExpId idloc _) = getLineNum idloc
-  getLineNum (ExpInt _ loc) =  getLineNum loc
-  getLineNum (ExpBool _ loc) = getLineNum loc
-  getLineNum (ExpChar _ loc) =  getLineNum loc
+  getLineNum (ExpInt locA _ locB) =  getLineNum locA
+  getLineNum (ExpBool locA _ locB) = getLineNum locA
+  getLineNum (ExpChar locA _ locB) =  getLineNum locA
   getLineNum (ExpBracket e) =  getLineNum e
-  getLineNum (ExpOp2 _ _ _ loc) = getLineNum loc
-  getLineNum (ExpOp1 _ _ loc) =  getLineNum loc
-  getLineNum (ExpFunCall _ loc) = getLineNum loc
-  getLineNum (ExpEmptyList loc) = getLineNum loc
-  getLineNum (ExpList _ loc _) = getLineNum loc
-  getLineNum (ExpTuple _ loc _) = getLineNum loc
+  getLineNum (ExpOp2 locA _ _ _ locB) = getLineNum locA
+  getLineNum (ExpOp1 locA _ _ locB) =  getLineNum locA
+  getLineNum (ExpFunCall locA _ locB) = getLineNum locA
+  getLineNum (ExpEmptyList  locA locB) = getLineNum locA
+  getLineNum (ExpList locA _ locB _) = getLineNum locA
+  getLineNum (ExpTuple locA _ locB _) = getLineNum locA
 
   getColNum (ExpId idloc _) = getColNum idloc
-  getColNum (ExpInt _ loc) =  getColNum loc
-  getColNum (ExpBool _ loc) =  getColNum loc
-  getColNum (ExpChar _ loc) =  getColNum loc
+  getColNum (ExpInt locA _ locB) =  getColNum locA
+  getColNum (ExpBool locA _ locB) =  getColNum locA
+  getColNum (ExpChar locA _ locB) =  getColNum locA
   getColNum (ExpBracket e) =  getColNum e
-  getColNum (ExpOp2 _ _ _ loc) = getColNum loc
-  getColNum (ExpOp1 _ _ loc) =   getColNum loc
-  getColNum (ExpFunCall _ loc) = getColNum loc
-  getColNum (ExpEmptyList loc) = getColNum loc
-  getColNum (ExpList _ loc _) = getColNum loc
-  getColNum (ExpTuple _ loc _) = getColNum loc
+  getColNum (ExpOp2 locA _ _ _ locB) = getColNum locA
+  getColNum (ExpOp1 locA _ _ locB) =   getColNum locA
+  getColNum (ExpFunCall locA _ locB) = getColNum locA
+  getColNum (ExpEmptyList locA locB) = getColNum locA
+  getColNum (ExpList locA _ locB _) = getColNum locA
+  getColNum (ExpTuple locA _ locB _) = getColNum locA
 
 -- ===================== prettyPrinter ============================
 prettyPrinter :: PrettyPrinter a => [a] -> String
@@ -241,14 +258,14 @@ instance PrettyPrinter FunDecl where
     "}"
 
 instance PrettyPrinter SPLType where
-  pp (TypeBasic x loc) = pp x
-  pp (TupleType (a, b) loc) = "(" ++ pp a ++ ", "++pp b ++ ")"
-  pp (ArrayType x loc) = "["++pp x++"]"
+  pp (TypeBasic _ x loc) = pp x
+  pp (TupleType _ (a, b) loc) = "(" ++ pp a ++ ", "++pp b ++ ")"
+  pp (ArrayType _ x loc) = "["++pp x++"]"
   pp (IdType id) = pp id
   -- Prints function types haskell style:
   -- pp (FunType arg ret) = pp arg ++ " -> " ++ pp ret
   pp (FunType arg ret) = let args = getArgsTypes (FunType arg ret) in concatMap (\x -> pp x ++ " "  ) (init args) ++ "-> " ++ pp (last args)
-  pp (Void x) = "Void"
+  pp (Void _ _) = "Void"
 
 
 getArgsTypes :: SPLType -> [SPLType]
@@ -277,28 +294,28 @@ instance PrettyPrinter Stmt where
 
 instance PrettyPrinter Exp where
   pp (ExpId s f) = pp s ++ pp f
-  pp (ExpInt i _) = show i
-  pp (ExpChar c _) = show c
-  pp (ExpBool b _) = show b
+  pp (ExpInt _ i _) = show i
+  pp (ExpChar _ c _) = show c
+  pp (ExpBool _ b _) = show b
   pp (ExpBracket e) = "("++ pp e++")"
-  pp (ExpOp2 e1 (Op2 op _) e2 _) = "("++ pp e1  ++" "++ pp op++" " ++ pp e2++")"
-  pp (ExpOp1 op e _) = pp op ++ pp e
-  pp (ExpFunCall c _) = pp c;
-  pp (ExpList xs _ _) =  "["++ intercalate "," (Prelude.map pp xs)  ++ "]"
-  pp (ExpTuple (a,b) _ _) =  "(" ++ pp a ++ ", " ++ pp b ++")"
-  pp (ExpEmptyList _) = "[]"
+  pp (ExpOp2 _ e1 (Op2 op _) e2 _) = "("++ pp e1  ++" "++ pp op++" " ++ pp e2++")"
+  pp (ExpOp1 _ op e _) = pp op ++ pp e
+  pp (ExpFunCall _ c _) = pp c;
+  pp (ExpList _ xs _ _) =  "["++ intercalate "," (Prelude.map pp xs)  ++ "]"
+  pp (ExpTuple _ (a,b) _ _) =  "(" ++ pp a ++ ", " ++ pp b ++")"
+  pp (ExpEmptyList _ _) = "[]"
 
 instance PrettyPrinter Field where
   pp (Field xs) = concatMap pp xs
 
 instance PrettyPrinter StandardFunction where
-  pp (Head _) = ".hd"
-  pp (Tail _) = ".tl"
-  pp (Fst _) = ".fst"
-  pp (Snd _) = ".snd"
+  pp (Head _ _) = ".hd"
+  pp (Tail _ _) = ".tl"
+  pp (Fst _ _) = ".fst"
+  pp (Snd _ _) = ".snd"
 
 instance PrettyPrinter IDLoc where
-  pp (ID id (Loc line col)) = id
+  pp (ID _ id _) = id
 
 instance PrettyPrinter FunCall where
   pp (FunCall i eS Nothing) = pp i ++ "("++ intercalate "," (Prelude.map pp eS) ++") /*:: Nothing*/"
@@ -327,7 +344,7 @@ instance PrettyPrinter Op2 where
   -- ==================== Sorting SPL ====================
 filterMain :: [Decl] -> ([Decl], Maybe Decl)
 filterMain [] = ([],Nothing)
-filterMain (FuncMain (FunDecl (ID "main" loc) [] (Just fType) vDecls stmts):xs) = let(ys, main) = filterMain xs in (ys, Just (FuncMain(FunDecl (ID "main" loc) [] (Just fType) vDecls stmts)))
+filterMain (FuncMain (FunDecl (ID locA "main" locB) [] (Just fType) vDecls stmts):xs) = let(ys, main) = filterMain xs in (ys, Just (FuncMain(FunDecl (ID locA "main" locB) [] (Just fType) vDecls stmts)))
 filterMain (x:xs) = let(ys, main) = filterMain xs in (x:ys, main)
 
 sortSPL :: SPL -> ([VarDecl],[FunDecl], Maybe FunDecl)
@@ -336,7 +353,7 @@ sortSPL (SPL xs) = sortDecls (reverse xs)
 sortDecls :: [Decl] -> ([VarDecl],[FunDecl], Maybe FunDecl)
 sortDecls [] = ([],[], Nothing)
 sortDecls (VarMain x:xs) = let (globals,funcs,main) = sortDecls xs in (x:globals,funcs,main)
-sortDecls (FuncMain (FunDecl (ID "main" l) [] fType locals stmts):xs) = 
+sortDecls (FuncMain (FunDecl (ID locA "main" locB) [] fType locals stmts):xs) = 
     let (globals,funcs,main) = sortDecls xs 
-    in (globals,funcs,Just (FunDecl (ID "main" l) [] fType locals stmts))
+    in (globals,funcs,Just (FunDecl (ID locA "main" locB) [] fType locals stmts))
 sortDecls (FuncMain x:xs) = let (globals,funcs,main) = sortDecls xs in (globals,x:funcs,main)
