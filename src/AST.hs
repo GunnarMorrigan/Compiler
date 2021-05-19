@@ -95,7 +95,7 @@ data FunCall
 data Op1 = Neg | Not deriving (Eq, Show)
 
 
-data Op2Typed = Op2 Op2 (Maybe SPLType)
+data Op2Typed = Op2 Op2 (Maybe SPLType) Loc
   deriving (Show, Eq)
 
 -- ==== Op2 ====
@@ -128,9 +128,19 @@ class LOC a where
   getLineNum:: a -> Int
   getColNum:: a -> Int
 
+
+instance LOC ErrorLoc where
+  showLoc (DLoc (Loc line col) _) = "on Line " ++ show line ++ " and, Col "++ show col
+  getDLoc x = x
+  getFstLoc (DLoc a _) = a
+  getSndLoc (DLoc _ b) = b
+  getLineNum (DLoc (Loc line col) _) = line
+  getColNum (DLoc (Loc line col) _) = col
+
+
 instance LOC Loc where
   showLoc (Loc line col) = "on Line " ++ show line ++ " and, Col "++ show col
-  getDLoc x = undefined
+  getDLoc x = DLoc x x
   getFstLoc x = x
   getSndLoc x = x
   getLineNum (Loc line col) = line
@@ -298,7 +308,7 @@ instance PrettyPrinter Exp where
   pp (ExpChar _ c _) = show c
   pp (ExpBool _ b _) = show b
   pp (ExpBracket e) = "("++ pp e++")"
-  pp (ExpOp2 _ e1 (Op2 op _) e2 _) = "("++ pp e1  ++" "++ pp op++" " ++ pp e2++")"
+  pp (ExpOp2 _ e1 (Op2 op _ _) e2 _) = "("++ pp e1  ++" "++ pp op++" " ++ pp e2++")"
   pp (ExpOp1 _ op e _) = pp op ++ pp e
   pp (ExpFunCall _ c _) = pp c;
   pp (ExpList _ xs _ _) =  "["++ intercalate "," (Prelude.map pp xs)  ++ "]"

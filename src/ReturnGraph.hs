@@ -28,21 +28,21 @@ instance ReturnGraph FunDecl where
         Just (Error a b) -> Left (Error a b)
 
 rtgaStmtsForLevel :: [Stmt] -> IDLoc -> Maybe SPLType -> Either Error Bool
-rtgaStmtsForLevel stmts (ID fname loc) fType = case Prelude.filter isValidReturn stmts of
+rtgaStmtsForLevel stmts (ID locA fname locB) fType = case Prelude.filter isValidReturn stmts of
             [] -> case fType of
                 Nothing -> Right True 
                 (Just x) -> case last (getArgsTypes x) of
-                    (Void _) -> Right True 
-                    t -> Left (missingReturn fname t loc )
+                    (Void _ _) -> Right True 
+                    t -> Left (missingReturn fname t locA)
             xs ->  if allTheSame (Prelude.map isVoidReturn xs) 
                     then case fType of
                         Nothing -> if allTheSame (Prelude.map isVoidReturn xs) 
                                     then Right (isVoidReturn $ head xs) 
                                     else let l = getLocReturn (last xs) in  Left (conflictingReturn fname l)
                         (Just y) ->  case y of
-                            (Void _) -> if isVoidReturn $ head xs
+                            (Void _ _) -> if isVoidReturn $ head xs
                                     then Right True
-                                    else let l = getLocReturn (last xs) in  Left (expectedReturn fname (Void l) "non Void" l)
+                                    else let l = getLocReturn (last xs) in Left (expectedReturn fname (Void l l) "non Void" l)
                             t -> if not (isVoidReturn $ head xs)
                                     then Right False
                                     else let l = getLocReturn(head xs) in Left (expectedReturn fname t "Void" l)
@@ -67,7 +67,7 @@ isValidReturn _ = False
 
 rtgaStmts :: [Stmt]-> IDLoc -> Maybe SPLType  -> Maybe Error
 rtgaStmts [] _ _ = Nothing
-rtgaStmts stmts (ID fname (Loc l c)) ftype = case rtgaStmtsForLevel stmts (ID fname (Loc l c)) ftype of
+rtgaStmts stmts (ID locA fname locB) ftype = case rtgaStmtsForLevel stmts (ID locA fname locB) ftype of
     Left x-> Just x
     Right x -> checkReturns stmts x fname ftype
     
@@ -81,9 +81,17 @@ checkReturns (x:xs) expect fName fType = case x of
                 Nothing -> checkReturns xs expect fName fType
                 Just error -> Just error
         Just error -> Just error
-    (StmtReturn e loc) -> if isVoidReturn x == expect 
-        then checkReturns xs expect fName  fType
-        else Just (expectedReturn fName (if isVoidReturn x then fromMaybe (Void loc)  fType else Void loc) ((if isVoidReturn x then "Void" else "non Void") ++ ppExp e) loc)
+    (StmtReturn e loc) -> 
+        if isVoidReturn x == expect 
+            then checkReturns xs expect fName  fType
+            else Just 
+            (expectedReturn fName (
+                if isVoidReturn x 
+                    then fromMaybe (Void loc loc)  fType 
+                    else Void loc loc) 
+            ((if isVoidReturn x 
+                then "Void" 
+                else "non Void") ++ ppExp e) loc)
     (StmtWhile e wstmts _) -> case checkReturns wstmts expect fName fType of
         Nothing -> checkReturns xs expect fName fType
         Just error -> Just error

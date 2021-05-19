@@ -85,8 +85,8 @@ x <|||> y = Parser $ \case
 pChainl :: Parser s (a -> a -> a) -> Parser s a -> Parser s a
 pChainl x p = foldl (&) <$> p <*> many (flip <$> x <*> p)
 
-op :: Parser (Token, Loc, Loc) Op2 -> Parser (Token, Loc, Loc) (Exp -> Exp -> Exp)
-op p = lastLocExtreme $ (\a b c d -> ExpOp2 a c (Op2 b Nothing) d) <$> firstLocParser <*> p
+op :: Parser (Token, Loc, Loc) Op2Typed -> Parser (Token, Loc, Loc) (Exp -> Exp -> Exp)
+op p = lastLocExtreme $ (\a b c d -> ExpOp2 a c b d) <$> firstLocParser <*> p
 
 lastLocExtreme :: Parser (Token, Loc, Loc) (Exp -> Exp -> Loc -> Exp) -> Parser (Token, Loc, Loc) (Exp -> Exp -> Exp)
 lastLocExtreme p = Parser $ \input ->
@@ -101,6 +101,14 @@ pToken t = Parser $
     (x, loca, locb) : xs | x == t -> Right (x, xs)
     (x, loca, locb) : xs -> Left $ unexpectedToken t x (DLoc loca locb)
     [] -> Left $ unexpectedEOF t
+
+pTokenLGen :: Token -> (Loc -> b) -> Parser (Token, Loc, Loc) b
+pTokenLGen t f = Parser $
+  \case
+    (x, loca, locb) : xs | x == t -> Right (f loca, xs)
+    (x, loca, locb) : xs -> Left $ unexpectedToken t x (DLoc loca locb)
+    [] -> Left $ unexpectedEOF t
+
 
 pTokenGen :: Token -> (Loc -> Loc -> b) -> Parser (Token, Loc, Loc) b
 pTokenGen t f = Parser $
@@ -280,13 +288,13 @@ expBracket = pToken BrackOToken *> expParser <* pToken BrackCToken
 
 -- pOr :: Parser (Token, Loc, Loc) Exp
 pOr :: Parser (Token, Loc, Loc) Exp
-pOr = pChainl (op (Or <$ pToken OrToken)) pAnd
+pOr = pChainl (op (op2TypedParser Or OrToken)) pAnd
 
 pAnd :: Parser (Token, Loc, Loc) Exp
-pAnd = pChainl (op (And <$ pToken AndToken)) pConst
+pAnd = pChainl (op (op2TypedParser And AndToken)) pConst
 
 pConst :: Parser (Token, Loc, Loc) Exp
-pConst = ((\a b c (d,e) -> ExpOp2 a b c d e)  <$> firstLocParser <*> basicExpParser <*> (Op2 Con Nothing <$ pToken ConstToken) <*> pLastLocParser expParser) <|> pComp
+pConst = ((\a b c (d,e) -> ExpOp2 a b c d e)  <$> firstLocParser <*> basicExpParser <*> op2TypedParser Con ConstToken <*> pLastLocParser expParser) <|> pComp
 
 -- pConst = pChainl (op (Con <$ pToken ConstToken)) pComp
 
@@ -294,27 +302,27 @@ pComp :: Parser (Token, Loc, Loc) Exp
 pComp = pChainl operators pPlusMin
   where
     operators =
-      op (Le <$ pToken LeToken)
-        <|> op (Ge <$ pToken GeToken)
-        <|> op (Eq <$ pToken EqToken)
-        <|> op (Leq <$ pToken LeqToken)
-        <|> op (Geq <$ pToken GeqToken)
-        <|> op (Neq <$ pToken NeqToken)
+            op (op2TypedParser Le LeToken)
+        <|> op (op2TypedParser Ge GeToken)
+        <|> op (op2TypedParser Eq EqToken)
+        <|> op (op2TypedParser Leq LeqToken)
+        <|> op (op2TypedParser Geq GeqToken)
+        <|> op (op2TypedParser Neq NeqToken)
 
 pPlusMin :: Parser (Token, Loc, Loc) Exp
 pPlusMin = pChainl operators pMultDivMod
   where
     operators =
-      op (Min <$ pToken MinToken)
-        <|> op (Plus <$ pToken PlusToken)
+            op (op2TypedParser Min MinToken)
+        <|> op (op2TypedParser Plus PlusToken)
 
 pMultDivMod :: Parser (Token, Loc, Loc) Exp
 pMultDivMod = pChainl operators basicExpParser
   where
     operators =
-      op (Mult <$ pToken MultToken)
-        <|> op (Div <$ pToken DivToken)
-        <|> op (Mod <$ pToken ModToken)
+            op (op2TypedParser Mult MultToken)
+        <|> op (op2TypedParser Div DivToken)
+        <|> op (op2TypedParser Mod ModToken)
 
 expOp1 :: Parser (Token, Loc, Loc) Exp
 expOp1 = (\a b (c,d) -> ExpOp1 a b c d)  <$> firstLocParser <*> (Neg <$ pToken MinToken <|> Not <$ pToken NotToken) <*> pLastLocParser expParser
@@ -347,6 +355,9 @@ basicExpParser =
     <|> expChar
     <|> expInt
     <|> expId
+
+op2TypedParser :: Op2 -> Token -> Parser (Token, Loc, Loc) Op2Typed
+op2TypedParser op token = (Op2 op Nothing <$> firstLocParser) <* pToken token
 
 -- ===================== Field ============================
 fieldP :: Parser (Token, Loc, Loc) Field
