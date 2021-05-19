@@ -11,10 +11,8 @@ var z = [10,9];
 main(){
     /* */
     var z = 1 == 'c';
-    print(z == True);
 
-   
-
+    return z;
     //print(z);
     //print('\n');
     //print(True);

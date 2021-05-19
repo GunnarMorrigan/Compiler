@@ -77,7 +77,7 @@ showPlaceOfError code' x = show x
 
 makePlaceOfErrorRed :: Int -> Int -> String -> String
 makePlaceOfErrorRed ca cb s = do
-  let (l,r) = splitAt (ca-1) s
+  let (l,r) = splitAt ca s
   let (r1,r2) = splitAt (cb-ca) r
   l ++ red ++ r1 ++ reset ++ r2
 

@@ -189,7 +189,7 @@ instance MGU SPLType where
         return nullSubst
 
     generateError t1 t2 = case getFstLoc t1 `compare` getFstLoc t2 of
-        LT -> ErrorD (getDLoc t2) ("Type "++ pp t1 ++" "++ showLoc t2 ++" does not unify with: " ++ pp t2)
+        LT -> ErrorD (getDLoc t2) ("Type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
         GT -> ErrorD (getDLoc t1) ("Type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
         EQ -> case getDLoc t2 of
                         (DLoc (Loc (-1) (-1)) _) -> Error defaultLoc ("Types do not unify: " ++ pp t1 ++ " vs. " ++ pp t2)
@@ -713,13 +713,15 @@ injectErrLoc :: a -> TI a -> ErrorLoc  -> TI a
 injectErrLoc def runable loc = case runTI runable of
     (That a, state) -> return a
     (These errs a, state) -> dictate errs >> return a
-    (This (ErrorD _ msg), state) -> dictate (ErrorD loc msg) >> return def
-    (This (Errors (ErrorD _ msg:xs)), state) -> dictate (Errors (ErrorD loc msg:xs)) >> return def
+    (This (Error _ msg), state) -> confess (ErrorD loc msg) >> return def
+    (This (ErrorD _ msg), state) -> confess (ErrorD loc msg) >> return def
+    (This (Errors (ErrorD _ msg:xs)), state) -> confess (Errors (ErrorD loc msg:xs)) >> return def
 
 injectErrLocMsg :: a -> TI a -> ErrorLoc -> String -> TI a
 injectErrLocMsg def runable loc m = case runTI runable of
     (That a, state) -> return a
     (These errs a, state) -> runable
+    (This (Error _ _), state) -> dictate (ErrorD loc m) >> return def
     (This (ErrorD _ _), state) -> dictate (ErrorD loc m) >> return def
     (This (Errors (ErrorD _ _:xs)), state) -> dictate (Errors (ErrorD loc m:xs)) >> return def
 
@@ -727,6 +729,7 @@ injectErrMsgAddition :: a -> TI a -> ErrorLoc -> String -> TI a
 injectErrMsgAddition def runable loc m = case runTI runable of
     (That a, state) -> return a
     (These errs a, state) -> runable
+    (This (Error _ msg), state) -> dictate (ErrorD loc (m++" "++msg)) >> return def
     (This (ErrorD _ msg), state) -> dictate (ErrorD loc (m++" "++msg)) >> return def
     (This (Errors (ErrorD _ msg:xs)), state) -> dictate (Errors (ErrorD loc (m++" "++msg):xs)) >> return def
 
