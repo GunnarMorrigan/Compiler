@@ -4,7 +4,7 @@ import AST
 
 import Prelude hiding ( EQ, LT, GT )
 import Data.List ( intercalate )
-import Data.Map
+import Data.Map as Map
 import Data.Bifunctor as BI
 
 data SSM =  SSM [SsmGlobal] [SsmFunction]
@@ -23,7 +23,7 @@ data SsmFunction = Function String [Instruct]
     deriving (Show, Eq)
 
 data Instruct = 
-    LDALc String | -- Load address of label to make high order functions possible. 
+    LDResP String | -- Load address of label to make high order functions possible. 
     ResPoint String Instruct |
     LABEL String Instruct | -- this instruction has a label in front of the actual instruction.
     COMMENT Instruct String | -- this instruction contains a comment
@@ -94,7 +94,7 @@ unary = undefined
 
 size :: Instruct -> Int
 size a | a `elem` nullary = 1
-size (LDALc _) = 2
+size (LDResP _) = 2
 size (ResPoint _ i) = Ssm.size i
 size (LABEL _ i) = Ssm.size i
 size (COMMENT i _) = Ssm.size i
@@ -111,9 +111,11 @@ size _ = 2
 
 class Assemble a where
     assemble :: a -> [Instruct]
+    resolution :: Map String Int -> a  -> a
 
 instance Assemble a => Assemble [a] where
     assemble xs = concatMap assemble xs
+    resolution env xs = Prelude.map (resolution env) xs
 
 instance Assemble SSM where
     assemble (SSM globals functions) =
@@ -125,14 +127,30 @@ instance Assemble SSM where
                 assemble globals ++ 
                 [BRA "main"] ++
                 assemble functions
+    resolution env (SSM globals functions) = SSM (resolution env globals) (resolution env functions)
 
 instance Assemble SsmGlobal where
     assemble  (Global inst) = inst
+    resolution env (Global inst) = Global (resolution env inst)
 
 instance Assemble SsmFunction where
     assemble  (Function name (i:inst)) = LABEL name i:inst
+    resolution env (Function name inst) = Function name (resolution env inst)
+
+instance Assemble Instruct where
+    assemble  inst = [inst]
+    resolution env (LDResP s) = 
+        case Map.lookup s env of
+            Just address -> LDC address
+            Nothing -> undefined undefined
+    resolution env x = x
+
+
+resPoints :: SSM -> SSM
+resPoints ass = resolution (findLocations (assemble ass) 0) ass
 
 findLocations :: [Instruct] -> Int -> Map String Int
+findLocations [] loc = Map.empty 
 findLocations (ResPoint key i:xs) loc = singleton key loc `union` findLocations xs (loc + Ssm.size i)
 findLocations (LABEL key i:xs) loc = singleton key loc `union` findLocations xs (loc + Ssm.size i)
 findLocations (x:xs) loc = findLocations xs (loc + Ssm.size x)
@@ -155,7 +173,7 @@ instance PrettyPrinter SsmFunction where
    pp (Function s (i:is)) = intercalate "\n" $ pp i : Prelude.map (('\t':) . pp) is
 
 instance PrettyPrinter Instruct where
-    pp (LDALc s) = undefined
+    pp (LDResP s) = undefined
     pp (ResPoint key i) = pp i
 
     pp ADD = "ADD"

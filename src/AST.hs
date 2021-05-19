@@ -83,7 +83,7 @@ type ID = String
 data IDLoc = ID String Loc
   deriving (Show, Eq)
 instance Ord IDLoc where
-  compare (ID id loc) (ID id' loc') = id `compare` id'
+  compare (ID id _) (ID id' _) = id `compare` id'
 
 -- ===================== FunCall and Operators ============================
 
@@ -111,8 +111,9 @@ data Op2 =
 
 
 -- ===================== Loc ============================
-data Loc = Loc Int Int
-    deriving (Eq, Ord, Show)
+data Loc = 
+  Loc Int Int
+  deriving (Eq, Ord, Show)
 
 class LOC a where
   showLoc :: a -> String
@@ -133,8 +134,8 @@ instance LOC IDLoc where
   getColNum (ID id loc) = getColNum loc 
 
 showIDLoc :: IDLoc -> String
-showIDLoc (ID id (Loc line col)) | line > 0 && col > 0 = id ++ " on Line " ++ show line ++ " and, Col "++ show col++"."
-showIDLoc (ID id (Loc line col)) = id
+showIDLoc (ID  id (Loc line col)) | line > 0 && col > 0 = id ++ " on Line " ++ show line ++ " and, Col "++ show col++"."
+showIDLoc (ID  id (Loc line col)) = id
 
 idLocCreator :: String -> IDLoc
 idLocCreator s = ID s (Loc (-1) (-1))
@@ -164,9 +165,9 @@ instance LOC Exp where
   showLoc x = let Loc line col = getLoc x in "on Line " ++ show line ++ " and, Col "++ show col
 
   getLoc (ExpId idloc _) = getLoc idloc
-  getLoc (ExpInt _ loc) =  loc
-  getLoc (ExpBool _ loc) =  loc
-  getLoc (ExpChar _ loc) =  loc
+  getLoc (ExpInt  _ loc) = loc
+  getLoc (ExpBool _ loc) = loc
+  getLoc (ExpChar _ loc) = loc
   getLoc (ExpBracket e) =  getLoc e
   getLoc (ExpOp2 _ _ _ loc) = loc
   getLoc (ExpOp1 _ _ loc) =   loc

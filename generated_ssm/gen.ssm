@@ -13,16 +13,6 @@ LDC 10
 LDC 0
 STMH 2
 STMH 2
-LDC 10 //[Int] x = (10 : (8 : []));
-LDC 8
-LDC 0
-STMH 2
-STMH 2
-LDC 10 //[Int] z = (10 : (9 : []));
-LDC 9
-LDC 0
-STMH 2
-STMH 2
 BRA main
 _printBool:  LINK 0
 	LDL -2
@@ -49,7 +39,7 @@ _printBool:  LINK 0
 	TRAP 1
 	UNLINK
 	RET
-_gtArrayInt:  LINK 4
+_geArrayInt:  LINK 4
 	LDL -3
 	STL 1
 	LDL -2
@@ -65,43 +55,41 @@ _gtArrayInt:  LINK 4
 	LDL 3
 	LDL 4
 	OR
-	BRT _gtArrayIntRet
+	BRT _geArrayIntRet
 	LDL 1
 	LDH -1
 	LDL 2
 	LDH -1
-	GT
+	GE
 	STR RR
 	LDR RR
-	BRF _gtArrayIntEnd
+	BRF _geArrayIntEnd
 	LDL 1
 	LDH 0
 	STL 1
 	LDL 2
 	LDH 0
 	STL 2
-	LDR PC
-	LDC 50
-	SUB
+	LDC 88
 	STR PC
-	_gtArrayIntRet:  LDC 0
+	_geArrayIntRet:  LDC -1
 	STR RR
 	LDL 3
 	LDL 4
 	AND
-	BRT _gtArrayIntEnd
+	BRT _geArrayIntEnd
 	LDC 0
 	STR RR
 	LDL 3
 	LDC -1
 	EQ
-	BRT _gtArrayIntEnd
+	BRT _geArrayIntEnd
 	LDR RR
 	NOT
 	STR RR
-	_gtArrayIntEnd:  UNLINK
+	_geArrayIntEnd:  UNLINK
 	RET
-_ltArrayInt:  LINK 4
+_leArrayInt:  LINK 4
 	LDL -3
 	STL 1
 	LDL -2
@@ -117,59 +105,46 @@ _ltArrayInt:  LINK 4
 	LDL 3
 	LDL 4
 	OR
-	BRT _ltArrayIntRet
+	BRT _leArrayIntRet
 	LDL 1
 	LDH -1
 	LDL 2
 	LDH -1
-	LT
+	LE
 	STR RR
 	LDR RR
-	BRT _ltArrayIntEnd
+	BRT _leArrayIntEnd
 	LDL 1
 	LDH 0
 	STL 1
 	LDL 2
 	LDH 0
 	STL 2
-	LDR PC
-	LDC 50
-	SUB
+	LDC 179
 	STR PC
-	_ltArrayIntRet:  LDC 0
+	_leArrayIntRet:  LDC -1
 	STR RR
 	LDL 3
 	LDL 4
 	AND
-	BRT _ltArrayIntEnd
+	BRT _leArrayIntEnd
 	LDC -1
 	STR RR
 	LDL 3
 	LDC -1
 	EQ
-	BRT _ltArrayIntEnd
+	BRT _leArrayIntEnd
 	LDR RR
 	NOT
 	STR RR
-	_ltArrayIntEnd:  UNLINK
+	_leArrayIntEnd:  UNLINK
 	RET
 main:  LINK 0
 	LDR R5
 	LDA 0
 	LDR R5
-	LDA 0
-	BSR _gtArrayInt
-	AJS -2
-	LDR RR
-	BSR _printBool
-	AJS -1
-	LDC 10
-	TRAP 1
-	LDR R5
-	LDA 0
-	LDR R5
-	LDA 0
-	BSR _ltArrayInt
+	LDA 1
+	BSR _leArrayInt
 	AJS -2
 	LDR RR
 	BSR _printBool
@@ -180,40 +155,7 @@ main:  LINK 0
 	LDA 0
 	LDR R5
 	LDA 1
-	BSR _ltArrayInt
-	AJS -2
-	LDR RR
-	BSR _printBool
-	AJS -1
-	LDC 10
-	TRAP 1
-	LDR R5
-	LDA 0
-	LDR R5
-	LDA 1
-	BSR _gtArrayInt
-	AJS -2
-	LDR RR
-	BSR _printBool
-	AJS -1
-	LDC 10
-	TRAP 1
-	LDR R5
-	LDA 1
-	LDR R5
-	LDA 1
-	BSR _gtArrayInt
-	AJS -2
-	LDR RR
-	BSR _printBool
-	AJS -1
-	LDC 10
-	TRAP 1
-	LDR R5
-	LDA 1
-	LDR R5
-	LDA 1
-	BSR _ltArrayInt
+	BSR _geArrayInt
 	AJS -2
 	LDR RR
 	BSR _printBool
@@ -224,7 +166,29 @@ main:  LINK 0
 	LDA 2
 	LDR R5
 	LDA 0
-	BSR _ltArrayInt
+	BSR _geArrayInt
+	AJS -2
+	LDR RR
+	BSR _printBool
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDR R5
+	LDA 1
+	LDR R5
+	LDA 1
+	BSR _geArrayInt
+	AJS -2
+	LDR RR
+	BSR _printBool
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDR R5
+	LDA 1
+	LDR R5
+	LDA 1
+	BSR _leArrayInt
 	AJS -2
 	LDR RR
 	BSR _printBool
@@ -235,20 +199,11 @@ main:  LINK 0
 	LDA 2
 	LDR R5
 	LDA 0
-	BSR _gtArrayInt
+	BSR _leArrayInt
 	AJS -2
 	LDR RR
 	BSR _printBool
 	AJS -1
 	LDC 10
 	TRAP 1
-	LDR R5
-	LDA 3
-	LDR R5
-	LDA 4
-	BSR _ltArrayInt
-	AJS -2
-	LDR RR
-	BSR _printBool
-	AJS -1
 	HALT

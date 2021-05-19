@@ -399,7 +399,7 @@ printArray printA printName = [LABEL printName (LINK 1),
     STL 1,
     LDC 91,
     TRAP 1,
-    LDL 1,
+    ResPoint (printName++"ResPoint") (LDL 1),
     LDC 0,
     Ssm.EQ,
     BRT (printName++"End"),
@@ -416,9 +416,7 @@ printArray printA printName = [LABEL printName (LINK 1),
     LDL 1,
     LDH 0,
     STL 1,
-    LDR PC,
-    LDC 34,
-    SUB,
+    LDResP (printName++"ResPoint"),
     STR PC,
     LABEL (printName++"End") (LDC 93),
     TRAP 1,
@@ -465,11 +463,6 @@ genCompare op (ArrayType a loc) = do
     let (opExecA, functions') = genCompare op a
     (BSR opName,[Function opName (compArray op opExecA opName)])
 
-dualityOP Ge = Geq 
-dualityOP Le = Le 
-dualityOP x = x
-
-
 compArray :: Op2 -> Instruct -> String -> [Instruct]
 compArray op compareA compName | op == Eq || op == Neq = 
     [LABEL compName (LINK 2),
@@ -477,7 +470,7 @@ compArray op compareA compName | op == Eq || op == Neq =
     STL 1,
     LDL (-2),
     STL 2,
-    COMMENT (LDL 1) "End of first list?", 
+    ResPoint (compName++"ResPoint") (COMMENT (LDL 1) "End of first list?"), 
     LDC 0,
     Ssm.EQ,
     COMMENT (LDL 2) "End of sec list?", 
@@ -501,65 +494,8 @@ compArray op compareA compName | op == Eq || op == Neq =
     LDL 2,
     LDH 0,
     STL 2,
-    LDR PC,
-    LDC (44 + Ssm.size compareA),
-    SUB,
+    LDResP (compName++"ResPoint"),
     STR PC,
-    LABEL (compName++"End") UNLINK,
-    RET]
-compArray op compareA compName | op == Le || op == Ge = 
-    [LABEL compName (LINK 4),
-    LDL (-3),
-    STL 1,
-    LDL (-2),
-    STL 2,
-    COMMENT (LDL 1) "End of first list?",
-    LDC 0,
-    Ssm.EQ,
-    STL 3,
-    COMMENT (LDL 2) "End of sec list?",
-    LDC 0,
-    Ssm.EQ,
-    STL 4,
-    LDL 3,
-    LDL 4,
-    Ssm.OR,
-    BRT (compName++"Ret"), -- if op == Le || op == Ge then BRT (compName++"Ret") else BRF (compName++"Ret"),
-    LDL 1,
-    LDH (-1),
-    LDL 2,
-    LDH (-1),
-    compareA,
-    STR RR,
-    LDR RR,
-    if op == Ge then BRF (compName++"End") else BRT (compName++"End"),
-    LDL 1, --14
-    LDH 0, --12
-    STL 1, --10
-    LDL 2, --8
-    LDH 0, --6
-    STL 2, --4
-    LDR PC, --2
-    LDC (49 + Ssm.size compareA),
-    SUB,
-    STR PC,
-    -- Return default value, return not of default if first is empty
-    LABEL (compName++"Ret") (LDC 0),
-    STR RR,
-    LDL 3,
-    LDL 4,
-    Ssm.AND,
-    BRT (compName++"End"),
-    LDC (defFromOp op),
-    STR RR,
-    LDL 3,
-    LDC (-1),
-    Ssm.EQ,
-    BRT (compName++"End"),
-    LDR RR,
-    NOT,
-    STR RR,
-    --End of comparison
     LABEL (compName++"End") UNLINK,
     RET]
 compArray op compareA compName  = 
@@ -568,7 +504,7 @@ compArray op compareA compName  =
     STL 1,
     LDL (-2),
     STL 2,
-    COMMENT (LDL 1) "End of first list?",
+    ResPoint (compName++"ResPoint") (COMMENT (LDL 1) "End of first list?"),
     LDC 0,
     Ssm.EQ,
     STL 3,
@@ -587,19 +523,16 @@ compArray op compareA compName  =
     compareA,
     STR RR,
     LDR RR,
-    if op == Geq then BRF (compName++"End") else BRT (compName++"End"),
-    LDL 1, --14
-    LDH 0, --12
-    STL 1, --10
-    LDL 2, --8
-    LDH 0, --6
-    STL 2, --4
-    LDR PC, --2
-    LDC (49 + Ssm.size compareA),
-    SUB,
+    if op == Geq || op == Ge then BRF (compName++"End") else BRT (compName++"End"),
+    LDL 1,
+    LDH 0,
+    STL 1, 
+    LDL 2,
+    LDH 0,
+    STL 2, 
+    LDResP (compName++"ResPoint"),
     STR PC,
-    -- Return default value, return not of default if first is empty
-    LABEL (compName++"Ret") (LDC (-1)),
+    LABEL (compName++"Ret") (if op == Geq || op == Leq then LDC (-1) else LDC 0),
     STR RR,
     LDL 3,
     LDL 4,
@@ -618,12 +551,11 @@ compArray op compareA compName  =
     LABEL (compName++"End") UNLINK,
     RET]
 
-defFromOp Le = -1
-defFromOp Leq = -1
-defFromOp Geq = 0
-defFromOp Ge = 0
 
--- compArrayBranch op = 
+defFromOp Leq = -1
+defFromOp Le = -1
+defFromOp Ge = 0
+defFromOp Geq = 0
 
 openBracket c  = LDC 40:TRAP 1:c
 closeBracket c  = LDC 41:TRAP 1:c
@@ -760,7 +692,7 @@ mainGen filename = do
             Right(_, _, spl) ->
                 case runGen $ genSPL spl of
                     (Right result,_) -> do
-                                let output = pp result
+                                let output = pp $ resPoints result
                                 writeFile "../generated_ssm/gen.ssm" output
                     (Left x,_) -> putStr $ "ERROR:\n" ++ show x ++ "\n" ++ showPlaceOfError file x
             Left x -> putStr $ "\nError:\n" ++ show x ++ "\n" ++ showPlaceOfError file x

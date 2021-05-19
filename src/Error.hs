@@ -11,6 +11,7 @@ import Control.Applicative
 
 data Error = 
   Error Loc String|
+  -- ErrorD ErrorLoc String|
   Errors [Error]
   -- deriving (Show)
 
@@ -67,14 +68,14 @@ defaultLoc = Loc (-1) (-1)
 -- ========== Parser Errors ==========
 missingSeparator loc sepToken token = Error loc ("Expected separator '"++ show sepToken ++ "' but found '" ++ show token ++ "' on " ++ show loc)
 unexpectedToken expected found loc = Error loc ("Expected: '"++show expected++"' but found: '" ++ show found ++ "' on " ++ show loc)
-unexpectedEOF expected = Error (Loc (-1) (-1)) ("Unexpected EOF, expected: "++show expected++".")
+unexpectedEOF expected = Error defaultLoc ("Unexpected EOF, expected: "++show expected++".")
 
 -- ========== Parser Errors ==========
-missingReturn :: ID -> SPLType  -> Loc -> Error
+missingReturn :: String -> SPLType  -> Loc -> Error
 missingReturn fName t loc = Error loc ("Missing return statement in function '" ++ fName ++ "' on " ++ show loc ++ ", expected return statement of type " ++ pp t ++ " but got no return, please add a return statement to the function")  
-conflictingReturn :: ID -> Loc -> Error 
+conflictingReturn :: String -> Loc -> Error 
 conflictingReturn fName loc = Error loc ("Found conflicting return types on " ++ show loc ++", types Void and non Void for function '" ++ fName ++ "'") 
-expectedReturn :: ID -> SPLType -> String -> Loc -> Error
+expectedReturn :: String -> SPLType -> String -> Loc -> Error
 expectedReturn fName expect got loc = Error loc ("Expected function '" ++ fName ++ "' on " ++ show loc ++ " to return " ++ pp expect ++" but returned " ++ got)
 
 -- ========== TI Errors ==========
