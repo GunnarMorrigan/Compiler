@@ -10,6 +10,7 @@ import Data.Map as Map
 import Data.Set as Set
 import Data.Maybe
 import Data.These
+import Data.Bifunctor as BI ( Bifunctor(first) ) 
 
 import Control.Applicative
 import Control.Monad.Reader
@@ -30,25 +31,25 @@ runTI t = runState (runChronicleT t) initTIState
   where initTIState = 0
 
 -- ===================== TypeEnv ============================
-newtype TypeEnv = TypeEnv (Map IDLoc Scheme)
+newtype TypeEnv = TypeEnv (Map IDLoc (Scheme,Scope))
     deriving (Show)
 
-insert :: TypeEnv -> IDLoc -> Scheme -> TypeEnv
-insert (TypeEnv env) id scheme = TypeEnv (Map.insert id scheme env)
+insert :: TypeEnv -> IDLoc -> Scheme -> Scope -> TypeEnv
+insert (TypeEnv env) id scheme s = TypeEnv (Map.insert id (scheme,s) env)
 
-insertID :: TypeEnv -> IDLoc -> SPLType -> TypeEnv
-insertID (TypeEnv env) id t = TypeEnv (Map.insert id (Scheme [] t) env)
+insertID :: TypeEnv -> IDLoc -> SPLType -> Scope -> TypeEnv
+insertID (TypeEnv env) id t s = TypeEnv (Map.insert id (Scheme [] t,s) env)
 
-insertMore :: TypeEnv -> [(IDLoc,SPLType)] -> TypeEnv
+insertMore :: TypeEnv -> [(IDLoc,SPLType,Scope)] -> TypeEnv
 insertMore env [] = env
-insertMore (TypeEnv env) [(id,t)] = TypeEnv (Map.insert id (Scheme [] t) env)
-insertMore (TypeEnv env) ((id,t):xs) = insertMore (TypeEnv (Map.insert id (Scheme [] t) env)) xs
+insertMore (TypeEnv env) [(id,t,s)] = TypeEnv (Map.insert id (Scheme [] t,s) env)
+insertMore (TypeEnv env) ((id,t,s):xs) = insertMore (TypeEnv (Map.insert id (Scheme [] t,s) env)) xs
 
 remove :: TypeEnv -> IDLoc -> TypeEnv
 remove (TypeEnv env) var = TypeEnv (Map.delete var env)
 
 find :: IDLoc -> TypeEnv -> Maybe Scheme
-find id (TypeEnv env) = Map.lookup id env
+find id (TypeEnv env) = fst <$> Map.lookup id env
 
 generalize :: TypeEnv -> SPLType -> Scheme
 generalize env t  = Scheme vars t
@@ -57,8 +58,8 @@ generalize env t  = Scheme vars t
 generalizeFuncs :: TypeEnv -> [IDLoc] -> TI TypeEnv
 generalizeFuncs env [] = return env
 generalizeFuncs (TypeEnv env) (x:xs) = case Map.lookup x env of
-    Just (Scheme _ t) -> let scheme = generalize (TypeEnv env) t in
-        generalizeFuncs (TypeEnv $ Map.insert x scheme env) xs
+    Just (Scheme _ t,scope) -> let scheme = generalize (TypeEnv env) t in
+        generalizeFuncs (TypeEnv $ Map.insert x (scheme,GlobalScope) env) xs
     _ -> 
         dictate (ErrorD (getDLoc x) ("Function " ++ pp x ++  " is mutual recursive and should therefore be in the type environment but it is not.")) >>
         return (TypeEnv env)
@@ -66,6 +67,9 @@ generalizeFuncs (TypeEnv env) (x:xs) = case Map.lookup x env of
 -- ===================== Scheme ============================
 data Scheme = Scheme [IDLoc] SPLType
     deriving (Show, Eq)
+
+data Scope = GlobalScope | LocalScope
+    deriving (Show,Eq)
 
 -- ===================== Substitution ============================
 type Subst = Map.Map IDLoc SPLType
@@ -89,8 +93,8 @@ instance Types a => Types [a] where
     apply s = Prelude.map (apply s)
 
 instance Types TypeEnv where
-    ftv (TypeEnv env)      =  ftv (Map.elems env)
-    apply s (TypeEnv env)  =  TypeEnv (Map.map (apply s) env)
+    ftv (TypeEnv env)      =  ftv (Prelude.map fst (Map.elems env))
+    apply s (TypeEnv env)  =  TypeEnv (Map.map (BI.first (apply s)) env)
 
 instance Types Scheme where
     ftv (Scheme vars t) = ftv t Set.\\ Set.fromList vars
@@ -220,7 +224,7 @@ tiDecls env (decl:decls) = do
 
 tiDecl :: TypeEnv -> Decl -> TI (Subst, TypeEnv, Decl)
 tiDecl env (VarMain x) = do
-    (s1, env, varDecl) <- tiVarDecl env x
+    (s1, env, varDecl) <- tiVarDecl env x GlobalScope
     return (s1, env,VarMain varDecl)
 tiDecl env (FuncMain x) = do
     (s1, env, funDecl) <- tiFunDecl env x
@@ -232,45 +236,45 @@ tiDecl env (MutRec funcs) = do
     fTypes <- getFuncTypes funcs
     let env' = insertMore env fTypes
     (s1, env'', decls) <- tiMutRecFunDecls env' funcs
-    env''' <- generalizeFuncs env'' (Prelude.map fst fTypes)
+    env''' <- generalizeFuncs env'' (Prelude.map (\(a,_,_) -> a) fTypes)
     return (s1, env''', MutRec decls)
 
-tiVarDecls :: TypeEnv -> [VarDecl] -> TI (Subst, TypeEnv, [VarDecl])
-tiVarDecls env [] = return (nullSubst, env, [])
-tiVarDecls env (varDecl:varDecls) = do
-    (s1, env', varDecl') <- tiVarDecl env varDecl
-    (s2, env'', varDecls') <- tiVarDecls env' varDecls
+tiVarDecls :: TypeEnv -> [VarDecl] -> Scope -> TI (Subst, TypeEnv, [VarDecl])
+tiVarDecls env [] s = return (nullSubst, env, [])
+tiVarDecls env (varDecl:varDecls) s = do
+    (s1, env', varDecl') <- tiVarDecl env varDecl s
+    (s2, env'', varDecls') <- tiVarDecls env' varDecls s
     return (s2 `composeSubst` s1, env'', varDecl':varDecls')
 
-tiVarDecl :: TypeEnv -> VarDecl -> TI (Subst, TypeEnv, VarDecl)
-tiVarDecl (TypeEnv env) (VarDeclVar id e) = case Map.lookup id env of
-    Just x -> 
+tiVarDecl :: TypeEnv -> VarDecl -> Scope -> TI (Subst, TypeEnv, VarDecl)
+tiVarDecl (TypeEnv env) (VarDeclVar id e) s = case Map.lookup id env of
+    Just (x,scope') | s==scope' -> 
         dictate (doubleDef id) >>
         return (nullSubst, TypeEnv env, VarDeclVar id e)
-    Nothing -> do
+    _ -> do
         (s1, t1, e') <- tiExp (TypeEnv env) e
         let scheme = Scheme [] t1
-        let env' = TypeEnv (Map.insert id scheme env)
+        let env' = TypeEnv (Map.insert id (scheme,s) env)
         return (s1, apply s1 env', VarDeclType t1 id e')
-tiVarDecl (TypeEnv env) (VarDeclType t id e) = case Map.lookup id env of
-    Just x -> 
+tiVarDecl (TypeEnv env) (VarDeclType t id e) s = case Map.lookup id env of
+    Just (x,scope') | s==scope' -> 
         dictate (doubleDef id) >>
         return (nullSubst, TypeEnv env, VarDeclType t id e)
-    Nothing -> do
+    _ -> do
         (s1, t1, e') <- tiExp (TypeEnv env) e
         s2 <- mgu (apply s1 t) t1
         let cs1 = s2 `composeSubst` s1
-        let t' = Scheme [] t1
-        let env' = TypeEnv (Map.insert id t' env)
+        let scheme = Scheme [] t1
+        let env' = TypeEnv (Map.insert id (scheme,s) env)
         return (cs1, apply cs1 env', VarDeclType (apply cs1 t) id e')
 
 tiMutRecFunDecls :: TypeEnv -> [FunDecl] -> TI (Subst, TypeEnv, [FunDecl])
 tiMutRecFunDecls env [] = return (nullSubst, env, [])
 tiMutRecFunDecls (TypeEnv env) ((FunDecl funName args (Just funType) vars stmts):xs) = do
     let (argTypes, retType) = let a = getArgsTypes funType in (init a, last a)
-    let env' = insertMore (TypeEnv env) (zip args argTypes) -- With this function + args inserted
+    let env' = insertMore (TypeEnv env) (zip3 args argTypes (replicate (length args) GlobalScope)) -- With this function + args inserted
 
-    (s1, env'', vars') <- tiVarDecls env' vars
+    (s1, env'', vars') <- tiVarDecls env' vars LocalScope
 
     (s2, t1, stmts') <- tiStmts env'' stmts
 
@@ -290,11 +294,11 @@ tiMutRecFunDecls (TypeEnv env) ((FunDecl funName args (Just funType) vars stmts)
     return (cs3, apply cs3 env'', funDecl:funDecls)
 tiMutRecFunDecls (TypeEnv env) ((FunDecl funName args Nothing vars stmts):xs) = do
     case Map.lookup funName env of
-        Just (Scheme [] funType) -> do
+        Just (Scheme [] funType,_) -> do
             let (argTypes, retType) = let a = getArgsTypes funType in (init a, last a)
-            let env' = insertMore (TypeEnv env) (zip args argTypes) -- With this function + args inserted
+            let env' = insertMore (TypeEnv env) (zip3 args argTypes (replicate (length args) GlobalScope)) -- With this function + args inserted
 
-            (s1, env'', vars') <- tiVarDecls env' vars
+            (s1, env'', vars') <- tiVarDecls env' vars LocalScope
 
             (s2,t1, stmts') <- tiStmts env'' stmts
 
@@ -327,9 +331,9 @@ tiFunDecl env (FunDecl funName args (Just funType) vars stmts) = do
             dictate (funcCallMoreArgs funName) >>
             return (nullSubst, env, FunDecl funName args (Just funType) vars stmts)
         EQ -> do
-            let env' = TI.insertID env funName funType -- With only this function inserted
-            let env'' = insertMore env' (zip args argTypes) -- With this function + args inserted
-            (s1, env''', vars') <- tiVarDecls env'' vars -- With this function + args + local varDecls inserted
+            let env' = TI.insertID env funName funType GlobalScope -- With only this function inserted
+            let env'' = insertMore env' (zip3 args argTypes (replicate (length args) GlobalScope)) -- With this function + args inserted
+            (s1, env''', vars') <- tiVarDecls env'' vars LocalScope -- With this function + args + local varDecls inserted
 
             (s2,t1, stmts') <- tiStmts env''' stmts
 
@@ -343,16 +347,16 @@ tiFunDecl env (FunDecl funName args (Just funType) vars stmts) = do
             let Just (Scheme _ funType') = find funName (apply cs2 env''')
             let func = generalize env funType'
 
-            return (cs2, TI.insert env' funName func, FunDecl funName args (Just funType') vars' stmts')
+            return (cs2, TI.insert env' funName func GlobalScope, FunDecl funName args (Just funType') vars' stmts')
 tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
 
     argTypes <- replicateM (length args) newSPLVar
     retType <- newSPLVar
 
     let fType = if not (Prelude.null argTypes) then foldr1 FunType (argTypes ++ [retType]) else retType
-    let env' = TI.insertID env funName fType -- With only this function inserted
-    let env'' = insertMore env' (zip args argTypes) -- With this function + args inserted
-    (s1, env''', vars') <- tiVarDecls env'' vars -- With this function + args + local varDecls inserted
+    let env' = TI.insertID env funName fType GlobalScope -- With only this function inserted
+    let env'' = insertMore env' (zip3 args argTypes (replicate (length args) GlobalScope)) -- With this function + args inserted
+    (s1, env''', vars') <- tiVarDecls env'' vars LocalScope -- With this function + args + local varDecls inserted
 
     (s2, t1, stmts') <- tiStmts env''' stmts
 
@@ -372,7 +376,7 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
         dictate (Error defaultLoc ("WE GOT ONE BOYS" ++ pp funName)) >>
         return (nullSubst, env, FunDecl funName args Nothing vars stmts)
     else
-        trace "No 'poly' overloading \n" $ return (cs2, TI.insert (apply cs2 env) funName func, FunDecl funName args (Just funType') vars' stmts')
+        trace "No 'poly' overloading \n" $ return (cs2, TI.insert (apply cs2 env) funName func GlobalScope, FunDecl funName args (Just funType') vars' stmts')
 
 
 tiStmts :: TypeEnv -> [Stmt] -> TI (Subst, Maybe SPLType, [Stmt])
@@ -431,7 +435,7 @@ tiStmt env (StmtWhile e stmts loc) = do
 
     return (cs2, apply cs2 t3, StmtWhile e' stmts' loc)
 tiStmt (TypeEnv env) (StmtFuncCall (FunCall id e fType) loc) = case Map.lookup id env of
-    Just scheme -> do
+    Just (scheme,s) -> do
         t <- instantiate scheme
         let argTypes = init $ getArgsTypes t
         (s1, e') <- typeCheckExps id (TypeEnv env) e argTypes
@@ -446,7 +450,7 @@ tiStmt env (StmtReturn (Just e) loc) = do
     return (s1, Just t1, StmtReturn (Just e') loc)
 
 tiStmt (TypeEnv env) (StmtAssignVar id (Field []) e typ) = case Map.lookup id env of
-    Just (Scheme ids t) -> do
+    Just (Scheme ids t,s)  -> do
         (s1, t1, e') <- tiExp (TypeEnv env) e
         s2 <- mgu (apply s1 t) t1
         let cs1 = s2 `composeSubst` s1
@@ -455,7 +459,7 @@ tiStmt (TypeEnv env) (StmtAssignVar id (Field []) e typ) = case Map.lookup id en
         dictate (refBeforeDec "Variable:" id) >> 
         return (nullSubst, Nothing, StmtAssignVar id (Field []) e typ)
 tiStmt (TypeEnv env) (StmtAssignVar id (Field fields) e typ) = case Map.lookup id env of
-    Just (Scheme ids t) -> do
+    Just (Scheme ids t,s)  -> do
         (s1, t1, e') <- tiExp (TypeEnv env) e
         (s2, t', ret) <- getType t fields
         let cs1 = s2 `composeSubst` s1
@@ -510,7 +514,7 @@ tiExp env (ExpId id (Field [])) = do
             t <- newSPLVar
             dictate (refBeforeDec "Variable:" id) >> return (nullSubst, t, ExpId id (Field []))
 tiExp (TypeEnv env) (ExpId id (Field fields)) = case Map.lookup id env of
-    Just (Scheme ids t) -> do
+    Just (Scheme ids t,s)  -> do
         (s1, t', ret) <- getType t fields
         return (s1, ret, ExpId id (Field fields))
     Nothing -> do
@@ -569,7 +573,7 @@ tiExp env (ExpOp1 locA op e locB) = case op of
         s2 <- mgu t1 (TypeBasic (getFstLoc t1) BasicBool (getSndLoc t1))
         return (s2 `composeSubst` s1, t1, ExpOp1 locA op e' locB)
 tiExp (TypeEnv env) (ExpFunCall locA (FunCall id args Nothing) locB) = case Map.lookup id env of
-    Just scheme -> do
+    Just (scheme,s)  -> do
         t <- instantiate scheme
         let argTypes = getArgsTypes t
         (s1, args') <- typeCheckExps id (TypeEnv env) args (init argTypes)
@@ -592,17 +596,17 @@ isOrd Le = True
 isOrd Ge = True
 isOrd _ = False
 
-getFuncTypes :: [FunDecl] -> TI [(IDLoc, SPLType)]
+getFuncTypes :: [FunDecl] -> TI [(IDLoc, SPLType, Scope)]
 getFuncTypes [] = return []
 getFuncTypes ((FunDecl funName args (Just fType) vars stmts):xs) = do
     fTypes <- getFuncTypes xs
-    return $ (funName, fType):fTypes
+    return $ (funName, fType, GlobalScope):fTypes
 getFuncTypes ((FunDecl funName args Nothing vars stmts):xs) = do
     argTypes <- replicateM (length args) newSPLVar
     retType <- newSPLVar
     let fType = if not (Prelude.null argTypes) then foldr1 FunType (argTypes ++ [retType]) else retType
     fTypes <- getFuncTypes xs
-    return $ (funName, fType):fTypes
+    return $ (funName, fType, GlobalScope):fTypes
 
 getType :: SPLType -> [StandardFunction] -> TI (Subst, SPLType, SPLType)
 getType t [] = do
@@ -739,17 +743,18 @@ stdLib = do
     let env = TypeEnv Map.empty
     t1 <- newSPLVar
     let isEmptyType = FunType (ArrayType defaultLoc t1 defaultLoc) (TypeBasic defaultLoc BasicBool defaultLoc)
-    let env' = TI.insert env (idLocCreator "isEmpty") (generalize env isEmptyType)
+    let env' = TI.insert env (idLocCreator "isEmpty") (generalize env isEmptyType) GlobalScope
 
     t2 <- newSPLVar
     let printType = FunType t2 (Void defaultLoc defaultLoc)
-    let env'' = TI.insert env' (idLocCreator "print") (generalize env' printType)
+    let env'' = TI.insert env' (idLocCreator "print") (generalize env' printType) GlobalScope
     return env''
 
 -- ===================== Printing ============================
-printEnv :: [(IDLoc, Scheme)] -> String
+printEnv :: [(IDLoc, (Scheme,Scope))] -> String
 printEnv [] = ""
-printEnv ((ID _ id _,Scheme _ t):xs) = id ++" :: " ++ pp t ++ "\n"++ printEnv xs
+printEnv ((ID _ id _,(Scheme _ t,GlobalScope)):xs) = id ++" :: " ++ pp t ++ " Global\n"++ printEnv xs
+printEnv ((ID _ id _,(Scheme _ t,LocalScope)):xs) = id ++" :: " ++ pp t ++ " Local\n"++ printEnv xs
 
 
 printSubst :: [(IDLoc,SPLType)] -> String

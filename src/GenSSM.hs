@@ -31,8 +31,6 @@ data Mem =
     R Register              -- Global Pointer
     deriving (Show, Eq)
 
-data Scope = GlobalScope | LocalScope
-
 --               Ifs, Global, Overloaded functions, overloaded Op2s
 type GenState = (Int, Int, (Map String FunCall, Map String Op2Typed))
 type Gen a = ExceptT Error (State GenState) a

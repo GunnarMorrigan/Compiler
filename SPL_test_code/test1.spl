@@ -10,7 +10,7 @@ var z = [10,9];
 
 main(){
     /* */
-    var z = 1 == 'c';
+    var z = 1 == 2;
 
     return z;
     //print(z);

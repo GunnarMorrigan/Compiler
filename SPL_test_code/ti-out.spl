@@ -1,10 +1,8 @@
-equal (x, y) :: f f -> Bool {
-    return (x == y);
-}
+[Int] z = (10 : (9 : []));
 
-Bool b = equal(4,4) /*:: Int Int -> Bool*/;
+main () :: Bool {
+    Bool z = (1 == 2);
 
-main () :: Void {
-    print(b) /*:: Bool -> Void*/;
+    return z;
 }
 
