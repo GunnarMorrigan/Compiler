@@ -604,9 +604,6 @@ combineResult a b = do
 insertLabel :: String -> [Instruct] -> [Instruct]
 insertLabel label (x:xs) = LABEL label x:xs
 
-isVoidFun :: SPLType -> Bool
-isVoidFun x = last (getArgsTypes x) `eqType` Void defaultLoc defaultLoc
-
 insertComment :: String -> Gen ([Instruct], GenEnv) -> Gen ([Instruct], GenEnv)
 insertComment comment gen = BI.first f <$> gen
     where f (x:xs) = COMMENT x comment:xs

@@ -1,5 +1,4 @@
-var a = 10;
-var b = True;
+
 var c = [9];
 var d = (1,False);
 var e = [10,10];
@@ -16,12 +15,14 @@ b(n){
     a(n-1);
 }
 
-
+f(x){
+    return x;
+}
 
 main(){
     /* */
     var z = 1 == 2;
-    print(a);
+    print(f);
     a(5);
 
     return z;

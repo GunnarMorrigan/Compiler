@@ -118,6 +118,7 @@ doubleDef2 ida idb = Errors [erra,errb]
 funcCallMoreArgs id = ErrorD (getDLoc id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too many arguments.")
 funcCallLessArgs id = ErrorD (getDLoc id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too few arguments.")
 
+applVarAsFunc id = ErrorD (getDLoc id) ("Variable: '" ++ pp id ++ "', is being used as a function  " ++ showLoc id)
 
 -- ========== Colors ==========
 reset = "\x1b[0m"

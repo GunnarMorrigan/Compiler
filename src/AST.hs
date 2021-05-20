@@ -40,6 +40,13 @@ eqType (FunType arg ret) (FunType arg' ret') = eqType arg arg' && eqType ret ret
 eqType (Void _ _) (Void _ _) = True
 eqType _ _ = False
 
+isFun :: SPLType -> Bool
+isFun (FunType arg ret) = True 
+isFun _ = False
+
+
+isVoidFun :: SPLType -> Bool
+isVoidFun x = last (getArgsTypes x) `eqType` Void (Loc (-1) (-1)) (Loc (-1) (-1))
 
 data BasicType
   = BasicInt
@@ -167,6 +174,7 @@ instance LOC SPLType where
   getDLoc (TypeBasic locA  _ locB) = DLoc locA locB
   getDLoc (ArrayType locA  _ locB) =  DLoc locA locB
   getDLoc (TupleType locA  _ locB) =  DLoc locA locB
+  getDLoc (FunType arg ret) = DLoc (getFstLoc arg) (getSndLoc ret)
   getDLoc (IdType idloc) =  getDLoc idloc
   getDLoc (Void locA locB) = DLoc locA locB
 
@@ -178,12 +186,14 @@ instance LOC SPLType where
   getLineNum (TupleType locA  _ locB) = getLineNum locA
   getLineNum (IdType idloc) = getLineNum idloc
   getLineNum (Void locA locB) = getLineNum locA
+  getLineNum x = getLineNum (getDLoc x)
 
   getColNum (ArrayType locA  _ locB) = getColNum locA
   getColNum (TupleType locA  _ locB) = getColNum locA
   getColNum (TypeBasic locA  _ locB) = getColNum locA
   getColNum (IdType idloc) = getColNum idloc
   getColNum (Void locA locB) = getColNum locA
+  getColNum x = getColNum (getDLoc x)
 
 instance LOC Exp where
   showLoc x = let DLoc loc _ = getDLoc x in showLoc loc
