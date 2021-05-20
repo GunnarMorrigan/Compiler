@@ -8,9 +8,21 @@ var f = [8,10];
 var x = [10,8];
 var z = [10,9];
 
+a(n){
+    b(n);
+}
+
+b(n){
+    a(n-1);
+}
+
+
+
 main(){
     /* */
     var z = 1 == 2;
+    print(a);
+    a(5);
 
     return z;
     //print(z);

@@ -148,14 +148,14 @@ instance LOC Loc where
 
 instance LOC IDLoc where
   showLoc (ID loc id loc') = showLoc loc
-  getDLoc (ID loc id _) = getDLoc loc
+  getDLoc (ID locA id locB) = DLoc locA locB
   getFstLoc x = let (DLoc a _) = getDLoc x in a
   getSndLoc x = let (DLoc _ b) = getDLoc x in b
   getLineNum (ID loc id _) = getLineNum loc 
   getColNum (ID loc id _) = getColNum loc 
 
 showIDLoc :: IDLoc -> String
-showIDLoc (ID (Loc line col)  id _) | line > 0 && col > 0 = id ++ " on Line " ++ show line ++ " and, Col "++ show col++"."
+showIDLoc (ID (Loc line col)  id _) | line > 0 && col > 0 = id ++ " on Line " ++ show line ++ " and, Col "++ show col
 showIDLoc (ID (Loc line col)  id _) = id
 
 idLocCreator :: String -> IDLoc

@@ -37,13 +37,18 @@ newtype TypeEnv = TypeEnv (Map IDLoc (Scheme,Scope))
 insert :: TypeEnv -> IDLoc -> Scheme -> Scope -> TypeEnv
 insert (TypeEnv env) id scheme s = TypeEnv (Map.insert id (scheme,s) env)
 
-insertID :: TypeEnv -> IDLoc -> SPLType -> Scope -> TypeEnv
-insertID (TypeEnv env) id t s = TypeEnv (Map.insert id (Scheme [] t,s) env)
+insertID :: TypeEnv -> IDLoc -> SPLType -> Scope -> TI TypeEnv
+insertID (TypeEnv env) id t s = 
+    case lookupKey id env of
+        Just((scheme,s'),id') | s==s'-> dictate (doubleDef2 id id') >> return (TypeEnv env)
+        Nothing -> return $ TypeEnv (Map.insert id (Scheme [] t,s) env)
 
-insertMore :: TypeEnv -> [(IDLoc,SPLType,Scope)] -> TypeEnv
-insertMore env [] = env
-insertMore (TypeEnv env) [(id,t,s)] = TypeEnv (Map.insert id (Scheme [] t,s) env)
-insertMore (TypeEnv env) ((id,t,s):xs) = insertMore (TypeEnv (Map.insert id (Scheme [] t,s) env)) xs
+insertMore :: TypeEnv -> [(IDLoc,SPLType,Scope)] -> TI TypeEnv
+insertMore env [] = return env
+insertMore (TypeEnv env) ((id,t,s):xs) = 
+    case lookupKey id env of
+        Just((scheme,s'),id') | s==s'-> dictate (doubleDef2 id id') >> insertMore (TypeEnv env) xs
+        Nothing -> insertMore (TypeEnv (Map.insert id (Scheme [] t,s) env)) xs
 
 remove :: TypeEnv -> IDLoc -> TypeEnv
 remove (TypeEnv env) var = TypeEnv (Map.delete var env)
@@ -234,7 +239,7 @@ tiDecl env (MutRec [func]) = do
     return (s1, env, FuncMain funDecl)
 tiDecl env (MutRec funcs) = do
     fTypes <- getFuncTypes funcs
-    let env' = insertMore env fTypes
+    env' <- insertMore env fTypes
     (s1, env'', decls) <- tiMutRecFunDecls env' funcs
     env''' <- generalizeFuncs env'' (Prelude.map (\(a,_,_) -> a) fTypes)
     return (s1, env''', MutRec decls)
@@ -247,32 +252,32 @@ tiVarDecls env (varDecl:varDecls) s = do
     return (s2 `composeSubst` s1, env'', varDecl':varDecls')
 
 tiVarDecl :: TypeEnv -> VarDecl -> Scope -> TI (Subst, TypeEnv, VarDecl)
-tiVarDecl (TypeEnv env) (VarDeclVar id e) s = case Map.lookup id env of
-    Just (x,scope') | s==scope' -> 
-        dictate (doubleDef id) >>
-        return (nullSubst, TypeEnv env, VarDeclVar id e)
-    _ -> do
-        (s1, t1, e') <- tiExp (TypeEnv env) e
-        let scheme = Scheme [] t1
-        let env' = TypeEnv (Map.insert id (scheme,s) env)
-        return (s1, apply s1 env', VarDeclType t1 id e')
-tiVarDecl (TypeEnv env) (VarDeclType t id e) s = case Map.lookup id env of
-    Just (x,scope') | s==scope' -> 
-        dictate (doubleDef id) >>
-        return (nullSubst, TypeEnv env, VarDeclType t id e)
-    _ -> do
-        (s1, t1, e') <- tiExp (TypeEnv env) e
-        s2 <- mgu (apply s1 t) t1
-        let cs1 = s2 `composeSubst` s1
-        let scheme = Scheme [] t1
-        let env' = TypeEnv (Map.insert id (scheme,s) env)
-        return (cs1, apply cs1 env', VarDeclType (apply cs1 t) id e')
+tiVarDecl (TypeEnv env) (VarDeclVar id e) s = 
+    case lookupKey id env of
+        Just((scheme,s'),id') | s==s'-> dictate (doubleDef2 id id') >>
+            return (nullSubst, TypeEnv env, VarDeclVar id e)
+        _ -> do
+            (s1, t1, e') <- tiExp (TypeEnv env) e
+            let scheme = Scheme [] t1
+            let env' = TypeEnv (Map.insert id (scheme,s) env)
+            return (s1, apply s1 env', VarDeclType t1 id e')
+tiVarDecl (TypeEnv env) (VarDeclType t id e) s = 
+    case lookupKey id env of
+        Just((scheme,s'),id') | s==s'-> dictate (doubleDef2 id id') >>
+            return (nullSubst, TypeEnv env, VarDeclType t id e)
+        _ -> do
+            (s1, t1, e') <- tiExp (TypeEnv env) e
+            s2 <- mgu (apply s1 t) t1
+            let cs1 = s2 `composeSubst` s1
+            let scheme = Scheme [] t1
+            let env' = TypeEnv (Map.insert id (scheme,s) env)
+            return (cs1, apply cs1 env', VarDeclType (apply cs1 t) id e')
 
 tiMutRecFunDecls :: TypeEnv -> [FunDecl] -> TI (Subst, TypeEnv, [FunDecl])
 tiMutRecFunDecls env [] = return (nullSubst, env, [])
 tiMutRecFunDecls (TypeEnv env) ((FunDecl funName args (Just funType) vars stmts):xs) = do
     let (argTypes, retType) = let a = getArgsTypes funType in (init a, last a)
-    let env' = insertMore (TypeEnv env) (zip3 args argTypes (replicate (length args) GlobalScope)) -- With this function + args inserted
+    env' <- insertMore (TypeEnv env) (zip3 args argTypes (replicate (length args) GlobalScope)) -- With this function + args inserted
 
     (s1, env'', vars') <- tiVarDecls env' vars LocalScope
 
@@ -296,7 +301,7 @@ tiMutRecFunDecls (TypeEnv env) ((FunDecl funName args Nothing vars stmts):xs) = 
     case Map.lookup funName env of
         Just (Scheme [] funType,_) -> do
             let (argTypes, retType) = let a = getArgsTypes funType in (init a, last a)
-            let env' = insertMore (TypeEnv env) (zip3 args argTypes (replicate (length args) GlobalScope)) -- With this function + args inserted
+            env' <- insertMore (TypeEnv env) (zip3 args argTypes (replicate (length args) GlobalScope)) -- With this function + args inserted
 
             (s1, env'', vars') <- tiVarDecls env' vars LocalScope
 
@@ -331,8 +336,8 @@ tiFunDecl env (FunDecl funName args (Just funType) vars stmts) = do
             dictate (funcCallMoreArgs funName) >>
             return (nullSubst, env, FunDecl funName args (Just funType) vars stmts)
         EQ -> do
-            let env' = TI.insertID env funName funType GlobalScope -- With only this function inserted
-            let env'' = insertMore env' (zip3 args argTypes (replicate (length args) GlobalScope)) -- With this function + args inserted
+            env' <- TI.insertID env funName funType GlobalScope -- With only this function inserted
+            env'' <- insertMore env' (zip3 args argTypes (replicate (length args) GlobalScope)) -- With this function + args inserted
             (s1, env''', vars') <- tiVarDecls env'' vars LocalScope -- With this function + args + local varDecls inserted
 
             (s2,t1, stmts') <- tiStmts env''' stmts
@@ -354,8 +359,8 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
     retType <- newSPLVar
 
     let fType = if not (Prelude.null argTypes) then foldr1 FunType (argTypes ++ [retType]) else retType
-    let env' = TI.insertID env funName fType GlobalScope -- With only this function inserted
-    let env'' = insertMore env' (zip3 args argTypes (replicate (length args) GlobalScope)) -- With this function + args inserted
+    env' <- TI.insertID env funName fType GlobalScope -- With only this function inserted
+    env'' <- insertMore env' (zip3 args argTypes (replicate (length args) GlobalScope)) -- With this function + args inserted
     (s1, env''', vars') <- tiVarDecls env'' vars LocalScope -- With this function + args + local varDecls inserted
 
     (s2, t1, stmts') <- tiStmts env''' stmts
@@ -712,7 +717,7 @@ containsIDType (TupleType _ (t1, t2) _) = containsIDType t1 || containsIDType t2
 containsIDType (ArrayType _ a1 _) = containsIDType a1
 containsIDType (FunType arg f) = containsIDType arg || containsIDType f
 
--- ===================== Error Injection ============================
+-- ===================== Error (Injection) ============================
 injectErrLoc :: a -> TI a -> ErrorLoc  -> TI a
 injectErrLoc def runable loc = case runTI runable of
     (That a, state) -> return a
@@ -736,6 +741,13 @@ injectErrMsgAddition def runable loc m = case runTI runable of
     (This (Error _ msg), state) -> dictate (ErrorD loc (m++" "++msg)) >> return def
     (This (ErrorD _ msg), state) -> dictate (ErrorD loc (m++" "++msg)) >> return def
     (This (Errors (ErrorD _ msg:xs)), state) -> dictate (Errors (ErrorD loc (m++" "++msg):xs)) >> return def
+
+lookupKey :: Ord a => a -> Map a b -> Maybe (b,a)
+lookupKey a dict =
+    case Map.lookup a dict of
+        Just b -> Just (b, fst $ Map.elemAt (Map.findIndex a dict) dict)
+        Nothing -> Nothing 
+
 
 -- ===================== Standard Lib Functions ============================
 stdLib :: TI TypeEnv
@@ -765,7 +777,10 @@ printSubst ((ID _ id _,t):xs) = id ++ " -> " ++ pp t ++ "\n"++ printSubst xs
 typeInference :: SPL -> Either Error (Subst, TypeEnv, SPL)
 typeInference code = do
     case runTI (tiSPL code) of
-        (That (s1, env, SPL code'), state) -> Right (s1, env, updateTypes (SPL $ removeMutRec code') s1 env)
+        (That (s1, env, SPL code'), state) -> do
+            cleanCode <- removeDeadCode (SPL $ removeMutRec code')
+            let updatedCode = updateTypes cleanCode s1 env
+            Right (s1, env, updatedCode)
         (These errs a, state) -> Left errs
         (This errs, state) -> Left errs
 
@@ -842,14 +857,16 @@ instance UpdateTypes FunCall where
         FunCall (ID locA name locB) es' (Just $ apply s t)
     updateTypes (FunCall id es Nothing) s env =  FunCall id es Nothing
 
-mainTITest filename = do
+mainTIIO filename = do
     -- path <- getCurrentDirectory
     -- print path
     file <- readFile  ("../SPL_test_code/" ++ filename)
-    case tokeniseAndParse mainSegments file >>= (mutRec . fst) of
-            Right spl ->
-                trace "HOI" $ print $ typeInference spl
-            Left x -> trace "doei" $ print $ showPlaceOfError file x
+    case tokeniseAndParse mainSegments file >>= (mutRec . fst) >>= typeInference of
+        Right (s1, TypeEnv env, code) -> do
+            putStr $ pp code
+            putStr $ "\nEnv:\n" ++ printEnv (Map.toList env)
+            putStr $ "\nSubst:\n" ++ printSubst (Map.toList s1)
+        Left x -> putStr $ showError file x
 
 
 mainTI filename = do

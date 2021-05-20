@@ -55,7 +55,7 @@ showError code (ErrorD loc s) = showPlaceOfError code (ErrorD loc s)
 showError code (Errors errs) = showPlacesOfErrors code errs
 
 showPlacesOfErrors :: String -> [Error] -> String
-showPlacesOfErrors code' errs = intercalate "\n\n" $ map (showPlaceOfError code') errs
+showPlacesOfErrors code' errs = intercalate "\n" $ map (showPlaceOfError code') errs
 
 showPlaceOfError :: String -> Error -> String
 showPlaceOfError code' (Error (Loc (-1) (-1)) msg) = msg
@@ -111,6 +111,9 @@ refBeforeDec :: (LOC a, PrettyPrinter a) => String -> a -> Error
 refBeforeDec s id = ErrorD (getDLoc id) (s++"'" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet. (i.e. reference before declaration)")
 
 doubleDef id = ErrorD (getDLoc id) ("Variable: " ++ showIDLoc id ++ ", already exists in the type environment. (i.e. double decleration)")
+doubleDef2 ida idb = Errors [erra,errb]
+  where erra = ErrorD (getDLoc ida) ("Double declaration, id '" ++ pp ida ++ "' used multiple times: " ++ showLoc ida)
+        errb = ErrorD (getDLoc idb) ("Double declaration, id '" ++ pp idb ++ "' used multiple times: " ++ showLoc idb)
 
 funcCallMoreArgs id = ErrorD (getDLoc id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too many arguments.")
 funcCallLessArgs id = ErrorD (getDLoc id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too few arguments.")

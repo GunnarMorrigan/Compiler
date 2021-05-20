@@ -26,13 +26,14 @@ source-repository head
 
 library
   exposed-modules:
+    Error,
     Lexer,
     AST,
     Parser,
     TI,
     MutRec,
-    Error,
-    Ssm
+    Ssm,
+    Gen
 --   other-modules:
 --     AST,
 --     Parser,

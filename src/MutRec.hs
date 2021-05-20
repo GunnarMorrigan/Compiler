@@ -103,14 +103,14 @@ onlyFuncMain ((VarMain x,_,_):xs) = False
 onlyFuncMain ((FuncMain x,_,_):xs) = onlyFuncMain xs
 
 -- ===== Remove dead code =====
-removeDeadCode :: [(Decl, IDLoc, [IDLoc])] -> Either Error [(Decl, IDLoc, [IDLoc])]
+removeDeadCode :: SPL -> Either Error SPL
 removeDeadCode nodes = do
-    let (graph, getNode, getVertex) = graphFromEdges nodes
+    let (graph, getNode, getVertex) = graphFromEdges $ toGraph nodes
     case getVertex (ID defaultLoc "main" defaultLoc) of
         Nothing -> Left $ Error defaultLoc "Required main function not found."
         Just mainVertex -> 
             let code = reachable graph mainVertex 
-            in Right $ map getNode code
+            in Right $ SPL $ map ((\(a,_,_) -> a) . getNode) code
 
 
 mainMutRecToIO :: String -> IO()
@@ -119,8 +119,7 @@ mainMutRecToIO filename = do
        case tokeniseAndParse mainSegments file of
         --    Right (x,xs) -> let (g, v, f) = graphFromEdges $ toGraph x in print $ scc g
             Right (x,xs) -> do
-                let Right graph = removeDeadCode $ toGraph x
-                let Right spl = fromGraph $ stronglyConnCompR graph
+                let Right spl = fromGraph $ stronglyConnCompR $ toGraph x
                 putStr $ pp spl
             Left x -> print x
 
@@ -137,5 +136,4 @@ mainMutRecToFile filename = do
 
 mutRec :: SPL -> Either Error SPL
 mutRec code = do
-    graph <- removeDeadCode $ toGraph code
-    fromGraph $ stronglyConnCompR graph
+    fromGraph $ stronglyConnCompR $ toGraph code
