@@ -1,3 +1,17 @@
+var a = 10;
+
+a(){
+    return;
+}
+
+
+
+main(){
+    print(a);
+}
+
+
+/*
 complexCombined (a b n) :: [Char] Bool Int -> Void {
     [Char] c = [];
     if(a.isEmpty) {
@@ -12,3 +26,5 @@ complexCombined (a b n) :: [Char] Bool Int -> Void {
     }
     print (c);
 }
+
+ */
