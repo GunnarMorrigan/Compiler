@@ -1,3 +1,4 @@
+eq
 LDSA 1
 STR R5
 LDC 10 //[Int] z = (10 : (9 : []));

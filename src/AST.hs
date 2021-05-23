@@ -15,10 +15,12 @@ data Decl = VarMain VarDecl
           deriving (Eq, Show)
 
 data VarDecl = VarDeclVar IDLoc Exp
-             | VarDeclType SPLType IDLoc Exp --Line
+             | VarDeclType SPLType IDLoc Exp 
              deriving (Eq, Show)
 
-data FunDecl = FunDecl IDLoc [IDLoc] (Maybe SPLType) [VarDecl] [Stmt] --Line
+data FunDecl = 
+  FunDecl IDLoc [IDLoc] (Maybe SPLType) [VarDecl] [Stmt]
+  -- FunDecl IDLoc [IDLoc] (Maybe SPLType) [VarDecl] [Stmt]
              deriving (Eq, Show)
 
 
@@ -28,6 +30,7 @@ data SPLType
   | ArrayType Loc SPLType Loc
   | IdType IDLoc
   | FunType SPLType SPLType
+  | Bracket SPLType
   | Void Loc Loc
   deriving (Eq, Show)
 
@@ -73,6 +76,8 @@ data Exp
   | ExpEmptyList Loc Loc
   | ExpList Loc [Exp] Loc (Maybe SPLType)
   | ExpTuple Loc (Exp, Exp) Loc (Maybe SPLType)
+
+  | ExpFunction Loc IDLoc Loc (Maybe SPLType)
   deriving(Eq, Show)
 
 newtype Field

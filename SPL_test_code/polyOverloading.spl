@@ -1,21 +1,25 @@
+/*
 var a = 10;
 var b = equal(4,4);
+*/
 
 equal(x, y) {
+    print(x);
     return x == y;
 }
+
+
+main(){
+    equal(1,1);
+}
+
+
+/*
 
 correct(x, y) :: Int Int -> Bool {
     return equal(x, y);
 }
 
-
-main(){
-    print(b);
-}
-
-
-/*
 
 f(list){
     var tempList = list;

@@ -387,16 +387,19 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) =
             let cs2 = s3 `composeSubst` cs1
 
             let Just (Scheme _ funType') = find funName (apply cs2 env''')
-            let func = generalize env funType'
+            let funcType = generalize env funType'
 
-            let (polyExp, polyFunCall) = findOverloadedFuncs vars' stmts'
+            let (polyExp, polyFunCall) = findOverloadedFuncs (apply cs2 vars') (apply cs2 stmts')
+            -- let (polyExp, polyFunCall) = findOverloadedFuncs vars' stmts'
 
-            if not (Prelude.null polyExp || Prelude.null polyFunCall) 
-            then 
-                dictate (Error defaultLoc ("WE GOT ONE BOYS" ++ pp funName)) >>
-                return (nullSubst, env, FunDecl funName args Nothing vars stmts)
-            else
-                trace "No 'poly' overloading \n" $ return (cs2, TI.insert (apply cs2 env) funName func GlobalScope, FunDecl funName args (Just funType') vars' stmts')
+            if  Prelude.null polyExp && Prelude.null polyFunCall
+            -- if  True
+                then
+                    trace ("No 'poly' overloading in " ++ pp funName ++ "\n\n" ++ show polyExp ++ "\n\n" ++ show polyFunCall) $ 
+                    return (cs2, TI.insert (apply cs2 env) funName funcType GlobalScope, FunDecl funName args (Just funType') vars' stmts')
+                else 
+                    dictate (Error defaultLoc ("WE GOT ONE BOYS" ++ pp funName ++ "\n\n" ++ show polyExp ++ "\n\n" ++ show polyFunCall)) >>
+                    return (nullSubst, env, FunDecl funName args Nothing vars stmts)
 
 
 tiStmts :: TypeEnv -> [Stmt] -> TI (Subst, Maybe SPLType, [Stmt])
@@ -454,21 +457,12 @@ tiStmt env (StmtWhile e stmts loc) = do
     let cs2 = s3 `composeSubst` cs1
 
     return (cs2, apply cs2 t3, StmtWhile e' stmts' loc)
-tiStmt (TypeEnv env) (StmtFuncCall (FunCall id e fType) loc) = case Map.lookup id env of
-    Just (scheme,s) -> do
-        t <- instantiate scheme
-        let argTypes = init $ getArgsTypes t
+tiStmt env (StmtFuncCall funCall loc) = do
+    (s1, t, funCall') <- tiFunCall env funCall
+    return (s1, Nothing, StmtFuncCall  funCall' loc)
 
-        -- isGoodScope FunctionScope id (applVarAsFunc id) (TypeEnv env) >> return (nullSubst, Nothing, StmtFuncCall (FunCall id e fType) loc)
-
-
-        (s1, e') <- trace (pp id ++"\n"++show argTypes ++ "\n\nexps:\n" ++ show e) typeCheckExps id (TypeEnv env) e argTypes
-        return (s1, Nothing, StmtFuncCall (FunCall id e' (Just $ apply s1 t)) loc)
-    Nothing -> 
-        dictate (refBeforeDec "Function:" id) >> 
-        return (nullSubst, Nothing, StmtFuncCall (FunCall id e fType) loc)
-
-tiStmt env (StmtReturn Nothing (Loc line col)) = return (nullSubst, Just (Void (Loc line col) (Loc line (col+6))), StmtReturn Nothing (Loc line col))
+tiStmt env (StmtReturn Nothing (Loc line col)) = 
+    return (nullSubst, Just (Void (Loc line col) (Loc line (col+6))), StmtReturn Nothing (Loc line col))
 tiStmt env (StmtReturn (Just e) loc) = do
     (s1, t1, e') <- tiExp env e
     return (s1, Just t1, StmtReturn (Just e') loc)
@@ -506,7 +500,7 @@ typeCheckExps id env (e:es) (t:ts) = do
 
     (s1, t1, e') <- injectErrMsgAddition def (tiExp env e) (getDLoc e) "typeCheckExps"
     -- s2 <- trace ("Type " ++pp e ++ " " ++  pp t ++ " "++ pp t1) $ injectErrLocMsg nullSubst (mgu (apply s1 t) t1) (getDLoc e) ("Argument '"++ pp e ++ "' should have type "++ pp t)
-    s2 <- trace ("Type " ++pp e ++ " " ++  pp t ++ " "++ pp t1) $ injectErrLoc nullSubst (mgu (apply s1 t) t1) (getDLoc e) 
+    s2 <- injectErrLoc nullSubst (mgu (apply s1 t) t1) (getDLoc e) 
     let cs1 = s2 `composeSubst` s1
     (s3, es') <- typeCheckExps id (apply cs1 env) es ts
     return (s3 `composeSubst` cs1, e':es')
@@ -564,6 +558,7 @@ tiExp env (ExpTuple locA (e1, e2) locB Nothing ) = do
     (s2, t2, e2') <- tiExp (apply s1 env) e2
     let cs1 = s2 `composeSubst` s1
     return (cs1, apply cs1 (TupleType locA (t1,t2) locB), ExpTuple locA (e1', e2') locB (Just $ TupleType locA (t1,t2) locB) )
+
 tiExp env (ExpOp2 locA e1 (Op2 op opTyp loc) e2 locB) = do
     defType <- newSPLVar
     let def = (nullSubst, defType, ExpOp2 locA e1 (Op2 op opTyp loc) e2 locB)
@@ -581,13 +576,9 @@ tiExp env (ExpOp2 locA e1 (Op2 op opTyp loc) e2 locB) = do
     let cs3 = s4 `composeSubst` cs2
 
     let finalOpType = apply cs3 opType
-    -- if isComplexType (apply cs3 t1) && isOrd op
-    --     then 
-    --         dictate (Error loc ("Operator '" ++ pp op ++"' "++ showLoc loc++" does not support 'polymorphic' like overloading. " ++
-    --                     "\nProviding a rigid type will solve this error.")) >> return def
-    --     else 
+
     return (cs3, apply cs3 t3, ExpOp2 locA e1' (Op2 op (Just finalOpType) loc) e2' locB)
-        -- _ -> dictate $ Error loc ("Operator '"++ pp op ++"' on "++ pp loc ++ " is only supported for basic types Int, Bool and Char per the Grammar of SPL." )
+
 tiExp env (ExpOp1 locA op e locB) = case op of
     Neg -> do
         (s1, t1, e') <- tiExp env e
@@ -597,19 +588,28 @@ tiExp env (ExpOp1 locA op e locB) = case op of
         (s1, t1, e') <- tiExp env e
         s2 <- mgu t1 (TypeBasic (getFstLoc t1) BasicBool (getSndLoc t1))
         return (s2 `composeSubst` s1, t1, ExpOp1 locA op e' locB)
-tiExp (TypeEnv env) (ExpFunCall locA (FunCall id args Nothing) locB) = case Map.lookup id env of
-    Just (scheme,GlobalScope) -> do
-        t <- instantiate scheme
-        let argTypes = getArgsTypes t
-        (s1, args') <- typeCheckExps id (TypeEnv env) args (init argTypes)
-        let returnType = last argTypes
-        return (s1, apply s1 returnType, ExpFunCall locA (FunCall id args' (Just $ apply s1 t)) locB)
-    Just (scheme,_) -> do
-        t <- newSPLVar
-        dictate (applVarAsFunc id ) >> return (nullSubst, t, ExpFunCall locA (FunCall id args Nothing) locB)
-    Nothing -> do
-        t <- newSPLVar
-        dictate (refBeforeDec "Function:" id) >> return (nullSubst, t, ExpFunCall locA (FunCall id args Nothing) locB)
+tiExp env (ExpFunCall locA funCall locB) = do
+    (s1, t, funCall') <- tiFunCall env funCall
+    return (s1, t, ExpFunCall locA funCall' locB)
+
+
+tiFunCall :: TypeEnv -> FunCall -> TI (Subst, SPLType, FunCall)
+tiFunCall (TypeEnv env) (FunCall id args Nothing) = 
+    case Map.lookup id env of
+        Just (scheme,GlobalScope) -> do
+            t <- instantiate scheme
+            let argTypes = getArgsTypes t
+            (s1, args') <- typeCheckExps id (TypeEnv env) args (init argTypes)
+            let returnType = last argTypes
+            return (s1, apply s1 returnType, FunCall id args' (Just $ apply s1 t))
+        Just (scheme,_) -> do
+            t <- newSPLVar
+            dictate (applVarAsFunc id ) >> return (nullSubst, t, FunCall id args Nothing)
+        Nothing -> do
+            t <- newSPLVar
+            dictate (refBeforeDec "Function:" id) >> return (nullSubst, t, FunCall id args Nothing)
+
+
 
 -- ===================== Helper functions ============================
 isComplexType :: SPLType -> Bool
@@ -712,7 +712,7 @@ findOverFuncsStmts :: [Stmt] -> ([Exp],[FunCall])
 findOverFuncsStmts = Prelude.foldr (combineOverFuncs . findOverFuncsStmt) ([], [])
 
 findOverFuncsStmt :: Stmt -> ([Exp], [FunCall])
-findOverFuncsStmt  (StmtIf e stmts (Just els) loc) = combineOverFuncs (findOverFuncsStmts els)  $ combineOverFuncs (findOverFuncsExp e) (findOverFuncsStmts stmts)
+findOverFuncsStmt  (StmtIf e stmts (Just els) loc) = combineOverFuncs (findOverFuncsStmts els) $ combineOverFuncs (findOverFuncsExp e) (findOverFuncsStmts stmts)
 findOverFuncsStmt  (StmtIf e stmts Nothing loc) = combineOverFuncs (findOverFuncsExp e) (findOverFuncsStmts stmts)
 findOverFuncsStmt  (StmtWhile e stmts loc) = combineOverFuncs (findOverFuncsExp e) (findOverFuncsStmts stmts)
 findOverFuncsStmt  (StmtAssignVar id fields e _) =  findOverFuncsExp e
@@ -807,83 +807,85 @@ typeInference code = do
     case runTI (tiSPL code) of
         (That (s1, env, SPL code'), state) -> do
             cleanCode <- removeDeadCode (SPL $ removeMutRec code')
-            let updatedCode = updateTypes cleanCode s1 env
+            let updatedCode = apply s1 cleanCode
             Right (s1, env, updatedCode)
         (These errs a, state) -> Left errs
         (This errs, state) -> Left errs
 
-class UpdateTypes a where
-    updateTypes :: a -> Subst -> TypeEnv -> a
+instance Types SPL where
+    apply s (SPL []) = SPL []
+    apply s (SPL x)  = SPL $ apply s x
+    ftv = undefined
 
-instance (Show a, UpdateTypes a) => UpdateTypes [a] where
-    updateTypes [] s env = []
-    updateTypes (x:xs) s env =  updateTypes x s env:updateTypes xs s env
+instance Types Decl where
+    apply s (VarMain varDecl)   = VarMain $ apply s varDecl
+    apply s (FuncMain funDecl)   = FuncMain $ apply s funDecl
+    apply s (MutRec x)   = trace ("Error in apply on Mutrec\n" ++ pp (MutRec  x)) undefined
+    ftv = undefined
 
-instance UpdateTypes SPL where
-    updateTypes (SPL []) s env = SPL []
-    updateTypes (SPL x) s env = SPL $ updateTypes x s env
+instance Types VarDecl where
+    apply s (VarDeclType t (ID id loc loc') e) = VarDeclType (apply s t) (ID id loc loc') e
+    apply s e = e
+    ftv = undefined
 
-instance UpdateTypes Decl where
-    updateTypes (VarMain varDecl) s env = VarMain $ updateTypes varDecl s env
-    updateTypes (FuncMain funDecl) s env = FuncMain $ updateTypes funDecl s env
-    updateTypes (MutRec x) s env = trace ("Error in UpdateTypes FunDecl\n" ++ pp (MutRec  x)) undefined
-
-instance UpdateTypes VarDecl where
-    updateTypes (VarDeclType t (ID id loc loc') e) s env = VarDeclType (apply s t) (ID id loc loc') e
-    updateTypes e s env = e
-
-instance UpdateTypes FunDecl where
-    updateTypes (FunDecl funName args funType varDecls stmts) s env = do
-        let varDecls' = updateTypes varDecls s env
-        let stmts' = updateTypes stmts s env
+instance Types FunDecl where
+    apply s (FunDecl funName args funType varDecls stmts) = do
+        let varDecls' = apply s varDecls
+        let stmts' = apply s stmts
         FunDecl funName args funType varDecls' stmts'
+    ftv = undefined
 
-instance UpdateTypes Stmt where
-    updateTypes (StmtIf e stmts Nothing loc) s env = do
-        let e' = updateTypes e s env
-        let stmts' = updateTypes stmts s env
+instance Types Stmt where
+    apply s (StmtIf e stmts Nothing loc) = do
+        let e' = apply s e
+        let stmts' = apply s stmts
         StmtIf e' stmts' Nothing loc
-    updateTypes (StmtIf e stmts (Just els) loc) s env = do
-        let e' = updateTypes e s env
-        let stmts' = updateTypes stmts s env
-        let els' = updateTypes els s env
+    apply s (StmtIf e stmts (Just els) loc) = do
+        let e' = apply s e
+        let stmts' = apply s stmts 
+        let els' = apply s els
         StmtIf e' stmts' (Just els') loc
-    updateTypes (StmtAssignVar id fields e typ) s env = do
-        let e' = updateTypes e s env
+    apply s (StmtAssignVar id fields e typ) = do
+        let e' = apply s e
         StmtAssignVar id fields e' (apply s typ)
-    updateTypes (StmtFuncCall fCall loc) s env = do
-        let fCall' = updateTypes fCall s env
+    apply s (StmtFuncCall fCall loc) = do
+        let fCall' = apply s fCall
         StmtFuncCall fCall' loc
-    updateTypes (StmtReturn (Just e) loc) s env = do
-        let e' = updateTypes e s env
+    apply s (StmtReturn (Just e) loc) = do
+        let e' = apply s e
         StmtReturn (Just e') loc
-    updateTypes e s env = e
+    apply s e = e
+    ftv = undefined
 
-instance UpdateTypes Exp where
-    updateTypes (ExpOp2 locA e1 (Op2 op (Just t) loc) e2 locB) s env = do
+instance Types Exp where
+    apply s (ExpOp2 locA e1 (Op2 op (Just t) loc) e2 locB) = do
         let t' = apply s t
-        let e1' = updateTypes e1 s env
-        let e2' = updateTypes e2 s env
+        let e1' = apply s e1
+        let e2' = apply s e2
         ExpOp2 locA e1' (Op2 op (Just t') loc) e2' locB
-    updateTypes (ExpFunCall locA fCall locB) s env =  do
-        let fCall' = updateTypes fCall s env
+    apply s (ExpFunCall locA fCall locB) =  do
+        let fCall' = apply s fCall
         ExpFunCall locA fCall' locB
-    updateTypes (ExpList locA es locB typ) s env = do
-        let es' = updateTypes es s env
+    apply s (ExpList locA es locB typ) = do
+        let es' = apply s es
         ExpList locA es' locB (apply s typ) 
-    updateTypes (ExpTuple locA (e1, e2) locB typ) s env = do
-        let e1' = updateTypes e1 s env
-        let e2' = updateTypes e2 s env
+    apply s (ExpTuple locA (e1, e2) locB typ) = do
+        let e1' = apply s e1
+        let e2' = apply s e2
         ExpTuple locA (e1', e2') locB (apply s typ)
-    updateTypes (ExpBracket e) s env = ExpBracket (updateTypes e s env)
-    updateTypes (ExpOp1 locA op e locB) s env = let e' = updateTypes e s env in ExpOp1 locA op e' locB
-    updateTypes e s env = e
+    apply s (ExpBracket e) = ExpBracket (apply s e)
+    apply s (ExpOp1 locA op e locB) = let e' = apply s e in ExpOp1 locA op e' locB
+    apply s e = e
+    ftv = undefined
 
-instance UpdateTypes FunCall where
-    updateTypes (FunCall (ID locA name locB) es (Just t)) s env = do
-        let es' = updateTypes es s env
+instance Types FunCall where
+    apply s (FunCall (ID locA name locB) es (Just t)) = do
+        let es' = apply s es
         FunCall (ID locA name locB) es' (Just $ apply s t)
-    updateTypes (FunCall id es Nothing) s env =  FunCall id es Nothing
+    apply s (FunCall id es Nothing) = FunCall id es Nothing
+    ftv = undefined
+
+
 
 mainTIIO filename = do
     -- path <- getCurrentDirectory
@@ -895,6 +897,22 @@ mainTIIO filename = do
             putStr $ "\nEnv:\n" ++ printEnv (Map.toList env)
             putStr $ "\nSubst:\n" ++ printSubst (Map.toList s1)
         Left x -> putStr $ showError file x
+
+
+eq = FunDecl (ID (Loc 6 1) "equal" (Loc 6 6)) [ID (Loc 6 7) "x" (Loc 6 8),ID (Loc 6 10) "y" (Loc 6 11)] Nothing [] [StmtReturn (Just (ExpOp2 (Loc 7 14) (ExpId (ID (Loc 7 12) "x" (Loc 7 13)) (Field [])) (Op2 Eq Nothing (Loc 7 14)) (ExpId (ID (Loc 7 17) "y" (Loc 7 18)) (Field [])) (Loc 7 16))) (Loc 7 5)]
+
+tiObject = do
+    -- path <- getCurrentDirectory
+    -- print path
+    case runTI (tiFunDecl (TypeEnv Map.empty) eq) of
+        (That (s1, TypeEnv env, code),_) -> do
+            print code
+            putStr "\n\n"
+            putStr $ pp code
+            putStr $ "\nEnv:\n" ++ printEnv (Map.toList env)
+            putStr $ "\nSubst:\n" ++ printSubst (Map.toList s1)
+        (This x,_) -> print x
+        (These x _,_) -> print x
 
 
 mainTI filename = do

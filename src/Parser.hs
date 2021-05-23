@@ -486,6 +486,21 @@ tokeniseFile filename = do
       print x
       exitFailure
 
+tokeniseAndParseFile :: Show a => String -> Parser (Token, Loc, Loc) a -> IO ()
+tokeniseAndParseFile filename p = do
+  file <- readFile $ splFilePath ++ filename
+  case tokeniseAndParse p file of
+    Right (x, []) -> do
+      exists <- doesFileExist (splFilePath ++ "tokenOut.spl")
+      when exists $ removeFile (splFilePath ++ "tokenOut.spl")
+      writeFile (splFilePath ++ "tokenOut.spl") $ show x
+    Right (x,ys) -> print "No failure but nothing parsed"
+    Left x -> do
+      print x
+      exitFailure
+
+
+
 test = tokeniseAndParse expList "[10,10,10,]"
 
 main :: String -> IO ()
