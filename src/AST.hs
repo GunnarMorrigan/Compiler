@@ -29,8 +29,7 @@ data SPLType
   | TupleType Loc (SPLType, SPLType) Loc
   | ArrayType Loc SPLType Loc
   | IdType IDLoc
-  | FunType SPLType SPLType
-  | Bracket SPLType
+  | FunType SPLType SPLType 
   | Void Loc Loc
   deriving (Eq, Show)
 

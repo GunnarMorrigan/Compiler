@@ -332,12 +332,6 @@ genOp2Typed (Op2 op (Just (FunType t t')) loc) c env = trace ("THIS IS the type:
     return (BSR func:AJS (-2):LDR RR:c, env)
 
 -- ==================== Overloading functions ====================
-overloadedTypeName :: String -> SPLType -> String
-overloadedTypeName start t = '_':start ++ typeToName t
-
-overloadedOpName :: Op2 -> SPLType -> String
-overloadedOpName op t = '_':op2String op ++ typeToName t
-
 genOverloadedFuns :: Map String FunCall -> [SsmFunction]
 genOverloadedFuns funcs = concatMap (snd . genPrint) $ Map.elems (getOverloadedFuns (Map.toList funcs))
 
@@ -570,14 +564,6 @@ closeSqBracket c = LDC 93:TRAP 1:c
 
 comma c = LDC 44:TRAP 1:c
 
-typeToName :: SPLType -> String 
-typeToName (TypeBasic _ x _) = pp x
-typeToName (TupleType _ (t1,t2) _) = "Tuple" ++ typeToName t1 ++ typeToName t2
-typeToName (ArrayType _ a1 _) = "Array"++ typeToName a1
-typeToName (FunType arg f) = "Func"
-typeToName (Void _ _) = "Void"
-typeToName x = trace ("Error we did not catch type "++ pp x) undefined 
-
 op2Func :: Op2 -> Instruct
 op2Func Le  = Ssm.LT
 op2Func Ge  = Ssm.GT
@@ -585,14 +571,6 @@ op2Func Leq = Ssm.LE
 op2Func Geq = Ssm.GE
 op2Func Eq  = Ssm.EQ
 op2Func Neq = Ssm.NE
-
-op2String :: Op2 -> String
-op2String Le  = "lt"
-op2String Ge  = "gt"
-op2String Leq = "le"
-op2String Geq = "ge"
-op2String Eq  = "eq"
-op2String Neq = "ne"
 
 -- ==================== Helper functions ====================
 combineResult :: Gen ([a], GenEnv) -> (GenEnv -> Gen ([a], GenEnv)) -> Gen ([a], GenEnv)

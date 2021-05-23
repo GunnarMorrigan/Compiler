@@ -70,11 +70,24 @@ generalizeFuncs (TypeEnv env) (x:xs) = case Map.lookup x env of
         return (TypeEnv env)
 
 -- ===================== Scheme ============================
-data Scheme = Scheme [IDLoc] SPLType
+data Scheme = 
+    Scheme [IDLoc] SPLType |
+    OverScheme [IDLoc] SPLType [Op2Typed] [FunCall]
     deriving (Show, Eq)
 
 data Scope = GlobalScope | LocalScope | ArgScope
     deriving (Show,Eq)
+
+instantiate :: Scheme -> TI SPLType
+instantiate (Scheme vars t) = do 
+    nvars <- mapM (const newSPLVar) vars
+    let s = Map.fromList (zip vars nvars)
+    return $ apply s t
+instantiate (OverScheme vars t _ _) = do
+    nvars <- mapM (const newSPLVar) vars
+    let s = Map.fromList (zip vars nvars)
+    return $ apply s t
+
 
 -- ===================== Substitution ============================
 type Subst = Map.Map IDLoc SPLType
@@ -147,12 +160,6 @@ newSPLVarLoc loc =
     toTyVar c | c < 26    =  [toEnum (97+c)]
               | otherwise = let (n, r) = c `divMod` 26
                             in toEnum (97+r) : toTyVar (n-1)
-
-
-instantiate :: Scheme -> TI SPLType
-instantiate (Scheme vars t) = do  nvars <- mapM (const newSPLVar) vars
-                                  let s = Map.fromList (zip vars nvars)
-                                  return $ apply s t
 
 -- ===================== Most General Unifier ============================
 class MGU a where
@@ -386,19 +393,22 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) =
             s3 <- mgu (apply cs1 t1') retType
             let cs2 = s3 `composeSubst` cs1
 
-            let Just (Scheme _ funType') = find funName (apply cs2 env''')
-            let funcType = generalize env funType'
+            -- let Just (Scheme _ funType') = find funName (apply cs2 env''')
+            let funType = apply cs2 fType
 
-            let (polyExp, polyFunCall) = findOverloadedFuncs (apply cs2 vars') (apply cs2 stmts')
+            (polyExp, polyFunCall) <- findOverloadedFuncs (apply cs2 vars') (apply cs2 stmts')
             -- let (polyExp, polyFunCall) = findOverloadedFuncs vars' stmts'
 
             if  Prelude.null polyExp && Prelude.null polyFunCall
             -- if  True
                 then
-                    trace ("No 'poly' overloading in " ++ pp funName ++ "\n\n" ++ show polyExp ++ "\n\n" ++ show polyFunCall) $ 
-                    return (cs2, TI.insert (apply cs2 env) funName funcType GlobalScope, FunDecl funName args (Just funType') vars' stmts')
+                    trace ("No 'poly' overloading in " ++ pp funName) $ 
+                    let funcType = generalize env funType in
+                    return (cs2, TI.insert (apply cs2 env) funName funcType GlobalScope, FunDecl funName args (Just funType) vars' stmts')
                 else 
-                    dictate (Error defaultLoc ("WE GOT ONE BOYS" ++ pp funName ++ "\n\n" ++ show polyExp ++ "\n\n" ++ show polyFunCall)) >>
+                    -- dictate (Error defaultLoc ("WE GOT ONE BOYS" ++ pp funName ++ "\n\n" ++ show polyExp ++ "\n\n" ++ show polyFunCall)) >>
+                    trace ("WE GOT ONE BOYS" ++ pp funName ++ "\n\n" ++ show polyExp ++ "\n\n" ++ show polyFunCall) $
+                    let a = overloadFunction args funType env polyExp polyFunCall in
                     return (nullSubst, env, FunDecl funName args Nothing vars stmts)
 
 
@@ -705,32 +715,81 @@ op2Type Con e1loc e2loc = do
     let t = ArrayType defaultLoc e1T defaultLoc
     return (e1T, e2T, t, FunType e1T (FunType e2T t))
 
-findOverloadedFuncs :: [VarDecl] -> [Stmt] -> ([Exp],[FunCall])
+-- ===================== Overloading ============================
+overloadFunction :: [IDLoc] -> SPLType -> TypeEnv -> [(Op2Typed,IDLoc,SPLType)] -> [(FunCall,IDLoc,SPLType)] -> ([IDLoc], SPLType, Scheme)
+overloadFunction args fType env ops funcs = do
+    let (ops', argsOps, typeOps) = combine ops 
+    let (funcs', argsFuncs, typeFuncs) = combine funcs
+    let args' = args ++ argsOps ++ argsFuncs
+    let fType' = 
+                let typesOfArgs = getArgsTypes fType 
+                in foldr1 FunType (init typesOfArgs ++ typeOps ++ typeFuncs ++ [last typesOfArgs] )
+    let scheme = 
+            let Scheme xs t = generalize env fType' 
+            in OverScheme xs t ops' funcs'
+    (args', fType', scheme)
+    where combine (x:xs) = (\(a,b,c) (as,bs,cs) -> (a:as,b:bs,c:cs)) x (combine xs)
+
+
+
+overloadedTypeName :: String -> SPLType -> String
+overloadedTypeName start t = '_':start ++ typeToName t
+
+overloadedOpName :: Op2 -> SPLType -> String
+overloadedOpName op t = '_':op2String op ++ typeToName t
+
+typeToName :: SPLType -> String 
+typeToName (TypeBasic _ x _) = pp x
+typeToName (TupleType _ (t1,t2) _) = "Tuple" ++ typeToName t1 ++ typeToName t2
+typeToName (ArrayType _ a1 _) = "Array"++ typeToName a1
+typeToName (FunType arg f) = "Func"
+typeToName (Void _ _) = "Void"
+typeToName (IdType id) = pp id
+
+op2String :: Op2 -> String
+op2String Le  = "lt"
+op2String Ge  = "gt"
+op2String Leq = "le"
+op2String Geq = "ge"
+op2String Eq  = "eq"
+op2String Neq = "ne"
+
+findOverloadedFuncs :: [VarDecl] -> [Stmt] -> TI ([(Op2Typed,IDLoc,SPLType)],[(FunCall,IDLoc,SPLType)])
 findOverloadedFuncs xs ys = combineOverFuncs (findOverFuncsVarDecls xs) (findOverFuncsStmts ys)
 
-findOverFuncsStmts :: [Stmt] -> ([Exp],[FunCall])
-findOverFuncsStmts = Prelude.foldr (combineOverFuncs . findOverFuncsStmt) ([], [])
+findOverFuncsStmts :: [Stmt] ->  TI ([(Op2Typed,IDLoc,SPLType)],[(FunCall,IDLoc,SPLType)])
+findOverFuncsStmts = Prelude.foldr (combineOverFuncs . findOverFuncsStmt) (pure ([], []))
 
-findOverFuncsStmt :: Stmt -> ([Exp], [FunCall])
+findOverFuncsStmt :: Stmt -> TI ([(Op2Typed,IDLoc,SPLType)], [(FunCall,IDLoc,SPLType)])
 findOverFuncsStmt  (StmtIf e stmts (Just els) loc) = combineOverFuncs (findOverFuncsStmts els) $ combineOverFuncs (findOverFuncsExp e) (findOverFuncsStmts stmts)
 findOverFuncsStmt  (StmtIf e stmts Nothing loc) = combineOverFuncs (findOverFuncsExp e) (findOverFuncsStmts stmts)
 findOverFuncsStmt  (StmtWhile e stmts loc) = combineOverFuncs (findOverFuncsExp e) (findOverFuncsStmts stmts)
 findOverFuncsStmt  (StmtAssignVar id fields e _) =  findOverFuncsExp e
-findOverFuncsStmt  (StmtFuncCall (FunCall (ID la "print" lb) args (Just t)) loc) | containsIDType t = ([],[FunCall (ID la "print" lb) args (Just t)])
+findOverFuncsStmt  (StmtFuncCall funCall loc) = findOverFuncsFunCall funCall
 findOverFuncsStmt  (StmtReturn (Just e) loc) = findOverFuncsExp e
-findOverFuncsStmt  _ = ([],[])
+findOverFuncsStmt  _ = return ([],[])
 
-findOverFuncsVarDecls :: [VarDecl] -> ([Exp],[FunCall])
-findOverFuncsVarDecls [] = ([],[])
+findOverFuncsVarDecls :: [VarDecl] -> TI ([(Op2Typed,IDLoc,SPLType)],[(FunCall,IDLoc,SPLType)])
+findOverFuncsVarDecls [] = return ([],[])
 findOverFuncsVarDecls ((VarDeclType t id e):xs) = combineOverFuncs (findOverFuncsExp e) (findOverFuncsVarDecls xs)
 findOverFuncsVarDecls ((VarDeclVar id e):xs) = combineOverFuncs (findOverFuncsExp e) (findOverFuncsVarDecls xs)
 
-findOverFuncsExp :: Exp -> ([Exp],[FunCall])
-findOverFuncsExp (ExpOp2 locA e1 (Op2 op (Just t) loc) e2 locB) | containsIDType t =  ([ExpOp2 locA e1 (Op2 op (Just t) loc) e2 locB],[])
-findOverFuncsExp (ExpFunCall _ (FunCall (ID idLocA "print" idLocB) args (Just t)) _) | containsIDType t =  ([],[FunCall (ID idLocA "print" idLocB) args (Just t)])
-findOverFuncsExp _  =  ([],[])
+findOverFuncsExp :: Exp -> TI ([(Op2Typed,IDLoc,SPLType)],[(FunCall,IDLoc,SPLType)])
+findOverFuncsExp (ExpOp2 locA e1 (Op2 op (Just t) loc) e2 locB) | containsIDType t = do
+    let name = overloadedOpName op t
+    return ([(Op2 op (Just t) loc, ID defaultLoc name defaultLoc, t)],[])
+findOverFuncsExp (ExpFunCall _ funCall _) = findOverFuncsFunCall funCall
+findOverFuncsExp _  = return ([],[])
 
-combineOverFuncs (a,b) (c,d) = (a++c, b++d)
+findOverFuncsFunCall (FunCall (ID idLocA "print" idLocB) args (Just t)) | containsIDType t = do
+    let name = overloadedTypeName "print" t
+    return ([],[(FunCall (ID idLocA "print" idLocB) args (Just t),ID defaultLoc name defaultLoc,t)])
+
+
+combineOverFuncs x y = do
+    (a,b) <- x
+    (c,d) <- y
+    return (a++c,b++d)
 
 containsIDType :: SPLType -> Bool
 containsIDType (Void _ _) = False
