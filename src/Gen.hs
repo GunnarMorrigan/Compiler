@@ -32,7 +32,7 @@ data Mem =
     deriving (Show, Eq)
 
 --               Ifs, Global, Overloaded functions, overloaded Op2s
-type GenState = (Int, Int, (Map String FunCall, Map String Op2Typed))
+type GenState = (Int, Int, (Map String Op2Typed, Map String FunCall))
 type Gen a = ExceptT Error (State GenState) a
  
 type GenEnv = Map IDLoc Mem
@@ -67,14 +67,14 @@ newGlobal typ = do
 
 insertOp2 :: Op2Typed -> Gen ()
 insertOp2 (Op2 op (Just t) loc) = do
-    (ifS, globalS, (funcCalls, ops)) <- get
-    put (ifS, globalS, (funcCalls, Map.insert (overloadedOpName op t) (Op2 op (Just t) loc) ops))
+    (ifS, globalS, (ops, funcCalls)) <- get
+    put (ifS, globalS, (Map.insert (overloadedOpName op t) (Op2 op (Just t) loc) ops, funcCalls))
 
 insertFunCall :: FunCall -> Gen ()
 insertFunCall (FunCall (ID locA id locB) args (Just (FunType t t'))) = do
-    (ifS, globalS, (funcCalls, ops)) <- get
+    (ifS, globalS, (ops, funcCalls)) <- get
     let f = Map.insert (overloadedTypeName id t) (FunCall (ID locA id locB)[] (Just $ FunType t t')) funcCalls
-    put (ifS, globalS, (f, ops))
+    put (ifS, globalS, (ops, f))
 
 -- ===== Generation =====
 genSPL :: SPL -> Gen SSM
@@ -86,12 +86,12 @@ genSPL spl = do
         Nothing -> throwError $ Error defaultLoc "No main without arguments detected"
         Just main -> do
             (assemblyMain, _) <- trace "3" $ genFunDecl main env'
-            (_, _, (overloadedFuns, overloadedOps)) <- get 
+            (_, _, (overloadedOps,overloadedFuns)) <- get 
             return $ 
                 SSM assemblyGlobals $
                     assemblyFunctions ++
-                    genOverloadedFuns overloadedFuns ++ 
                     genOverloadedOps overloadedOps ++
+                    genOverloadedFuns overloadedFuns ++ 
                     [assemblyMain]
 
 genGlobals :: [VarDecl] -> GenEnv -> Gen ([SsmGlobal], GenEnv)
