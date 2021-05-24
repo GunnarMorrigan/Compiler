@@ -4,7 +4,7 @@ import Error
 import Lexer
 import AST
 import Parser
-import TI
+
 
 import Data.Bifunctor
 import Data.Map as Map
@@ -108,20 +108,20 @@ allTheSame :: (Eq a) => [a] -> Bool
 allTheSame [] = True
 allTheSame xs = all (== head xs) (tail xs)
 
-gMain1 :: String -> IO()
-gMain1 filename = do
-       file <- readFile $ splFilePath++filename
-       case tokeniseAndParse mainSegments file of 
-              Right (a, _) -> case rtga a of
-                  Right x -> print $ gHelp a
-                  Left x -> do print x
-              Left x -> do print x
+-- gMain1 :: String -> IO()
+-- gMain1 filename = do
+--        file <- readFile $ splFilePath++filename
+--        case tokeniseAndParse mainSegments file of 
+--               Right (a, _) -> case rtga a of
+--                   Right x -> print $ gHelp a
+--                   Left x -> do print x
+--               Left x -> do print x
 
-gHelp :: SPL -> Either Error (Map IDLoc Scheme)
-gHelp code = let (res, s) = runTI (tiSPL code )
-    in case res of
-            That (_,TypeEnv env,_) -> Right env
-            (This err) -> Left err
-            (These err _) -> Left err
+-- gHelp :: SPL -> Either Error (Map IDLoc (Scheme,Scope))
+-- gHelp code = let (res, s) = runTI (tiSPL code )
+--     in case res of
+--             That (_,TypeEnv env,_) -> Right env
+--             (This err) -> Left err
+--             (These err _) -> Left err
 
 

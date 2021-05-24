@@ -244,6 +244,7 @@ genFuncCall (FunCall id args (Just fType)) c env = do
     let c' = (if isVoidFun fType then c else LDR RR:c)
     let c'' = (if Prelude.null args then c' else AJS (negate $ length args):c')
     genExps args (BSR (pp id):c'') env
+genFuncCall x c env = trace ("GOING WRONG HERE\n"++pp x) $ return (c, env)
 
 genExps :: [Exp] -> [Instruct] -> GenEnv -> Gen ([Instruct], GenEnv)
 genExps [] c env = return (c,env)

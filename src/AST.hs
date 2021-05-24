@@ -288,12 +288,14 @@ instance PrettyPrinter SPLType where
   pp (IdType id) = pp id
   -- Prints function types haskell style:
   -- pp (FunType arg ret) = pp arg ++ " -> " ++ pp ret
-  pp (FunType arg ret) = let args = getArgsTypes (FunType arg ret) in concatMap (\x -> pp x ++ " "  ) (init args) ++ "-> " ++ pp (last args)
+  pp (FunType arg ret) = let args = getArgsTypes (FunType arg ret) in concatMap (\x -> ppFuncs x ++ " "  ) (init args) ++ "-> " ++ pp (last args)
+    where ppFuncs x = if isFun x then "("++ pp x ++")" else pp x
+
   pp (Void _ _) = "Void"
 
 
 getArgsTypes :: SPLType -> [SPLType]
-getArgsTypes (FunType args ret) = getArgsTypes args ++ getArgsTypes ret
+getArgsTypes (FunType arg ret) = arg:getArgsTypes ret
 getArgsTypes x = [x]
 
 
@@ -328,6 +330,7 @@ instance PrettyPrinter Exp where
   pp (ExpList _ xs _ _) =  "["++ intercalate "," (Prelude.map pp xs)  ++ "]"
   pp (ExpTuple _ (a,b) _ _) =  "(" ++ pp a ++ ", " ++ pp b ++")"
   pp (ExpEmptyList _ _) = "[]"
+  pp (ExpFunction _ id _ (Just t)) = pp id {-- ++ " :: " ++ pp t --}
 
 instance PrettyPrinter Field where
   pp (Field xs) = concatMap pp xs
@@ -342,8 +345,8 @@ instance PrettyPrinter IDLoc where
   pp (ID _ id _) = id
 
 instance PrettyPrinter FunCall where
-  pp (FunCall i eS Nothing) = pp i ++ "("++ intercalate "," (Prelude.map pp eS) ++") /*:: Nothing*/"
-  pp (FunCall i eS (Just fType)) = pp i ++ "("++ intercalate "," (Prelude.map pp eS) ++") /*:: "++ pp fType ++"*/"
+  pp (FunCall i eS Nothing) = pp i ++ "("++ intercalate ", " (Prelude.map pp eS) ++") /*:: Nothing*/"
+  pp (FunCall i eS (Just fType)) = pp i ++ "("++ intercalate ", " (Prelude.map pp eS) ++") /*:: "++ pp fType ++"*/"
 
 instance PrettyPrinter Op1 where
   pp Neg = "-"
