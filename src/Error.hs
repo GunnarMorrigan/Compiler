@@ -58,7 +58,8 @@ showPlacesOfErrors :: String -> [Error] -> String
 showPlacesOfErrors code' errs = intercalate "\n" $ map (showPlaceOfError code') errs
 
 showPlaceOfError :: String -> Error -> String
-showPlaceOfError code' (Error (Loc (-1) (-1)) msg) = msg
+showPlaceOfError code' (Error (Loc (-1) (-1)) msg) = msg ++ "\n"
+showPlaceOfError code' (ErrorD (DLoc (Loc (-1) (-1)) (Loc (-1) (-1))) msg) = msg ++ "\n"
 showPlaceOfError code' (Error (Loc line col) msg) =
     let code = replaceTab code' in
     msg ++ "\n" ++
@@ -114,6 +115,8 @@ doubleDef id = ErrorD (getDLoc id) ("Variable: " ++ showIDLoc id ++ ", already e
 doubleDef2 ida idb = Errors [erra,errb]
   where erra = ErrorD (getDLoc ida) ("Double declaration, id '" ++ pp ida ++ "' used multiple times: " ++ showLoc ida)
         errb = ErrorD (getDLoc idb) ("Double declaration, id '" ++ pp idb ++ "' used multiple times: " ++ showLoc idb)
+
+stupidError m = Error defaultLoc (m++"\n")
 
 funcCallMoreArgs id = ErrorD (getDLoc id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too many arguments.")
 funcCallLessArgs id = ErrorD (getDLoc id) ("Function: '" ++ pp id ++ "',  " ++ showLoc id ++ ", called with too few arguments.")

@@ -31,16 +31,27 @@ data SPLType
   | IdType IDLoc
   | FunType SPLType SPLType 
   | Void Loc Loc
-  deriving (Eq, Show)
+  deriving (Show)
 
-eqType :: SPLType -> SPLType -> Bool
-eqType (TypeBasic _ l loc) (TypeBasic _ r loc') = l == r
-eqType (TupleType _ (a,b) loc) (TupleType _ (c,d) loc') = eqType a c && eqType b d
-eqType (ArrayType _ a loc) (ArrayType _ b loc') = eqType a b
-eqType (IdType l) (IdType r) = True
-eqType (FunType arg ret) (FunType arg' ret') = eqType arg arg' && eqType ret ret'
-eqType (Void _ _) (Void _ _) = True
-eqType _ _ = False
+
+instance Eq SPLType where
+  (==) (TypeBasic _ l loc) (TypeBasic _ r loc') = l == r
+  (==) (TupleType _ (a,b) loc) (TupleType _ (c,d) loc') = (==) a c && (==) b d
+  (==) (ArrayType _ a loc) (ArrayType _ b loc') = (==) a b
+  (==) (IdType (ID _ l _)) (IdType (ID _ r _)) = l == r
+  (==) (FunType arg ret) (FunType arg' ret') = (==) arg arg' && (==) ret ret'
+  (==) (Void _ _) (Void _ _) = True
+  (==) _ _ = False
+
+
+-- eqType :: SPLType -> SPLType -> Bool
+-- eqType (TypeBasic _ l loc) (TypeBasic _ r loc') = l == r
+-- eqType (TupleType _ (a,b) loc) (TupleType _ (c,d) loc') = eqType a c && eqType b d
+-- eqType (ArrayType _ a loc) (ArrayType _ b loc') = eqType a b
+-- eqType (IdType (ID _ l _)) (IdType (ID _ r _)) = l == r
+-- eqType (FunType arg ret) (FunType arg' ret') = eqType arg arg' && eqType ret ret'
+-- eqType (Void _ _) (Void _ _) = True
+-- eqType _ _ = False
 
 isFun :: SPLType -> Bool
 isFun (FunType arg ret) = True 
@@ -48,7 +59,7 @@ isFun _ = False
 
 
 isVoidFun :: SPLType -> Bool
-isVoidFun x = last (getArgsTypes x) `eqType` Void (Loc (-1) (-1)) (Loc (-1) (-1))
+isVoidFun x = last (getArgsTypes x) == Void (Loc (-1) (-1)) (Loc (-1) (-1))
 
 data BasicType
   = BasicInt
@@ -77,7 +88,26 @@ data Exp
   | ExpTuple Loc (Exp, Exp) Loc (Maybe SPLType)
 
   | ExpFunction Loc IDLoc Loc (Maybe SPLType)
-  deriving(Eq, Show)
+  deriving(Show)
+
+instance Eq Exp where
+  (==) (ExpId id1 x) (ExpId id2 y) = id1 == id2 && x==y 
+  (==) (ExpInt _ i1 _) (ExpInt _ i2 _) = i1==i2 
+  (==) (ExpBool _ b1 _) (ExpBool _ b2 _) = b1 == b2 
+  (==) (ExpChar _ c1 _) (ExpChar _ c2 _) =  c1 == c2
+
+  (==) (ExpBracket e1) (ExpBracket e2) = e1 == e2 
+  (==) (ExpOp2 _ l1 op1 l2 _) (ExpOp2 _ r1 op2 r2 _) = l1 == r1 && l2 == r2 && op1 == op2 
+  (==) (ExpOp1 _ op1 e1 _) (ExpOp1 _ op2 e2 _) = op1 == op2 && e1 == e2 
+  (==) (ExpFunCall _ f1 _) (ExpFunCall _ f2 _) = f1 == f2
+  (==) (ExpEmptyList _ _) (ExpEmptyList _ _) = True
+  (==) (ExpList _ es1 _ t1) (ExpList _ es2 _ t2) = es1 == es2 && t1 == t2
+  (==) (ExpTuple _ (l1, l2) _ t1) (ExpTuple _ (r1, r2) _ t2) = l1 == r1 && l2 == r2 && t1 == t2
+
+  (==) (ExpFunction _ id1 _ t1) (ExpFunction _ id2 _ t2) = id1 == id2  && t2 == t1
+
+
+
 
 newtype Field
   = Field [StandardFunction]
@@ -92,7 +122,10 @@ data StandardFunction
 
 type ID = String
 data IDLoc = ID Loc String Loc
-  deriving (Show, Eq)
+  deriving (Show)
+
+instance Eq IDLoc where
+  (==) (ID _ id _) (ID _ id' _) = id == id'
 instance Ord IDLoc where
   compare (ID _ id _) (ID _ id' _) = id `compare` id'
 
@@ -105,11 +138,19 @@ data FunCall
 -- ==== Op1 ====
 data Op1 = Neg | Not deriving (Eq, Show)
 
-
-data Op2Typed = Op2 Op2 (Maybe SPLType) Loc
-  deriving (Show, Eq)
-
 -- ==== Op2 ====
+data Op2Typed = Op2 Op2 (Maybe SPLType) Loc
+  deriving (Show)
+
+instance Ord Op2Typed where
+  (compare) (Op2 op1 t1 _) (Op2 op2 t2 _) = 
+    case op1 `compare` op2 of
+      EQ -> if t1 == t2 then EQ else LT 
+      x -> x
+
+instance Eq Op2Typed where
+  (==) (Op2 op1 t1 _) (Op2 op2 t2 _) = op1 == op2 && t1 == t2
+
 data Op2 = 
   Plus|Min|Mult|Div|Mod|
   
@@ -118,7 +159,7 @@ data Op2 =
   And|Or|
   
   Con
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 
 -- ===================== Loc ============================
@@ -213,6 +254,7 @@ instance LOC Exp where
   getDLoc (ExpEmptyList locA locB) = DLoc locA locB
   getDLoc (ExpList locA _ locB _) = DLoc locA locB
   getDLoc (ExpTuple locA _ locB _) = DLoc locA locB
+  getDLoc (ExpFunction locA _ locB _) = DLoc locA locB
 
   getFstLoc x = let (DLoc a _) = getDLoc x in a
   getSndLoc x = let (DLoc _ b) = getDLoc x in b
@@ -351,6 +393,8 @@ instance PrettyPrinter FunCall where
 instance PrettyPrinter Op1 where
   pp Neg = "-"
   pp Not = "!"
+instance PrettyPrinter Op2Typed where
+  pp (Op2 op (Just t) loc) = show op ++ " :: " ++ pp t
 
 instance PrettyPrinter Op2 where
   pp Plus = "+" -- Int->Int->Int
