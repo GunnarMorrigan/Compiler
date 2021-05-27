@@ -1,33 +1,44 @@
-eq
 LDSA 1
 STR R5
-LDC 10 //[Int] z = (10 : (9 : []));
-LDC 9
+LDC 10 //[Int] a = (10 : (20 : (30 : [])));
+LDC 20
+LDC 30
 LDC 0
 STMH 2
 STMH 2
+STMH 2
 BRA main
-b:  LINK 0
+_printArrayInt:  LINK 1
 	LDL -2
-	LDC 1
-	SUB
-	BSR a
-	AJS -1
-	bEnd:  UNLINK
-	RET
-a:  LINK 0
-	LDL -2
-	BSR b
-	AJS -1
-	aEnd:  UNLINK
-	RET
-main:  LINK 1
-	LDC 1
-	LDC 2
-	EQ
 	STL 1
-	LDC 5
-	BSR a
-	AJS -1
+	LDC 91
+	TRAP 1
 	LDL 1
+	LDC 0
+	EQ
+	BRT _printArrayIntEnd
+	LDL 1
+	LDH -1
+	TRAP 0
+	LDL 1
+	LDH 0
+	LDC 0
+	EQ
+	BRT _printArrayIntEnd
+	LDC 44
+	TRAP 1
+	LDL 1
+	LDH 0
+	STL 1
+	LDC 30
+	STR PC
+	_printArrayIntEnd:  LDC 93
+	TRAP 1
+	UNLINK
+	RET
+main:  LINK 0
+	LDR R5
+	LDA 0
+	BSR _printArrayInt
+	AJS -1
 	HALT

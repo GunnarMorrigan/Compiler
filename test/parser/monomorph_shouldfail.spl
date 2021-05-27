@@ -1,0 +1,12 @@
+//Thou shan't monorphize blindly!
+// This should fail because .fst is not allowed on a funCall only on IDs: (id Field)
+
+f (x) :: a -> a {
+	print(x);
+	f((x, x));
+	return f((x, x)).fst;
+}
+
+main () :: -> Void {
+	print(f(42));
+}

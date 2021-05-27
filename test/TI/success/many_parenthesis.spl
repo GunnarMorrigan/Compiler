@@ -1,0 +1,8 @@
+foobar() :: -> Int
+{
+  return ((((((((((-10))))))))));
+}
+
+main(){
+    return;
+}

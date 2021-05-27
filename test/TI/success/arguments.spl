@@ -1,0 +1,14 @@
+function (n, b, l){
+    print(n);
+    print(b);
+    print(l);
+    return;
+}
+
+main () :: -> Void{
+    [Int] list = 1:2:3:[];
+
+    // Three arguments
+    function(15, False, list);
+}
+

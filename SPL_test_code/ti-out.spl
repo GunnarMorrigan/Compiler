@@ -1,18 +1,4 @@
-[Int] z = (10 : (9 : []));
-
-a (n) :: Int -> Void {
-    b(n) /*:: Int -> Void*/;
-}
-
-b (n) :: Int -> Void {
-    a((n - 1)) /*:: Int -> Void*/;
-}
-
-main () :: Bool {
-    Bool z = (1 == 2);
-
-    print(a) /*:: Int Void -> Void*/;
-    a(5) /*:: Int -> Void*/;
-    return z;
+main () :: Void {
+    return;
 }
 

@@ -30,6 +30,7 @@ library
     Lexer,
     AST,
     Parser,
+    ReturnGraph,
     TI,
     MutRec,
     Ssm,

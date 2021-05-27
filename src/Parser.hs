@@ -510,17 +510,17 @@ main filename = do
     Right (x, _) -> do
       exists <- doesFileExist "../SPL_test_code/out.spl"
       when exists $ removeFile "../SPL_test_code/out.spl"
-      print x
+      putStr $ pp x
       writeFile "../SPL_test_code/out.spl" $ pp x
     Left x -> do
       print x
       exitFailure
 
-mainError filename = do
+mainParser filename = do
   -- path <- getCurrentDirectory
   -- print path
   file <- readFile $ splFilePath ++ filename
   case tokeniseAndParse mainSegments file of
     Right (x, _) -> putStr $ pp x
     Left x -> do
-      putStr $ show x ++ "\n" ++ showPlaceOfError file x
+      putStr $ showError file x

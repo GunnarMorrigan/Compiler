@@ -170,6 +170,88 @@ instance Types a =>  Types (Maybe a) where
     apply s (Just a) = Just $ apply s a
     apply s Nothing = Nothing
 
+
+instance Types SPL where
+    apply s (SPL []) = SPL []
+    apply s (SPL x)  = SPL $ apply s x
+    ftv = undefined
+
+instance Types Decl where
+    apply s (VarMain varDecl)   = VarMain $ apply s varDecl
+    apply s (FuncMain funDecl)   = FuncMain $ apply s funDecl
+    apply s (MutRec x)   = trace ("Error in apply on Mutrec\n" ++ pp (MutRec  x)) undefined
+    ftv = undefined
+
+instance Types VarDecl where
+    apply s (VarDeclType t (ID id loc loc') e) = VarDeclType (apply s t) (ID id loc loc') e
+    apply s e = e
+    ftv = undefined
+
+instance Types FunDecl where
+    apply s (FunDecl funName args funType varDecls stmts) = do
+        let varDecls' = apply s varDecls
+        let stmts' = apply s stmts
+        FunDecl funName args funType varDecls' stmts'
+    ftv = undefined
+
+instance Types Stmt where
+    apply s (StmtIf e stmts Nothing loc) = do
+        let e' = apply s e
+        let stmts' = apply s stmts
+        StmtIf e' stmts' Nothing loc
+    apply s (StmtIf e stmts (Just els) loc) = do
+        let e' = apply s e
+        let stmts' = apply s stmts
+        let els' = apply s els
+        StmtIf e' stmts' (Just els') loc
+    apply s (StmtAssignVar id fields e typ) = do
+        let e' = apply s e
+        StmtAssignVar id fields e' (apply s typ)
+    apply s (StmtFuncCall fCall loc) = do
+        let fCall' = apply s fCall
+        StmtFuncCall fCall' loc
+    apply s (StmtReturn (Just e) loc) = do
+        let e' = apply s e
+        StmtReturn (Just e') loc
+    apply s e = e
+    ftv = undefined
+
+instance Types Exp where
+    apply s (ExpOp2 locA e1 op e2 locB) = do
+        let e1' = apply s e1
+        let e2' = apply s e2
+        let op' = apply s op
+        ExpOp2 locA e1' op'  e2' locB
+    apply s (ExpFunCall locA fCall locB) =  do
+        let fCall' = apply s fCall
+        ExpFunCall locA fCall' locB
+    apply s (ExpList locA es locB typ) = do
+        let es' = apply s es
+        ExpList locA es' locB (apply s typ)
+    apply s (ExpTuple locA (e1, e2) locB typ) = do
+        let e1' = apply s e1
+        let e2' = apply s e2
+        ExpTuple locA (e1', e2') locB (apply s typ)
+    apply s (ExpBracket e) = ExpBracket (apply s e)
+    apply s (ExpOp1 locA op e locB) = let e' = apply s e in ExpOp1 locA op e' locB
+    apply s e = e
+    ftv = undefined
+
+instance Types Op2Typed where
+    apply s (Op2 op (Just t) loc) = Op2 op (Just (apply s t)) loc
+    apply s x = x
+    ftv (Op2 op (Just t) loc) = ftv t
+    ftv _ = undefined
+
+instance Types FunCall where
+    apply s (FunCall (ID locA name locB) es (Just t)) = do
+        let es' = apply s es
+        FunCall (ID locA name locB) es' (Just $ apply s t)
+    apply s (FunCall id es Nothing) = FunCall id es Nothing
+    ftv (FunCall (ID locA name locB) es (Just t)) = ftv t
+    ftv _ = undefined
+
+
 newSPLVar :: TI SPLType
 newSPLVar =
     do  (s,overloaded) <- get
@@ -397,7 +479,7 @@ tiFunDecl env (FunDecl funName args _ vars stmts) | pp funName == "main" =
 
             if  nullOL overloaded
                 then
-                    trace ("No 'poly' overloading in " ++ pp funName) $
+                    -- trace ("No 'poly' overloading in " ++ pp funName) $
                     return (cs2, TI.insert (apply cs2 env) funName finaleScheme GlobalScope, funDecl)
                 else
                     confess (Error (getFstLoc funName) ("Some functions require overloaded built-ins (print, ==, <, >, etc) but the type for these functions is unkown.\n" 
@@ -439,12 +521,13 @@ tiFunDecl env (FunDecl funName args (Just funType) vars stmts) =
                     let (polyOp2, polyFunCall) = toListOL overloaded
                     if  nullOL overloaded
                         then
-                            trace ("No 'poly' overloading in " ++ pp funName) $
+                            -- trace ("No 'poly' overloading in " ++ pp funName) $
                             -- let funcScheme = trace ("\n\nFree stuff in: " ++pp funName ++ "\n" ++ pp funType ++"\n" ++ pp (Set.toList $ ftv funType) ++ "\n\n" ++ pp (Set.toList $ ftv env)++ "\n\n") generalize env funType in
                             let funcScheme = generalize env funType in
                             return (cs2, TI.insert (apply cs2 env) funName funcScheme GlobalScope, funDecl')
                         else
-                            trace ("Poly overloading in " ++ pp funName {-- ++ "\n\n" ++ show polyOp2 ++ "\n\n" ++ show polyFunCall --}) $ do
+                            -- trace ("Poly overloading in " ++ pp funName {-- ++ "\n\n" ++ show polyOp2 ++ "\n\n" ++ show polyFunCall --}) $ 
+                            do
                                 let (args', fType', scheme) = overloadFunction args funType env polyOp2 polyFunCall
                                 let FunDecl funName' _ (Just _) vars'' stmts'' = funDecl'
                                 return (cs2, TI.insert (apply cs2 env) funName scheme GlobalScope, FunDecl funName' args' (Just fType') vars'' stmts'')
@@ -489,12 +572,13 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) =
         let (polyOp2, polyFunCall) = toListOL overloaded
         if  nullOL overloaded
             then
-                trace ("No 'poly' overloading in " ++ pp funName) $
+                -- trace ("No 'poly' overloading in " ++ pp funName) $
                 -- let funcScheme = trace ("\n\nFree stuff in: " ++pp funName ++ "\n" ++ pp funType ++"\n" ++ pp (Set.toList $ ftv funType) ++ "\n\n" ++ pp (Set.toList $ ftv env)++ "\n\n") generalize env funType in
                 let funcScheme = generalize env funType in
                 return (cs2, TI.insert (apply cs2 env) funName funcScheme GlobalScope, funDecl')
             else
-                trace ("Poly overloading in " ++ pp funName {-- ++ "\n\n" ++ show polyOp2 ++ "\n\n" ++ show polyFunCall --}) $ do
+                -- trace ("Poly overloading in " ++ pp funName {-- ++ "\n\n" ++ show polyOp2 ++ "\n\n" ++ show polyFunCall --}) $ 
+                do
                     let (args', fType', scheme) = overloadFunction args funType env polyOp2 polyFunCall
                     let FunDecl funName' _ (Just _) vars'' stmts'' = funDecl'
                     return (cs2, TI.insert (apply cs2 env) funName scheme GlobalScope, FunDecl funName' args' (Just fType') vars'' stmts'')
@@ -1033,11 +1117,13 @@ instance Monomorphization Stmt where
     monomorphize (StmtReturn (Just e) loc) env = do
         (e', ol1) <- monomorphize e env
         return (StmtReturn (Just e') loc, ol1)
+    monomorphize x env = return (x, emptyOL)
 
 instance Monomorphization VarDecl where
     monomorphize (VarDeclType t id e) env = do
         (e', ol1) <- monomorphize e env
         return (VarDeclType t id e', ol1)
+    monomorphize x env = return (x, emptyOL)
 
 instance Monomorphization Exp where
     monomorphize (ExpBracket e) env = do
@@ -1086,7 +1172,7 @@ instance Monomorphization FunCall where
 
         -- trace ( "\nMonomorphizing "++pp id++"\n"++show overloaded ++ "\nEND\n") $ 
         return (funcall, overloaded)
-    monomorphize (FunCall id args t) env = return (FunCall id args t, emptyOL)
+    monomorphize x env = return (x, emptyOL)
 
 instance Monomorphization Op2Typed where
     monomorphize (Op2 op (Just (FunType t t')) loc) env | containsIDType (FunType t t') = do
@@ -1186,93 +1272,12 @@ typeInference :: SPL -> Either Error (Subst, TypeEnv, SPL)
 typeInference code = do
     case runTI (tiSPL code) of
         (That (s1, env, SPL code'), state) -> do
-            -- cleanCode <- removeDeadCode (SPL $ removeMutRec code')
-            let cleanCode = SPL $ removeMutRec code'
+            cleanCode <- removeDeadCode (SPL $ removeMutRec code')
+            -- let cleanCode = SPL $ removeMutRec code'
             let updatedCode = apply s1 cleanCode
             Right (s1, env, updatedCode)
         (These errs a, state) -> Left errs
         (This errs, state) -> Left errs
-
-instance Types SPL where
-    apply s (SPL []) = SPL []
-    apply s (SPL x)  = SPL $ apply s x
-    ftv = undefined
-
-instance Types Decl where
-    apply s (VarMain varDecl)   = VarMain $ apply s varDecl
-    apply s (FuncMain funDecl)   = FuncMain $ apply s funDecl
-    apply s (MutRec x)   = trace ("Error in apply on Mutrec\n" ++ pp (MutRec  x)) undefined
-    ftv = undefined
-
-instance Types VarDecl where
-    apply s (VarDeclType t (ID id loc loc') e) = VarDeclType (apply s t) (ID id loc loc') e
-    apply s e = e
-    ftv = undefined
-
-instance Types FunDecl where
-    apply s (FunDecl funName args funType varDecls stmts) = do
-        let varDecls' = apply s varDecls
-        let stmts' = apply s stmts
-        FunDecl funName args funType varDecls' stmts'
-    ftv = undefined
-
-instance Types Stmt where
-    apply s (StmtIf e stmts Nothing loc) = do
-        let e' = apply s e
-        let stmts' = apply s stmts
-        StmtIf e' stmts' Nothing loc
-    apply s (StmtIf e stmts (Just els) loc) = do
-        let e' = apply s e
-        let stmts' = apply s stmts
-        let els' = apply s els
-        StmtIf e' stmts' (Just els') loc
-    apply s (StmtAssignVar id fields e typ) = do
-        let e' = apply s e
-        StmtAssignVar id fields e' (apply s typ)
-    apply s (StmtFuncCall fCall loc) = do
-        let fCall' = apply s fCall
-        StmtFuncCall fCall' loc
-    apply s (StmtReturn (Just e) loc) = do
-        let e' = apply s e
-        StmtReturn (Just e') loc
-    apply s e = e
-    ftv = undefined
-
-instance Types Exp where
-    apply s (ExpOp2 locA e1 op e2 locB) = do
-        let e1' = apply s e1
-        let e2' = apply s e2
-        let op' = apply s op
-        ExpOp2 locA e1' op'  e2' locB
-    apply s (ExpFunCall locA fCall locB) =  do
-        let fCall' = apply s fCall
-        ExpFunCall locA fCall' locB
-    apply s (ExpList locA es locB typ) = do
-        let es' = apply s es
-        ExpList locA es' locB (apply s typ)
-    apply s (ExpTuple locA (e1, e2) locB typ) = do
-        let e1' = apply s e1
-        let e2' = apply s e2
-        ExpTuple locA (e1', e2') locB (apply s typ)
-    apply s (ExpBracket e) = ExpBracket (apply s e)
-    apply s (ExpOp1 locA op e locB) = let e' = apply s e in ExpOp1 locA op e' locB
-    apply s e = e
-    ftv = undefined
-
-instance Types Op2Typed where
-    apply s (Op2 op (Just t) loc) = Op2 op (Just (apply s t)) loc
-    apply s x = x
-    ftv (Op2 op (Just t) loc) = ftv t
-    ftv _ = undefined
-
-instance Types FunCall where
-    apply s (FunCall (ID locA name locB) es (Just t)) = do
-        let es' = apply s es
-        FunCall (ID locA name locB) es' (Just $ apply s t)
-    apply s (FunCall id es Nothing) = FunCall id es Nothing
-    ftv (FunCall (ID locA name locB) es (Just t)) = ftv t
-    ftv _ = undefined
-
 
 
 mainTIIO filename = do
@@ -1287,20 +1292,20 @@ mainTIIO filename = do
         Left x -> putStr $ showError file x
 
 
-eq = FunDecl (ID (Loc 6 1) "equal" (Loc 6 6)) [ID (Loc 6 7) "x" (Loc 6 8),ID (Loc 6 10) "y" (Loc 6 11)] Nothing [] [StmtReturn (Just (ExpOp2 (Loc 7 14) (ExpId (ID (Loc 7 12) "x" (Loc 7 13)) (Field [])) (Op2 Eq Nothing (Loc 7 14)) (ExpId (ID (Loc 7 17) "y" (Loc 7 18)) (Field [])) (Loc 7 16))) (Loc 7 5)]
+-- eq = FunDecl (ID (Loc 6 1) "equal" (Loc 6 6)) [ID (Loc 6 7) "x" (Loc 6 8),ID (Loc 6 10) "y" (Loc 6 11)] Nothing [] [StmtReturn (Just (ExpOp2 (Loc 7 14) (ExpId (ID (Loc 7 12) "x" (Loc 7 13)) (Field [])) (Op2 Eq Nothing (Loc 7 14)) (ExpId (ID (Loc 7 17) "y" (Loc 7 18)) (Field [])) (Loc 7 16))) (Loc 7 5)]
 
-tiObject = do
-    -- path <- getCurrentDirectory
-    -- print path
-    case runTI (tiFunDecl (TypeEnv Map.empty) eq) of
-        (That (s1, env, code),_) -> do
-            print code
-            putStr "\n\n"
-            putStr $ pp code
-            putStr $ "\nEnv:\n" ++ printEnv env
-            putStr $ "\nSubst:\n" ++ printSubst (Map.toList s1)
-        (This x,_) -> print x
-        (These x _,_) -> print x
+-- tiObject = do
+--     -- path <- getCurrentDirectory
+--     -- print path
+--     case runTI (tiFunDecl (TypeEnv Map.empty) eq) of
+--         (That (s1, env, code),_) -> do
+--             print code
+--             putStr "\n\n"
+--             putStr $ pp code
+--             putStr $ "\nEnv:\n" ++ printEnv env
+--             putStr $ "\nSubst:\n" ++ printSubst (Map.toList s1)
+--         (This x,_) -> print x
+--         (These x _,_) -> print x
 
 
 mainTI filename = do

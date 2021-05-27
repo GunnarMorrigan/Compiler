@@ -3,9 +3,9 @@ module Main where
 import Test.HUnit
 
 
-import TITest
-import ParserTest
 import LexerTest
+import ParserTest
+import TITest
 
 main = do
     putStr "Lexer Tests: \n"
