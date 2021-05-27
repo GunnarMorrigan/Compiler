@@ -30,7 +30,10 @@ instance Semigroup Error where
   (<>) (Errors errs) (Errors errs')  = Errors $ errs ++ errs'
 
 instance Eq Error where
-  (==) (Error (Loc line col) m) (Error (Loc line' col') m') =  line == line' && col == col'
+  (==) (Error a m) (Error b m') = a == b
+  (==) (ErrorD a m) (ErrorD b m') = a == b
+  (==) (Errors a) (Errors b) = a == b
+
 
 instance Ord Error where
   (Error (Loc line col) m) `compare` (Error (Loc line' col') m') = if line == line' then  col `compare` col' else line `compare` line'

@@ -170,7 +170,7 @@ data Loc =
 data ErrorLoc =
   -- SLoc Loc Int |    -- Single Loc, used when length of object is known
   DLoc Loc Loc      -- Double Loc, used when length of object is not known
-  deriving (Show, Eq)
+  deriving (Show, Ord, Eq)
 
 class LOC a where
   showLoc :: a -> String
