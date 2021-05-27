@@ -53,7 +53,7 @@ library
     these
   default-language: Haskell2010
 
-executable CC-exe
+executable CC_exe
   main-is: GenSSM.hs
   hs-source-dirs:
       src
@@ -75,7 +75,7 @@ executable CC-exe
 
   default-language: Haskell2010
 
-test-suite CC-tests
+test-suite CC_tests
   type: exitcode-stdio-1.0
   main-is: Main.hs
   other-modules:
@@ -98,7 +98,7 @@ test-suite CC-tests
     HUnit
   default-language: Haskell2010
 
-executable Linux-tests
+executable Linux_tests
   type: exitcode-stdio-1.0
   main-is: Main.hs
   other-modules:
@@ -109,14 +109,14 @@ executable Linux-tests
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      CC,
-      base >=4.7 && <5,
-      random,
-      containers,
-      array,
-      directory,
-      mtl,
-      monad-chronicle,
-      these,
-      HUnit
+    CC,
+    base >=4.7 && <5,
+    random,
+    containers,
+    array,
+    directory,
+    mtl,
+    monad-chronicle,
+    these,
+    HUnit
   default-language: Haskell2010

@@ -114,6 +114,9 @@ expectedReturn fName expect got loc = Error loc ("Expected function '" ++ fName 
 refBeforeDec :: (LOC a, PrettyPrinter a) => String -> a -> Error
 refBeforeDec s id = ErrorD (getDLoc id) (s++"'" ++ pp id ++ "', referenced " ++ showLoc id ++ ", has not been defined yet. (i.e. reference before declaration)")
 
+assigningToStdFunction id = ErrorD (getDLoc id) "Assigning to standard library function."
+declaringStdFunction id = ErrorD (getDLoc id) "Attempting to overwrite standard library function."
+
 doubleDef id = ErrorD (getDLoc id) ("Variable: " ++ showIDLoc id ++ ", already exists in the type environment. (i.e. double decleration)")
 doubleDef2 ida idb = Errors [erra,errb]
   where erra = ErrorD (getDLoc ida) ("Double declaration, id '" ++ pp ida ++ "' used multiple times: " ++ showLoc ida)

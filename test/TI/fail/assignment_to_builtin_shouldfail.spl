@@ -11,3 +11,7 @@ f()
   // Adapt this line if your isEmpty is called differently.
   isEmpty = blaat;
 }
+
+main(){
+  return;
+}

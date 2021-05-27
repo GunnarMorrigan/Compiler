@@ -108,6 +108,12 @@ instantiate (Scheme vars t) = do
     nvars <- mapM (const newSPLVar) vars
     let s = Map.fromList (zip vars nvars)
     return $ apply s t
+instantiate (OverScheme vars t ops funcs) = do
+    nvars <- mapM (const newSPLVar) vars
+    let s = Map.fromList (zip vars nvars)
+    return $ apply s t
+
+
 
 instantiateOver :: Scheme -> TI(SPLType,[Op2Typed],[FunCall])
 instantiateOver (OverScheme vars t ops funcs) = do
@@ -335,9 +341,9 @@ varBind id (IdType t) | id == t = return nullSubst
 varBind id (IdType t) = return $ Map.singleton id (IdType t)
 varBind id t | id `Set.member` ftv t =
     case getDLoc id `compare` getDLoc t of
-        EQ -> dictate (ErrorD (getDLoc t) ("These types can not be bound together\n Occurs check fails: " ++ pp id ++ " vs. " ++ pp t))
-        LT -> dictate (ErrorD (getDLoc t) ("These types can not be bound together\n Occurs check fails: " ++ pp id ++ " vs. " ++ pp t))
-        GT -> dictate (ErrorD (getDLoc id) ("These types can not be bound together\n Occurs check fails: " ++ pp id ++ " vs. " ++ pp t))
+        EQ -> dictate (ErrorD (getDLoc t) ("These types can not be bound\n Occurs check fails: " ++ pp id ++ " vs. " ++ pp t))
+        LT -> dictate (ErrorD (getDLoc t) ("These types can not be bound\n Occurs check fails: " ++ pp id ++ " vs. " ++ pp t))
+        GT -> dictate (ErrorD (getDLoc id) ("These types can not be bound\n Occurs check fails: " ++ pp id ++ " vs. " ++ pp t))
     >> return nullSubst
 varBind id t = return $ Map.singleton id t
 
@@ -383,6 +389,9 @@ tiVarDecls env (varDecl:varDecls) s = do
 tiVarDecl :: TypeEnv -> VarDecl -> Scope -> TI (Subst, TypeEnv, VarDecl)
 tiVarDecl (TypeEnv env) (VarDeclVar id e) s =
     case lookupKey id env of
+        Just _ | builtin id -> 
+            dictate (declaringStdFunction id) >>
+            return (nullSubst, TypeEnv env, VarDeclVar id e)
         Just((scheme,s'),id') | s==s'-> dictate (doubleDef2 id id') >>
             return (nullSubst, TypeEnv env, VarDeclVar id e)
         _ -> do
@@ -392,6 +401,9 @@ tiVarDecl (TypeEnv env) (VarDeclVar id e) s =
             return (s1, apply s1 env', VarDeclType t1 id e')
 tiVarDecl (TypeEnv env) (VarDeclType t id e) s =
     case lookupKey id env of
+        Just _ | builtin id -> 
+            dictate (declaringStdFunction id) >>
+            return (nullSubst, TypeEnv env, VarDeclVar id e)
         Just((scheme,s'),id') | s==s'-> dictate (doubleDef2 id id') >>
             return (nullSubst, TypeEnv env, VarDeclType t id e)
         _ -> do
@@ -400,7 +412,7 @@ tiVarDecl (TypeEnv env) (VarDeclType t id e) s =
             let cs1 = s2 `composeSubst` s1
             let scheme = Scheme [] t1
             let env' = TypeEnv (Map.insert id (scheme,s) env)
-            return (cs1, apply cs1 env', VarDeclType (apply cs1 t) id e')
+            return (cs1, apply cs1 env', VarDeclType t1 id e')
 
 tiMutRecFunDecls :: TypeEnv -> [FunDecl] -> TI (Subst, TypeEnv, [FunDecl])
 tiMutRecFunDecls env [] = return (nullSubst, env, [])
@@ -641,7 +653,11 @@ tiStmt env (StmtReturn (Just e) loc) = do
 
 tiStmt (TypeEnv env) (StmtAssignVar id (Field []) e typ) =
     case Map.lookup id env of
-    Just (Scheme [] t,s)  -> do
+    Just (scheme,s) | builtin id -> 
+        dictate (assigningToStdFunction id) >>
+        return (nullSubst, Nothing, StmtAssignVar id (Field []) e typ)
+    Just (scheme,s) -> do 
+        t <- instantiate scheme
         (s1, t1, e') <- tiExp (TypeEnv env) e
         s2 <- mgu (apply s1 t) t1
         let cs1 = s2 `composeSubst` s1
@@ -650,7 +666,14 @@ tiStmt (TypeEnv env) (StmtAssignVar id (Field []) e typ) =
         dictate (refBeforeDec "Variable:" id) >>
         return (nullSubst, Nothing, StmtAssignVar id (Field []) e typ)
 tiStmt (TypeEnv env) (StmtAssignVar id (Field fields) e typ) = case Map.lookup id env of
-    Just (Scheme [] t,s)  -> do
+    Just (scheme,s) | builtin id -> 
+        dictate (assigningToStdFunction id) >>
+        return (nullSubst, Nothing, StmtAssignVar id (Field fields) e typ)
+    Nothing ->
+        dictate (refBeforeDec "Variable:" id) >>
+        return (nullSubst, Nothing, StmtAssignVar id (Field fields) e typ)
+    Just (scheme,s) -> do
+        t <- instantiate scheme
         (s1, t1, e') <- tiExp (TypeEnv env) e
         (s2, t', ret) <- getType t fields
         let cs1 = s2 `composeSubst` s1
@@ -659,9 +682,6 @@ tiStmt (TypeEnv env) (StmtAssignVar id (Field fields) e typ) = case Map.lookup i
         s4 <- mgu (apply cs2 t') t
         let cs3 = s4 `composeSubst` cs2
         return (cs3, Nothing, StmtAssignVar id (Field fields) e' (Just $ apply cs3 ret))
-    Nothing ->
-        dictate (refBeforeDec "Variable:" id) >>
-        return (nullSubst, Nothing, StmtAssignVar id (Field fields) e typ)
 
 typeCheckExps :: IDLoc -> Bool -> TypeEnv -> Subst -> [Exp] -> [Op2Typed] -> [FunCall] -> [SPLType] -> TI (Subst, [Exp],Overloaded)
 typeCheckExps _ _ env s [] _ _ [] = return (s, [], emptyOL)
@@ -678,8 +698,9 @@ typeCheckExps id monomorph env s (e:es) ops funcs (t:ts) = do
 
     (s1, t1, e') <- injectErrMsgAddition def (tiExp env e) (getDLoc e) "typeCheckExps"
     let cs1 = s1 `composeSubst` s
-    s2 <-  injectErrLocMsg nullSubst (mgu (apply cs1 t) t1) (getDLoc e) ("Argument '"++ pp e ++ "' should have type "++ pp t)
+    -- s2 <- injectErrLocMsg nullSubst (mgu (apply cs1 t) t1) (getDLoc e) ("Argument '"++ pp e ++ "' should have type "++ pp t)
     -- s2 <- trace ("Argument '"++ pp e ++ "' should have type "++ pp t ++ " and has "++ pp t1) $  injectErrLoc nullSubst (mgu (apply cs1 t) t1) (getDLoc e)
+    s2 <- injectErrLoc nullSubst (mgu (apply cs1 t) t1) (getDLoc e)
     let cs2 = s2 `composeSubst` cs1
     (s3, es', ol) <- typeCheckExps id monomorph (apply cs1 env) cs2 es ops funcs ts
     return (s3 `composeSubst` cs2 , e':es', ol)
@@ -771,9 +792,11 @@ tiExpsList env (e:es) = do
     return (cs2, t2, ExpOp2 (getFstLoc e) e' (opType (getFstLoc e)) es' (getSndLoc e))
 
 tiExp :: TypeEnv -> Exp -> TI (Subst, SPLType, Exp)
-tiExp env (ExpId id (Field [])) = do
-    case find id env of
-        Just (Scheme [] t) -> return (nullSubst, t, ExpId id (Field []))
+tiExp (TypeEnv env) (ExpId id (Field [])) = do
+    case Map.lookup id env of
+        Just (scheme,_) -> do
+            t <- instantiate scheme 
+            return (nullSubst, t, ExpId id (Field []))
         Nothing -> do
             t <- newSPLVar
             dictate (refBeforeDec "Variable:" id) >> return (nullSubst, t, ExpId id (Field []))
@@ -1234,6 +1257,11 @@ stdLib = do
     let printType = FunType t2 (Void defaultLoc defaultLoc)
     let env'' = TI.insert env' (idLocCreator "print") (generalize env' printType) GlobalScope
     return env''
+
+std = Set.fromList ["isEmpty","print"]
+
+builtin (ID _ id _) = Set.member id std
+
 
 -- ===================== Printing ============================
 printEnv :: TypeEnv -> String
