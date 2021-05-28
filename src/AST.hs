@@ -259,29 +259,31 @@ instance LOC Exp where
   getFstLoc x = let (DLoc a _) = getDLoc x in a
   getSndLoc x = let (DLoc _ b) = getDLoc x in b
 
-  getLineNum (ExpId idloc _) = getLineNum idloc
-  getLineNum (ExpInt locA _ locB) =  getLineNum locA
-  getLineNum (ExpBool locA _ locB) = getLineNum locA
-  getLineNum (ExpChar locA _ locB) =  getLineNum locA
-  getLineNum (ExpBracket e) =  getLineNum e
-  getLineNum (ExpOp2 locA _ _ _ locB) = getLineNum locA
-  getLineNum (ExpOp1 locA _ _ locB) =  getLineNum locA
-  getLineNum (ExpFunCall locA _ locB) = getLineNum locA
-  getLineNum (ExpEmptyList  locA locB) = getLineNum locA
-  getLineNum (ExpList locA _ locB _) = getLineNum locA
-  getLineNum (ExpTuple locA _ locB _) = getLineNum locA
+  getLineNum x = getLineNum $ getFstLoc x
+  -- getLineNum (ExpId idloc _) = getLineNum idloc
+  -- getLineNum (ExpInt locA _ locB) =  getLineNum locA
+  -- getLineNum (ExpBool locA _ locB) = getLineNum locA
+  -- getLineNum (ExpChar locA _ locB) =  getLineNum locA
+  -- getLineNum (ExpBracket e) =  getLineNum e
+  -- getLineNum (ExpOp2 locA _ _ _ locB) = getLineNum locA
+  -- getLineNum (ExpOp1 locA _ _ locB) =  getLineNum locA
+  -- getLineNum (ExpFunCall locA _ locB) = getLineNum locA
+  -- getLineNum (ExpEmptyList  locA locB) = getLineNum locA
+  -- getLineNum (ExpList locA _ locB _) = getLineNum locA
+  -- getLineNum (ExpTuple locA _ locB _) = getLineNum locA
 
-  getColNum (ExpId idloc _) = getColNum idloc
-  getColNum (ExpInt locA _ locB) =  getColNum locA
-  getColNum (ExpBool locA _ locB) =  getColNum locA
-  getColNum (ExpChar locA _ locB) =  getColNum locA
-  getColNum (ExpBracket e) =  getColNum e
-  getColNum (ExpOp2 locA _ _ _ locB) = getColNum locA
-  getColNum (ExpOp1 locA _ _ locB) =   getColNum locA
-  getColNum (ExpFunCall locA _ locB) = getColNum locA
-  getColNum (ExpEmptyList locA locB) = getColNum locA
-  getColNum (ExpList locA _ locB _) = getColNum locA
-  getColNum (ExpTuple locA _ locB _) = getColNum locA
+  getColNum x = getColNum $ getFstLoc x
+  -- getColNum (ExpId idloc _) = getColNum idloc
+  -- getColNum (ExpInt locA _ locB) =  getColNum locA
+  -- getColNum (ExpBool locA _ locB) =  getColNum locA
+  -- getColNum (ExpChar locA _ locB) =  getColNum locA
+  -- getColNum (ExpBracket e) =  getColNum e
+  -- getColNum (ExpOp2 locA _ _ _ locB) = getColNum locA
+  -- getColNum (ExpOp1 locA _ _ locB) =   getColNum locA
+  -- getColNum (ExpFunCall locA _ locB) = getColNum locA
+  -- getColNum (ExpEmptyList locA locB) = getColNum locA
+  -- getColNum (ExpList locA _ locB _) = getColNum locA
+  -- getColNum (ExpTuple locA _ locB _) = getColNum locA
 
 -- ===================== prettyPrinter ============================
 prettyPrinter :: PrettyPrinter a => [a] -> String

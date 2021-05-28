@@ -112,24 +112,24 @@ tokenise2 _ _ (c : xs) line col
     | isAlpha c = spanToken (\c -> isAlphaNum c || c == '_') line col IdToken (c : xs)
     | otherwise = This err <> tokenise xs line (col+1)
         where err = Error (Loc line col) ("Unrecognized keyword or character on Line " ++ show line ++ " and, Col " ++ show col ++ ". Character: '" ++c:"'")
-
-
 tokenise2 _ _ [] line col = That []
+
+spanToken ::  (Char -> Bool) -> Int -> Int -> ([Char] -> Token) -> [Char] -> These Error [(Token, Loc, Loc)]
+spanToken p line col t = (\(ds, rest) -> ((t ds, Loc line col, Loc line (col + length ds)) :) <$> tokenise rest line (col + length ds)) . span p
 
 stringToCode x = Code <$> concat $ zipWith (\s line -> zip3 s (repeat line) [1 ..]) (lines x) [1 ..]
 
+-- ==================== Mains ====================
 runTokenise :: String -> Either Error [(Token, Loc, Loc)]
 runTokenise x = 
     case tokenise x 1 1 of
         That tokens -> Right tokens
         This errs -> Left errs
         These errs tokens -> Left errs
-        
+
 mainLex filename = do
     file <- readFile  ("../SPL_test_code/" ++ filename)
     case runTokenise file of
-            Left err -> putStrLn $ showError file err
-            Right a -> print a
+        Left err -> putStrLn $ showError file err
+        Right a -> print a
 
-spanToken ::  (Char -> Bool) -> Int -> Int -> ([Char] -> Token) -> [Char] -> These Error [(Token, Loc, Loc)]
-spanToken p line col t = (\(ds, rest) -> ((t ds, Loc line col, Loc line (col + length ds)) :) <$> tokenise rest line (col + length ds)) . span p

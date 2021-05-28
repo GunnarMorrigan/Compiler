@@ -28,25 +28,25 @@ instance ReturnGraph FunDecl where
         Just (Error a b) -> Left (Error a b)
 
 rtgaStmtsForLevel :: [Stmt] -> IDLoc -> Maybe SPLType -> Either Error Bool
-rtgaStmtsForLevel stmts (ID locA fname locB) fType = case Prelude.filter isValidReturn stmts of
-            [] -> case fType of
-                Nothing -> Right True 
-                (Just x) -> case last (getArgsTypes x) of
+rtgaStmtsForLevel stmts (ID locA fname locB) fType = 
+    case Prelude.filter isValidReturn stmts of
+        [] -> case fType of
+            Nothing -> Right True 
+            (Just x) -> 
+                case last (getArgsTypes x) of
                     (Void _ _) -> Right True 
                     t -> Left (missingReturn fname t locA)
-            xs ->  if allTheSame (Prelude.map isVoidReturn xs) 
-                    then case fType of
-                        Nothing -> if allTheSame (Prelude.map isVoidReturn xs) 
-                                    then Right (isVoidReturn $ head xs) 
-                                    else let l = getLocReturn (last xs) in  Left (conflictingReturn fname l)
-                        (Just y) ->  case y of
-                            (Void _ _) -> if isVoidReturn $ head xs
-                                    then Right True
-                                    else let l = getLocReturn (last xs) in Left (expectedReturn fname (Void l l) "non Void" l)
-                            t -> if not (isVoidReturn $ head xs)
-                                    then Right False
-                                    else let l = getLocReturn(head xs) in Left (expectedReturn fname t "Void" l)
-                    else let l = getLocReturn (last xs) in Left $ conflictingReturn fname l
+        xs ->  if allTheSame (Prelude.map isVoidReturn xs) 
+                then case fType of
+                    Nothing -> Right (isVoidReturn $ head xs) 
+                    (Just y) ->  case last $ getArgsTypes y of
+                        (Void _ _) -> if isVoidReturn $ head xs
+                                then Right True
+                                else let l = getLocReturn (last xs) in Left (expectedReturn fname (Void l l) "non Void" l)
+                        t -> if not (isVoidReturn $ head xs)
+                                then Right False
+                                else let l = getLocReturn(head xs) in Left (expectedReturn fname t "Void" l)
+                else let l = getLocReturn (last xs) in Left $ conflictingReturn fname l
 
 
 
