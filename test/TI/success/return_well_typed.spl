@@ -24,3 +24,7 @@ ok()
   }
   return 20;
 }
+
+main(){
+  return;
+}

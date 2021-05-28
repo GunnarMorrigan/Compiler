@@ -587,6 +587,7 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
                 return (cs2, TI.insert (apply cs2 env) funName scheme GlobalScope, FunDecl funName' args' (Just fType') vars'' stmts'')
 
 tiStmts :: TypeEnv -> [Stmt] -> TI (Subst, Maybe SPLType, [Stmt])
+tiStmts env [] = return (nullSubst,Nothing,[])
 tiStmts env [e] = do
     (s1, t1, stmt') <- tiStmt env e
     return (s1, t1, [stmt'])
@@ -1013,11 +1014,6 @@ op2Type Con e1loc e2loc = do
     return (e1T, e2T, t, FunType e1T (FunType e2T t))
 
 -- ===================== Overloading ============================
--- overloadFunction2 (FunDecl funName args (Just funType) vars stmts) env = do
-
-
-
-
 overloadFunction :: [IDLoc] -> SPLType -> TypeEnv ->  [Op2Typed] -> [FunCall] -> ([IDLoc], SPLType, Scheme)
 overloadFunction args fType env ops funcs = do
     let (argsOps, ops', typeOps) = combine $ Prelude.map opToStuff ops
@@ -1036,8 +1032,8 @@ overloadFunction args fType env ops funcs = do
             (idLocCreator $ overloadedOpName op t,Op2 op (Just (FunType t t')) loc, FunType t t')
         funcToStuff (FunCall (ID locA "print" locB) args (Just (FunType t t'))) =
             (idLocCreator $ overloadedTypeName "print" t,FunCall (ID locA "print" locB) args (Just (FunType t t')), FunType t t')
-
-
+        funcToStuff (FunCall id args (Just (FunType t t'))) | "_" `isPrefixOf` pp id = 
+            (id,FunCall id args (Just (FunType t t')), FunType t t' ) 
 
 overloadedTypeName :: String -> SPLType -> String
 overloadedTypeName start t = '_':start ++ typeToName t
@@ -1060,7 +1056,6 @@ op2String Leq = "le"
 op2String Geq = "ge"
 op2String Eq  = "eq"
 op2String Neq = "ne"
-
 
 data Overloaded = OL (Map String Op2Typed) (Map String FunCall)
 
@@ -1189,13 +1184,6 @@ instance Monomorphization Op2Typed where
         return (Op2 op (Just (FunType t t')) loc, singletonOLOp (Op2 op (Just (FunType t t')) loc))
     monomorphize x env = return (x, emptyOL)
 
-
-
--- combineOverFuncs x y = do
---     (a,b) <- x
---     (c,d) <- y
---     return (a++c,b++d)
-
 containsIDTypeMaybe :: Maybe SPLType -> Bool
 containsIDTypeMaybe Nothing = False
 containsIDTypeMaybe (Just t) = containsIDType t
@@ -1262,7 +1250,6 @@ std = Set.fromList ["isEmpty","print"]
 
 builtin (ID _ id _) = Set.member id std
 
-
 -- ===================== Printing ============================
 printEnv :: TypeEnv -> String
 printEnv (TypeEnv env) = printEnv1 (Map.toList env)
@@ -1286,8 +1273,8 @@ typeInference :: SPL -> Either Error (Subst, TypeEnv, SPL)
 typeInference code = do
     case runTI (tiSPL code) of
         (That (s1, env, SPL code'), state) -> do
-            cleanCode <- removeDeadCode (SPL $ removeMutRec code')
-            -- let cleanCode = SPL $ removeMutRec code'
+            -- cleanCode <- removeDeadCode (SPL $ removeMutRec code')
+            let cleanCode = SPL $ removeMutRec code'
             let updatedCode = apply s1 cleanCode
             Right (s1, env, updatedCode)
         (These errs a, state) -> Left errs
@@ -1295,8 +1282,7 @@ typeInference code = do
 
 
 mainTIIO filename = do
-    -- path <- getCurrentDirectory
-    -- print path
+
     file <- readFile  ("../SPL_test_code/" ++ filename)
     case tokeniseAndParse mainSegments file >>= (mutRec . fst) >>= typeInference of
         Right (s1, env, code) -> do
