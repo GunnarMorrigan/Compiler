@@ -6,6 +6,7 @@ import AST
 import Error
 import Parser
 import MutRec
+import TImisc
 import TI
 import Ssm
 

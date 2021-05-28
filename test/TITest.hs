@@ -12,6 +12,7 @@ import Lexer
 import Parser
 import MutRec
 import ReturnGraph
+import TImisc
 import TI
 
 import System.Directory
