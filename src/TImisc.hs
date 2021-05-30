@@ -507,6 +507,26 @@ singletonOLFun :: FunCall -> Overloaded
 singletonOLFun (FunCall (ID locA id locB) es (Just t)) = OL Map.empty (Map.singleton key (FunCall (ID locA id locB) es (Just t)))
     where key = overloadedTypeName id t
 
+singletonOLOpFun :: Op2Typed -> FunCall -> Overloaded
+singletonOLOpFun (Op2 op (Just t) loc) (FunCall id es (Just t')) = OL ops funcs
+    where 
+        ops = Map.singleton opKey (Op2 op (Just t) loc)
+        opKey = overloadedOpName op t
+        funcs = Map.singleton funcKey (FunCall id es (Just t'))
+        funcKey = overloadedTypeName (pp id) t'
+
+toOLOpFun :: [Op2Typed] -> [FunCall] -> Overloaded
+toOLOpFun ops funcs = 
+            OL 
+                (Map.fromList (Prelude.map toMapOp ops)) 
+                (Map.fromList (Prelude.map toMapFun funcs)) 
+    where 
+        toMapOp (Op2 op (Just t) loc) 
+                = (overloadedOpName op t, Op2 op (Just t) loc)
+        toMapFun (FunCall id es (Just t'))
+                = (overloadedTypeName (pp id) t', FunCall id es (Just t'))
+
+
 unionOL :: Overloaded -> Overloaded -> Overloaded
 unionOL (OL a b) (OL c d) = OL (Map.union a c) (Map.union b d)
 

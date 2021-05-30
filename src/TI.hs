@@ -684,6 +684,12 @@ instance Monomorphization Exp where
     monomorphize (ExpFunCall locA funCall locB) env = do
         (funCall', ol1) <- monomorphize funCall env
         return (ExpFunCall locA funCall' locB, ol1)
+    monomorphize (ExpId id (Field [])) (TypeEnv env) =
+        case Map.lookup id env of
+            Just (OverScheme lockerVars lockedT lockedOps lockedFuncs,s) -> do
+                (t, ops, funcs) <- instantiateOver $ OverScheme lockerVars lockedT lockedOps lockedFuncs
+                return (ExpId id (Field []), toOLOpFun ops funcs )
+            _ -> return (ExpId id (Field []), emptyOL)
     monomorphize x env = return (x, emptyOL)
 
 instance Monomorphization FunCall where
