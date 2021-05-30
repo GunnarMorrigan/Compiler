@@ -167,15 +167,22 @@ functionType = Parser $ \case
 -- ===================== Types ============================
 splType :: Parser (Token, Loc, Loc) SPLType
 -- splType = rigidType <|> idType <|> voidType <|> bracketType
-splType = bracketType <|> rigidType <|> idType <|> retType <|> voidType
+splType = bracketType <|> rigidType <|> idType <|> voidType
 
 -- ===== FunType =====
+-- funType :: Parser (Token, Loc, Loc) SPLType
+-- funType = do
+--   ys <- some'' splType
+--   case length ys of
+--     1 -> return $ head ys
+--     _ -> return $ foldr1 FunType ys
+
 funType :: Parser (Token, Loc, Loc) SPLType
 funType = do
-  ys <- some'' splType
-  case length ys of
-    1 -> return $ head ys
-    _ -> return $ foldr1 FunType ys
+  (ys,ret) <- ((,) <$> some'' splType <*> retType ) <<|> ((,) [] <$> splType)
+  if Prelude.null ys
+    then return ret
+    else return $ foldr1 FunType (ys++[ret])
 
 -- ===== RetType =====
 retType :: Parser (Token, Loc, Loc) SPLType

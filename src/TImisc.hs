@@ -290,6 +290,10 @@ instance MGU a => MGU (Maybe a) where
     generateError _ Nothing = undefined
 
 instance MGU SPLType where
+    mgu (BracketType a) (BracketType b) = mgu a b
+    mgu (BracketType a) b = mgu a b
+    mgu a (BracketType b) = mgu a b
+
     mgu (FunType arg ret) (FunType arg' ret') = do
         s1 <- mgu arg arg'
         s2 <- mgu (apply s1 ret) (apply s1 ret')
@@ -311,8 +315,8 @@ instance MGU SPLType where
         return (s1 `composeSubst` s2)
     mgu (ArrayType _ x _) (ArrayType _ y _) = mgu x y
 
-    mgu (IdType id) r | not $ isFun r = varBind id r
-    mgu l (IdType id) | not $ isFun l = varBind id l
+    mgu (IdType id) r | not $ isFunctionType r = varBind id r
+    mgu l (IdType id) | not $ isFunctionType l = varBind id l
 
     mgu t1 t2 =
         dictate (generateError t1 t2) >>
