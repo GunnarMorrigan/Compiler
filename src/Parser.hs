@@ -11,6 +11,7 @@ import Data.Char
 import Data.Function
 import Data.Functor
 import Data.List
+import Data.Either
 
 import Control.Applicative
 import Control.Monad
@@ -21,6 +22,18 @@ import Debug.Trace
 
 -- ======================================== Parser ========================================
 newtype Parser s a = Parser {run :: [s] -> Either Error (a, [s])}
+
+-- {-# ANN module "HLint: ignore" #-}
+-- instance Functor (Parser s) where
+--   fmap f p = do
+--     out <- p
+--     pure (f out)
+
+-- instance Applicative (Parser s) where
+--   pure p = Parser $ \input -> Right (p, input)
+--   p1 <*> p2 = do
+--     f <- p1
+--     f <$> p2
 
 instance Functor (Parser s) where
   fmap f (Parser p) = Parser $ \input -> do
@@ -35,6 +48,7 @@ instance Applicative (Parser s) where
       (out, input'') <- p2 input'
       Right (f out, input'')
 
+
 instance Alternative (Parser s) where
   empty = Parser $ const empty
   (Parser p1) <|> (Parser p2) = Parser $ \input -> p1 input <|> p2 input
@@ -43,37 +57,39 @@ instance Monad (Parser s) where
   ma >>= a2mb = Parser $ \input -> do
     (a, b) <- run ma input
     (x, y) <- run (a2mb a) b
-    Right (x, b)
+    Right (x, y)
 
 -- This alternative operator tries the left side and if it can not parse anything it tries the right
 -- If it can parse some tokens but then fails, it returns the error from the left.
 -- Making error returning from many possible.
 infixr 4 <<|>
-
 (<<|>) :: Parser (Token, Loc, Loc) r -> Parser (Token, Loc, Loc) r -> Parser (Token, Loc, Loc) r
 x <<|> y = Parser $ \case
-  ((tokens, Loc line col, locb) : xs) ->
-    case run x ((tokens, Loc line col, locb) : xs) of
-      Left (Error (Loc line' col') m) | line == line' && col == col' -> run y ((tokens, Loc line col, locb) : xs)
-      Left (ErrorD (DLoc (Loc line' col') _) m) | line == line' && col == col' -> run y ((tokens, Loc line col, locb) : xs)
-      Left x -> Left x
-      res -> res
-  x -> empty
+  [] -> Left trueUnexpectedEOF
+  ((t,locA,locB):xs) ->
+    case run x ((t,locA,locB):xs) of
+      Left err1 ->
+        if getFstLoc err1 == locA
+            then
+              run y ((t,locA,locB):xs)
+            else
+              Left err1
+      Right x -> Right x
+
 
 infixr 4 <|||>
-
-(<|||>) :: Parser (a1, Int, Int) a2 -> Parser (a1, Int, Int) a2 -> Parser (a1, Int, Int) a2
-x <|||> y = Parser $ \case
-  ((tokens, line, col) : xs) ->
-    case run x ((tokens, line, col) : xs) of
-      Left (Error (Loc line' col') m) -> case run y ((tokens, line, col) : xs) of
-        Left (Error (Loc line'' col'') m') -> case Error (Loc line' col') m `compare` Error (Loc line'' col'') m' of
-          LT -> Left $ Error (Loc line' col') m
-          GT -> Left $ Error (Loc line'' col'') m'
-          EQ -> Left $ Error (Loc line' col') m
-        Right x -> Right x
+(<|||>) :: Parser a1 a2 -> Parser a1 a2 -> Parser a1 a2
+x <|||> y = Parser $ \input ->
+  case run x input of
+    Left err1 ->
+      case run y input of
+      Left err2 ->
+        case getFstLoc err1 `compare` getFstLoc err2 of
+          LT -> Left err1
+          GT -> Left err2
+          EQ -> Left err1
       Right x -> Right x
-  x -> empty
+    Right x -> Right x
 
 pChainl :: Parser s (a -> a -> a) -> Parser s a -> Parser s a
 pChainl x p = foldl (&) <$> p <*> many (flip <$> x <*> p)
@@ -86,7 +102,6 @@ lastLocExtreme p = Parser $ \input ->
     case run (pLastLocParser p) input of
         Right ((f,loc),remainingTokens) -> Right (\a b -> f a b loc,remainingTokens)
         Left x -> Left x
-
 
 pToken :: Token -> Parser (Token, Loc, Loc) Token
 pToken t = Parser $
@@ -110,13 +125,6 @@ pTokenGen t f = Parser $
     (x, loca, locb) : xs -> Left $ unexpectedToken t x (DLoc loca locb)
     [] -> Left $ unexpectedEOF t
 
--- pTokenGenOffset :: Token -> (Loc -> Loc -> b) -> Int -> Parser (Token, Loc, Loc) b
--- pTokenGenOffset t f offset = Parser $
---   \case
---     (x, line, col) : xs | x == t -> Right (f (Loc line col) (Loc line (col+offset)), xs)
---     (x, line, col) : xs -> Left $ unexpectedToken t x (Loc line col)
---     [] -> Left $ unexpectedEOF t
-
 firstLocParser :: Parser (Token, Loc, Loc) Loc
 firstLocParser = Parser $
   \case
@@ -132,7 +140,7 @@ lastLocParser = Parser $
 -- ===================== VarDecl ============================
 varDecl :: Parser (Token, Loc, Loc) VarDecl
 varDecl =
- VarDeclType <$> rigidType <*> idPLoc <*> varAss <|> 
+ VarDeclType <$> rigidType <*> idPLoc <*> varAss <|>
   VarDeclVar <$> (pToken VarToken *> idPLoc) <*> varAss
   where
     varAss = pToken IsToken *> expParser <* pToken SemiColToken
@@ -143,33 +151,31 @@ funDecl =
   FunDecl
     <$> idPLoc
     <*> (pToken BrackOToken *> customSepBy CommaToken (pToken CommaToken) idPLoc <* pToken BrackCToken)
-    <*> funType
+    <*> functionType
     <*> (pToken CBrackOToken *> many' varDecl)
     <*> some stmt
     <* pToken CBrackCToken
 
--- ===================== Types ============================
-splType :: Parser (Token, Loc, Loc) SPLType
-splType = rigidType <|> idType <|> voidType <|> retType
-
-
 -- ===== FunType =====
-funType :: Parser (Token, Loc, Loc) (Maybe SPLType)
-funType = Parser $ \case
+functionType :: Parser (Token, Loc, Loc) (Maybe SPLType)
+functionType = Parser $ \case
   (FunTypeToken, loca, locb) : xs -> do
-    (ys, rest) <- run (many splType) xs
-    let ret = if length ys > 1 then foldr1 FunType ys else head ys
-    Right (Just ret, rest)
+    (fType,ys) <- run funType xs
+    Right (Just fType, ys)
   x -> Right (Nothing, x)
 
+-- ===================== Types ============================
+splType :: Parser (Token, Loc, Loc) SPLType
+-- splType = rigidType <|> idType <|> voidType <|> bracketType
+splType = bracketType <|> rigidType <|> idType <|> retType <|> voidType
 
 -- ===== FunType =====
-funType2 :: Parser (Token, Loc, Loc) SPLType
-funType2 = Parser $ 
-  \input -> do
-    (ys, rest) <- run (many splType) input
-    let ret = if length ys > 1 then foldr1 FunType ys else head ys
-    Right (ret, rest)
+funType :: Parser (Token, Loc, Loc) SPLType
+funType = do
+  ys <- some'' splType
+  case length ys of
+    1 -> return $ head ys
+    _ -> return $ foldr1 FunType ys
 
 -- ===== RetType =====
 retType :: Parser (Token, Loc, Loc) SPLType
@@ -182,8 +188,18 @@ voidType = pTokenGen VoidToken Void
 rigidType :: Parser (Token, Loc, Loc) SPLType
 rigidType = typeBasic <|> tupleType <|> arrayType
 
+bracketType :: Parser (Token, Loc, Loc) SPLType
+bracketType = do
+  pToken BrackOToken
+  t <- funType
+  pToken BrackCToken
+  if isFunctionType t
+    then return $ BracketType t
+    else return t
+
+
 typeBasic :: Parser (Token, Loc, Loc) SPLType
-typeBasic = (\a (b,c) -> TypeBasic a b c ) <$> firstLocParser <*> pLastLocParser basicType
+typeBasic = basicInt <|> basicBool <|> basicChar
 
 tupleType :: Parser (Token, Loc, Loc) SPLType
 tupleType = (\a (b,c) -> TupleType a b c ) <$> firstLocParser <*> pLastLocParser (pToken BrackOToken *> ((,) <$> splType <* pToken CommaToken <*> splType) <* pToken BrackCToken)
@@ -195,17 +211,14 @@ idType :: Parser (Token, Loc, Loc) SPLType
 idType = IdType <$> idPLoc
 
 -- ===== BasicType =====
-basicType :: Parser (Token, Loc, Loc) BasicType
-basicType = basicInt <|> basicBool <|> basicChar
+basicInt :: Parser (Token, Loc, Loc) SPLType
+basicInt =  pTokenGen TypeIntToken (`TypeBasic` BasicInt)
 
-basicInt :: Parser (Token, Loc, Loc) BasicType
-basicInt = BasicInt <$ pToken TypeIntToken
+basicBool :: Parser (Token, Loc, Loc) SPLType
+basicBool = pTokenGen TypeBoolToken (`TypeBasic` BasicBool)
 
-basicBool :: Parser (Token, Loc, Loc) BasicType
-basicBool = BasicBool <$ pToken TypeBoolToken
-
-basicChar :: Parser (Token, Loc, Loc) BasicType
-basicChar = BasicChar <$ pToken TypeCharToken
+basicChar :: Parser (Token, Loc, Loc) SPLType
+basicChar = pTokenGen TypeCharToken (`TypeBasic` BasicChar)
 
 -- ===================== Statements ============================
 stmt :: Parser (Token, Loc, Loc) Stmt
@@ -237,7 +250,7 @@ stmtAssignVar =
   StmtAssignVar
     <$> idPLoc
     <*> fieldP
-    <*> (pToken IsToken *> expParser <* pToken SemiColToken) 
+    <*> (pToken IsToken *> expParser <* pToken SemiColToken)
     <*> pure Nothing
 
 stmtFuncCall :: Parser (Token, Loc, Loc) Stmt
@@ -332,7 +345,7 @@ expEmptyList :: Parser (Token, Loc, Loc) Exp
 expEmptyList = pTokenGen EmptyListToken ExpEmptyList
 
 expList :: Parser (Token, Loc, Loc) Exp
-expList = (\a (b,c) -> ExpList a b c)  <$> firstLocParser <*> pLastLocParser (pToken SBrackOToken *> expList <* pToken SBrackCToken) <*> pure Nothing 
+expList = (\a (b,c) -> ExpList a b c)  <$> firstLocParser <*> pLastLocParser (pToken SBrackOToken *> expList <* pToken SBrackCToken) <*> pure Nothing
   where
     expList = customSepBy CommaToken (pToken CommaToken) expParser
 
@@ -396,10 +409,10 @@ idP = Parser $ \case
 
 -- ========================== Helper Functions ==========================
 pLastLocParser :: Parser (Token, Loc, Loc) a -> Parser (Token, Loc, Loc) (a,Loc)
-pLastLocParser (Parser p) = Parser $ 
+pLastLocParser (Parser p) = Parser $
     \input -> case p input of
-        Right (a,remainingTokens) -> 
-            case getLastLoc input (head remainingTokens) of 
+        Right (a,remainingTokens) ->
+            case getLastLoc input (head remainingTokens) of
                 Just loc -> return ((a,loc),remainingTokens)
                 Nothing -> Left $ Error defaultLoc "Could not find last loc in parser"
         Left x -> Left x
@@ -430,8 +443,11 @@ customSepBy sepToken sep elem = Parser $ \input ->
     Left x -> Right ([], input)
 
 many'' :: Parser (Token, Loc, Loc) a -> Parser (Token, Loc, Loc) [a]
-many'' p = ((:) <$> p <*> many p) <<|> pure []
+many'' p = ((:) <$> p <*> many p) <|||> pure []
+some'' :: Parser (Token, Loc, Loc) a -> Parser (Token, Loc, Loc) [a]
+some'' p = (:) <$> p <*> many'' p
 
+--  returns error if nothing can be found basically the pure is almost always ignored
 many' :: Parser (Token, Loc, Loc) a -> Parser (Token, Loc, Loc) [a]
 many' p = ((:) <$> p <*> many' p) <<|> pure []
 
@@ -483,8 +499,49 @@ tokeniseAndParseFile filename p = do
       exitFailure
 
 
+-- {-# NOINLINE parserTypeTests #-}
+-- parserTypeTests = unsafePerformIO $ do
+--     file <- readFile  "./test/parser/custom/types.spl"
+--     let (errs,tokenTypes) = partitionEithers $ Prelude.map runTokenise (lines file)
+--     if Prelude.null errs
+--         then return $ parserTypeTest (head tokenTypes)
+--         else assertFailure $ showError file (Prelude.foldr1 (<>) errs)
 
-test = tokeniseAndParse expList "[10,10,10,]"
+
+tokenTest = [(IdToken "a",Loc 1 1,Loc 1 2),(BrackOToken,Loc 1 3,Loc 1 4),(IdToken "c",Loc 1 4,Loc 1 5),(ArrowToken,Loc 1 6,Loc 1 8),(IdToken "d",Loc 1 9,Loc 1 10),(BrackCToken,Loc 1 10,Loc 1 11),(ArrowToken,Loc 1 12,Loc 1 14),(IdToken "b",Loc 1 15,Loc 1 16)]
+
+test1 = case run funType tokenTest of
+  Left x -> print x
+  Right (t,left) -> do
+    putStrLn $ pp t
+    print left
+
+pTypeTest = do
+  file <- readFile  "../test/parser/custom/types.spl"
+  let content = lines file
+  case partitionEithers $ Prelude.map runTokenise content of
+    (x:xs,_) -> do 
+      putStr "ERROR\n"
+      print x
+    ([],x) -> sequence_ $ Prelude.map ab x 
+
+ab x =
+  case run funType x of
+    Right (a,_) ->
+      putStr $ "\nSuccess:\n"++ pp a ++"\n"
+    Left a -> do
+      putStr "\nERROR2\n"
+      print x
+      print a
+
+
+
+
+
+
+
+
+
 
 main :: String -> IO ()
 main filename = do

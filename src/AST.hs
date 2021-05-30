@@ -32,7 +32,7 @@ data SPLType
     | FunType SPLType SPLType
     | Void Loc Loc
     
-    | Bracket SPLType
+    | BracketType SPLType
     deriving (Show)
 
 
@@ -55,9 +55,9 @@ instance Eq SPLType where
 -- eqType (Void _ _) (Void _ _) = True
 -- eqType _ _ = False
 
-isFun :: SPLType -> Bool
-isFun (FunType arg ret) = True 
-isFun _ = False
+isFunctionType :: SPLType -> Bool
+isFunctionType (FunType arg ret) = True 
+isFunctionType _ = False
 
 
 isVoidFun :: SPLType -> Bool
@@ -168,7 +168,10 @@ data Op2 =
 -- ===================== Loc ============================
 data Loc = 
   Loc Int Int
-  deriving (Eq, Ord, Show)
+  deriving (Ord, Show)
+
+instance Eq Loc where
+  (==) (Loc a b) (Loc c d) = a==c && b==d
 
 data ErrorLoc =
   -- SLoc Loc Int |    -- Single Loc, used when length of object is known
@@ -182,7 +185,6 @@ class LOC a where
   getSndLoc :: a -> Loc
   getLineNum:: a -> Int
   getColNum:: a -> Int
-
 
 instance LOC ErrorLoc where
   showLoc (DLoc (Loc line col) _) = "on Line " ++ show line ++ " and, Col "++ show col
@@ -336,9 +338,10 @@ instance PrettyPrinter SPLType where
   -- Prints function types haskell style:
   -- pp (FunType arg ret) = pp arg ++ " -> " ++ pp ret
   pp (FunType arg ret) = let args = getArgsTypes (FunType arg ret) in concatMap (\x -> ppFuncs x ++ " "  ) (init args) ++ "-> " ++ pp (last args)
-    where ppFuncs x = if isFun x then "("++ pp x ++")" else pp x
-
+    where ppFuncs x = if isFunctionType x then "("++ pp x ++")" else pp x
   pp (Void _ _) = "Void"
+
+  pp (BracketType t) = "(" ++ pp t ++ ")"
 
 
 getArgsTypes :: SPLType -> [SPLType]

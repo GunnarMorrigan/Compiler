@@ -15,6 +15,29 @@ data Error =
   Errors [Error]
   deriving (Show)
 
+
+instance LOC Error where
+  showLoc (Error loc _) = showLoc loc
+  showLoc (ErrorD dloc _ ) = showLoc dloc
+  
+  getDLoc (Error loc _) = undefined
+  getDLoc (ErrorD dloc _) = dloc
+
+  getFstLoc (Error loc _) = loc
+  getFstLoc (ErrorD dloc _) = getFstLoc dloc
+  getFstLoc (Errors (x:xs)) = getFstLoc x
+
+  getSndLoc (Error loc _) = undefined 
+  getSndLoc (ErrorD dloc _) = getSndLoc dloc 
+
+  getLineNum (Error loc _) = getLineNum loc
+  getLineNum (ErrorD dloc _) = getLineNum dloc
+
+  getColNum (Error loc _) = getColNum loc
+  getColNum (ErrorD dloc _) = getColNum dloc
+
+
+
 instance Semigroup Error where
   (<>) (Error loc s) (Error loc' s') = Errors [Error loc s,Error loc' s']
   (<>) (ErrorD loc s) (ErrorD loc' s') = Errors [ErrorD loc s,ErrorD loc' s']
@@ -101,6 +124,7 @@ defaultErrorLoc = DLoc defaultLoc defaultLoc
 missingSeparator loc sepToken token = ErrorD loc ("Expected separator '"++ show sepToken ++ "' but found '" ++ show token ++ "' on " ++ showLoc loc)
 unexpectedToken expected found loc = ErrorD loc ("Expected: '"++show expected++"' but found: '" ++ show found ++ "' on " ++ showLoc loc)
 unexpectedEOF expected = Error defaultLoc ("Unexpected EOF, expected: "++show expected++".")
+trueUnexpectedEOF = Error defaultLoc "Unexpected EOF." 
 
 -- ========== ReturnGraph Errors ==========
 missingReturn :: String -> SPLType -> Loc -> Error
