@@ -12,6 +12,7 @@ import Data.Function
 import Data.Functor
 import Data.List
 import Data.Either
+import Data.Maybe
 
 import Control.Applicative
 import Control.Monad
@@ -179,10 +180,19 @@ splType = bracketType <|> rigidType <|> idType <|> voidType
 
 funType :: Parser (Token, Loc, Loc) SPLType
 funType = do
-  (ys,ret) <- ((,) <$> some'' splType <*> retType ) <<|> ((,) [] <$> splType)
-  if Prelude.null ys
-    then return ret
-    else return $ foldr1 FunType (ys++[ret])
+  ys <- many'' splType
+  ret <- case length ys of
+    0 -> Just <$> retType
+    1 -> optional retType
+    _ -> Just <$> retType
+  let all = if isJust ret
+      then ys ++ [fromJust ret]
+      else ys
+  case length all of
+    0 -> undefined 
+    1 -> return $ head all
+    _ -> return $ foldr1 FunType all
+
 
 -- ===== RetType =====
 retType :: Parser (Token, Loc, Loc) SPLType
@@ -471,7 +481,6 @@ all' p = (:) <$> p <*> all p
 
 
 -- ========================== Parser Mains: ==========================
-
 tokeniseAndParse :: Parser (Token, Loc, Loc) a -> [Char] -> Either Error (a, [(Token, Loc, Loc)])
 tokeniseAndParse parser x = runTokenise x >>= run parser
 

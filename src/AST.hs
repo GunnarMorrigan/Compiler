@@ -218,6 +218,10 @@ showIDLoc (ID (Loc line col)  id _) = id
 idLocCreator :: String -> IDLoc
 idLocCreator s = ID (Loc (-1) (-1)) s (Loc (-1) (-1))
 
+idTypeCreator :: String -> SPLType
+idTypeCreator s = IdType $ idLocCreator s
+
+
 instance LOC SPLType where
   showLoc x = let DLoc loc _ = getDLoc x in showLoc loc
 
@@ -346,6 +350,7 @@ instance PrettyPrinter SPLType where
 
 getArgsTypes :: SPLType -> [SPLType]
 getArgsTypes (FunType arg ret) = arg:getArgsTypes ret
+getArgsTypes (BracketType x) = [x]
 getArgsTypes x = [x]
 
 

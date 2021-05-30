@@ -239,7 +239,7 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
     let cs1 = s2 `composeSubst` s1
     let t1' = fromMaybe (Void defaultLoc defaultLoc) t1
 
-    s3 <- mgu (apply cs1 t1') retType
+    s3 <- mgu retType (apply cs1 t1') 
     let cs2 = s3 `composeSubst` cs1
 
     -- let Just (Scheme [] t) = find funName env'''
@@ -251,13 +251,13 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
     -- let funDecl = FunDecl funName args (Just funType) vars' stmts'
 
 
-    (funDecl', overloaded) <- monomorphize funDecl env'''
+    (funDecl', overloaded) <- monomorphize funDecl (apply cs2 env''')
     let (polyOp2, polyFunCall) = toListOL overloaded
     if  nullOL overloaded
         then
             -- trace ("No 'poly' overloading in " ++ pp funName) $
             -- let funcScheme = trace ("\n\nFree stuff in: " ++pp funName ++ "\n" ++ pp funType ++"\n" ++ pp (Set.toList $ ftv funType) ++ "\n\n" ++ pp (Set.toList $ ftv env)++ "\n\n") generalize env funType in
-            let funcScheme = generalize env funType in
+            trace (pp funName ++ " env with everything:\n" ++ printEnv ( apply cs2 env''') ) $ let funcScheme = generalize env funType in
             return (cs2, TImisc.insert (apply cs2 env) funName funcScheme GlobalScope, funDecl')
         else
             -- trace ("Poly overloading in " ++ pp funName {-- ++ "\n\n" ++ show polyOp2 ++ "\n\n" ++ show polyFunCall --}) $ 
@@ -267,7 +267,7 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
                 return (cs2, TImisc.insert (apply cs2 env) funName scheme GlobalScope, FunDecl funName' args' (Just fType') vars'' stmts'')
 
 tiStmts :: TypeEnv -> [Stmt] -> TI (Subst, Maybe SPLType, [Stmt])
-tiStmts env [] = return (nullSubst,Nothing,[])
+tiStmts env [] = return (nullSubst, Nothing, [])
 tiStmts env [e] = do
     (s1, t1, stmt') <- tiStmt env e
     return (s1, t1, [stmt'])
@@ -385,7 +385,6 @@ typeCheckExps id monomorph env s (e:es) ops funcs (t:ts) = do
     let cs2 = s2 `composeSubst` cs1
     (s3, es', ol) <- typeCheckExps id monomorph (apply cs1 env) cs2 es ops funcs ts
     return (s3 `composeSubst` cs2 , e':es', ol)
-
 typeCheckExps id monomorph env s [] (op:ops) funcs (t:ts) = do
     let (Op2 op' (Just opType) loc) = apply s op
     s1 <- mgu t opType
@@ -417,7 +416,6 @@ typeCheckExps id monomorph env s [] (op:ops) funcs (t:ts) = do
                 let exp = ExpFunction defaultLoc (idLocCreator name) defaultLoc (Just opType1)
                 (s2,es', ol) <- typeCheckExps id monomorph env cs1 [] ops funcs ts
                 return (s2 `composeSubst` cs1, exp:es', ol)
-
 typeCheckExps id monomorph env s [] [] (func:funcs) (t:ts) = do
     let (FunCall (ID locA id' locB) es (Just funcType)) = apply s func
     s1 <- mgu t funcType
@@ -448,6 +446,7 @@ typeCheckExps id monomorph env s [] [] (func:funcs) (t:ts) = do
         let exp = ExpFunction defaultLoc (idLocCreator name) defaultLoc (Just funcType')
         (s2,es',ol) <- typeCheckExps id monomorph env cs1 [] [] funcs ts
         return (s2 `composeSubst` cs1, exp:es',ol)
+typeCheckExps id mono env s exps _ _ argTypes = confess (Error defaultLoc (pp exps ++ "\n" ++ pp argTypes)  )
 
 tiExpsList :: TypeEnv -> [Exp] -> TI (Subst, SPLType, Exp)
 tiExpsList env [e] = do
@@ -538,8 +537,6 @@ tiExp env (ExpFunCall locA funCall locB) = do
     (s1, t, funCall', _) <- tiFunCall env False funCall
     return (s1, t, ExpFunCall locA funCall' locB)
 
-
-
 tiExp (TypeEnv env) (ExpFunction locA function locB Nothing) = do
     case Map.lookup function env of
         Just (Scheme lockedVars lockedT,_) -> do
@@ -567,7 +564,7 @@ tiFunction (TypeEnv env) (ExpFunction locA id locB _) =
             t <- newSPLVar
             dictate (refBeforeDec "Function" id) >> return (nullSubst, t,ExpFunction locA id locB Nothing)
 
-tiFunCall :: TypeEnv -> Bool -> FunCall -> TI (Subst, SPLType, FunCall,Overloaded)
+tiFunCall :: TypeEnv -> Bool -> FunCall -> TI (Subst, SPLType, FunCall, Overloaded)
 tiFunCall (TypeEnv env) monomorph (FunCall id args _) =
     case Map.lookup id env of
         Just (OverScheme lockedvars lockedType lockedOps lockedFuncs,GlobalScope) -> do
@@ -584,16 +581,31 @@ tiFunCall (TypeEnv env) monomorph (FunCall id args _) =
             (s1, args', ol) <- typeCheckExps id monomorph (TypeEnv env) nullSubst args [] [] (init argTypes)
             let returnType = last argTypes
             return (s1, apply s1 returnType, FunCall id args' (Just $ apply s1 t), ol)
-        Just (scheme,_) -> do
-            t <- newSPLVar
-            dictate (applVarAsFunc id ) >> return (nullSubst, t, FunCall id args Nothing, emptyOL)
+        Just (scheme, ArgScope) -> do
+            t <- instantiate scheme
+            funTypes <-  if isFunctionType t
+                then return $ getArgsTypes t
+                else replicateM (length args+1) newSPLVar
+
+            let funType = foldr1 FunType funTypes
+            s1 <- mgu funType t
+            
+            -- let funTypes = trace (pp id ++ " has type " ++ pp t ++ "\n" ++ pp createdTypes) apply s1 createdTypes
+
+            (s2, args', ol) <- trace (pp id ++ " has type " ++ pp t ++ ", " ++ pp funType) $ typeCheckExps id monomorph (TypeEnv env) nullSubst args [] [] (init funTypes)
+            let returnType = last funTypes
+            let cs1 = s2 `composeSubst` s1
+            return (cs1, apply cs1 returnType, FunCall id args' (Just $ apply cs1 funType), ol)
+
+            -- t <- newSPLVar
+            -- dictate (applVarAsFunc id ) >> return (nullSubst, t, FunCall id args Nothing, emptyOL)
+
+            -- t <- newSPLVar
+            -- dictate (applVarAsFunc id ) >> return (nullSubst, t, FunCall id args Nothing, emptyOL)
         Nothing -> do
             t <- newSPLVar
             dictate (refBeforeDec "Function:" id) >> return (nullSubst, t, FunCall id args Nothing, emptyOL)
         -- x -> confess (Error defaultLoc  ("Did not expect"++show x))
-
-
-
 
 -- ===================== Monomorphization ============================
 class Monomorphization a where
@@ -706,11 +718,13 @@ instance Monomorphization Op2Typed where
 typeInference :: SPL -> Either Error (Subst, TypeEnv, SPL)
 typeInference code = do
     case runTI (tiSPL code) of
-        (That (s1, env, SPL code'), state) -> do
+        (That (s1, env, spl), state) -> do
+            let SPL code' = apply s1 spl
+            -- let SPL code' = spl
             -- cleanCode <- removeDeadCode (SPL $ removeMutRec code')
             let cleanCode = SPL $ removeMutRec code'
-            let updatedCode = apply s1 cleanCode
-            Right (s1, env, updatedCode)
+            -- let updatedCode = apply s1 cleanCode
+            Right (s1, env, cleanCode)
         (These errs a, state) -> Left errs
         (This errs, state) -> Left errs
 

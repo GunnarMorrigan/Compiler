@@ -34,7 +34,7 @@ runTI t = runState (runChronicleT t) initTIState
 
 -- ===================== TypeEnv ============================
 newtype TypeEnv = TypeEnv (Map IDLoc (Scheme,Scope))
-    deriving (Show)
+    deriving (Eq, Show)
 
 insert :: TypeEnv -> IDLoc -> Scheme -> Scope -> TypeEnv
 insert (TypeEnv env) id scheme s = TypeEnv (Map.insert id (scheme,s) env)
@@ -141,6 +141,12 @@ instance Types a => Types [a] where
     ftv l = Prelude.foldr (Set.union . ftv) Set.empty l
     apply s = Prelude.map (apply s)
 
+instance Types a =>  Types (Maybe a) where
+    ftv (Just a) = ftv a
+    ftv Nothing = Set.empty
+    apply s (Just a) = Just $ apply s a
+    apply s Nothing = Nothing
+
 instance Types TypeEnv where
     ftv (TypeEnv env)      =  ftv (Prelude.map fst (Map.elems env))
     apply s (TypeEnv env)  =  TypeEnv (Map.map (BI.first (apply s)) env)
@@ -168,13 +174,6 @@ instance Types SPLType where
     apply s (ArrayType locA x locB) = ArrayType locA (apply s x) locB
     apply _ x = x
 
-instance Types a =>  Types (Maybe a) where
-    ftv (Just a) = ftv a
-    ftv Nothing = Set.empty
-    apply s (Just a) = Just $ apply s a
-    apply s Nothing = Nothing
-
-
 instance Types SPL where
     apply s (SPL []) = SPL []
     apply s (SPL x)  = SPL $ apply s x
@@ -187,7 +186,7 @@ instance Types Decl where
     ftv = undefined
 
 instance Types VarDecl where
-    apply s (VarDeclType t (ID id loc loc') e) = VarDeclType (apply s t) (ID id loc loc') e
+    apply s (VarDeclType t id e) = VarDeclType (apply s t) id (apply s e)
     apply s e = e
     ftv = undefined
 
@@ -195,19 +194,19 @@ instance Types FunDecl where
     apply s (FunDecl funName args funType varDecls stmts) = do
         let varDecls' = apply s varDecls
         let stmts' = apply s stmts
-        FunDecl funName args funType varDecls' stmts'
+        FunDecl funName args (apply s funType) varDecls' stmts'
     ftv = undefined
 
 instance Types Stmt where
-    apply s (StmtIf e stmts Nothing loc) = do
-        let e' = apply s e
-        let stmts' = apply s stmts
-        StmtIf e' stmts' Nothing loc
-    apply s (StmtIf e stmts (Just els) loc) = do
+    -- apply s (StmtIf e stmts Nothing loc) = do
+    --     let e' = apply s e
+    --     let stmts' = apply s stmts
+    --     StmtIf e' stmts' Nothing loc
+    apply s (StmtIf e stmts els loc) = do
         let e' = apply s e
         let stmts' = apply s stmts
         let els' = apply s els
-        StmtIf e' stmts' (Just els') loc
+        StmtIf e' stmts' els' loc
     apply s (StmtAssignVar id fields e typ) = do
         let e' = apply s e
         StmtAssignVar id fields e' (apply s typ)
@@ -248,10 +247,12 @@ instance Types Op2Typed where
     ftv _ = undefined
 
 instance Types FunCall where
-    apply s (FunCall (ID locA name locB) es (Just t)) = do
+    apply s (FunCall id es (Just t)) = do
         let es' = apply s es
-        FunCall (ID locA name locB) es' (Just $ apply s t)
-    apply s (FunCall id es Nothing) = FunCall id es Nothing
+        FunCall id es' (Just $ apply s t)
+    apply s (FunCall id es Nothing) = 
+        let es' = apply s es in
+        FunCall id es' Nothing
     ftv (FunCall (ID locA name locB) es (Just t)) = ftv t
     ftv _ = undefined
 
@@ -299,13 +300,12 @@ instance MGU SPLType where
         s2 <- mgu (apply s1 ret) (apply s1 ret')
         return (s2 `composeSubst` s1)
 
-    mgu (FunType arg ret) t1 = confess $ generateError (FunType arg ret) t1
-    mgu t1 (FunType arg ret) = confess $ generateError (FunType arg ret) t1
+    -- mgu (FunType arg ret) t1 = confess $ generateError (FunType arg ret) t1
+    -- mgu t1 (FunType arg ret) = confess $ generateError (FunType arg ret) t1
+    -- mgu (IdType id) r | not $ isFunctionType r = varBind id r
+    -- mgu l (IdType id) | not $ isFunctionType l = varBind id l
 
     mgu (TypeBasic _ x _) (TypeBasic _ y _) | x == y = return nullSubst
-    -- mgu (TypeBasic locA x locB) (TypeBasic locA' y locB') = 
-    --     dictate (generateError (TypeBasic locA x locB) (TypeBasic locA' x locB')) >>
-    --     return nullSubst
 
     mgu (Void _ _) (Void _ _) = return nullSubst
 
@@ -315,8 +315,8 @@ instance MGU SPLType where
         return (s1 `composeSubst` s2)
     mgu (ArrayType _ x _) (ArrayType _ y _) = mgu x y
 
-    mgu (IdType id) r | not $ isFunctionType r = varBind id r
-    mgu l (IdType id) | not $ isFunctionType l = varBind id l
+    mgu (IdType id) r = varBind id r
+    mgu l (IdType id) = varBind id l
 
     mgu t1 t2 =
         dictate (generateError t1 t2) >>
@@ -574,14 +574,25 @@ builtin (ID _ id _) = Set.member id std
 printEnv :: TypeEnv -> String
 printEnv (TypeEnv env) = printEnv1 (Map.toList env)
 
+-- printEnv1 :: [(IDLoc, (Scheme,Scope))] -> String
+-- printEnv1 [] = ""
+-- printEnv1 ((ID _ id _,(Scheme v t,GlobalScope)):xs) = id ++" :: " ++ pp t ++", "++ pp v ++ " Global\n"++ printEnv1 xs
+-- printEnv1 ((ID _ id _,(Scheme v t,LocalScope)):xs) = id ++" :: " ++ pp t ++", "++ pp v ++ " Local\n"++ printEnv1 xs
+-- printEnv1 ((ID _ id _,(Scheme v t,ArgScope)):xs) = id ++" :: " ++ pp t ++", "++ pp v ++ " arg\n"++ printEnv1 xs
+-- printEnv1 ((ID _ id _,(OverScheme v t _ _,LocalScope)):xs) = id ++" :: " ++ pp t ++", "++ pp v ++ " over Local\n"++ printEnv1 xs
+-- printEnv1 ((ID _ id _,(OverScheme v t _ _,GlobalScope)):xs) = id ++" :: " ++ pp t ++", "++ pp v ++ " over Global\n"++ printEnv1 xs
+-- printEnv1 ((ID _ id _,(OverScheme v t _ _,ArgScope)):xs) = id ++" :: " ++ pp t ++ ", "++ pp v ++ " over arg\n"++ printEnv1 xs
+
+
 printEnv1 :: [(IDLoc, (Scheme,Scope))] -> String
 printEnv1 [] = ""
-printEnv1 ((ID _ id _,(Scheme v t,GlobalScope)):xs) = id ++" :: " ++ pp t ++", "++ pp v ++ " Global\n"++ printEnv1 xs
-printEnv1 ((ID _ id _,(Scheme v t,LocalScope)):xs) = id ++" :: " ++ pp t ++", "++ pp v ++ " Local\n"++ printEnv1 xs
-printEnv1 ((ID _ id _,(Scheme v t,ArgScope)):xs) = id ++" :: " ++ pp t ++", "++ pp v ++ " arg\n"++ printEnv1 xs
-printEnv1 ((ID _ id _,(OverScheme v t _ _,LocalScope)):xs) = id ++" :: " ++ pp t ++", "++ pp v ++ " over Local\n"++ printEnv1 xs
-printEnv1 ((ID _ id _,(OverScheme v t _ _,GlobalScope)):xs) = id ++" :: " ++ pp t ++", "++ pp v ++ " over Global\n"++ printEnv1 xs
-printEnv1 ((ID _ id _,(OverScheme v t _ _,ArgScope)):xs) = id ++" :: " ++ pp t ++ ", "++ pp v ++ " over arg\n"++ printEnv1 xs
+printEnv1 ((ID _ id _,(Scheme v t,GlobalScope)):xs) = id ++" :: " ++ pp t ++", Global\n"++ printEnv1 xs
+printEnv1 ((ID _ id _,(Scheme v t,LocalScope)):xs) = id ++" :: " ++ pp t ++", Local\n"++ printEnv1 xs
+printEnv1 ((ID _ id _,(Scheme v t,ArgScope)):xs) = id ++" :: " ++ pp t ++", arg\n"++ printEnv1 xs
+printEnv1 ((ID _ id _,(OverScheme v t _ _,LocalScope)):xs) = id ++" :: " ++ pp t ++", over Local\n"++ printEnv1 xs
+printEnv1 ((ID _ id _,(OverScheme v t _ _,GlobalScope)):xs) = id ++" :: " ++ pp t ++", over Global\n"++ printEnv1 xs
+printEnv1 ((ID _ id _,(OverScheme v t _ _,ArgScope)):xs) = id ++" :: " ++ pp t ++ ", over arg\n"++ printEnv1 xs
+
 
 
 printSubst :: [(IDLoc,SPLType)] -> String
