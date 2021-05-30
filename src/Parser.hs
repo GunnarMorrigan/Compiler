@@ -21,13 +21,6 @@ import Debug.Trace
 
 -- ======================================== Parser ========================================
 newtype Parser s a = Parser {run :: [s] -> Either Error (a, [s])}
--- newtype Parser s a = Parser {runLast :: [s] -> Either Error ((a,s), [s])}
--- newtype Parser s a = Parser {run :: [s] -> Either Error (a, [s])}
-
--- runLast :: [s] -> Either Error ((a,s), [s])
--- runLast = Parser $ \input -> do
---     (out, input') <- p input
---     Right (f out, input')
 
 instance Functor (Parser s) where
   fmap f (Parser p) = Parser $ \input -> do
@@ -156,6 +149,9 @@ funDecl =
     <* pToken CBrackCToken
 
 -- ===================== Types ============================
+splType :: Parser (Token, Loc, Loc) SPLType
+splType = rigidType <|> idType <|> voidType <|> retType
+
 
 -- ===== FunType =====
 funType :: Parser (Token, Loc, Loc) (Maybe SPLType)
@@ -164,8 +160,16 @@ funType = Parser $ \case
     (ys, rest) <- run (many splType) xs
     let ret = if length ys > 1 then foldr1 FunType ys else head ys
     Right (Just ret, rest)
-    --undefined 
   x -> Right (Nothing, x)
+
+
+-- ===== FunType =====
+funType2 :: Parser (Token, Loc, Loc) SPLType
+funType2 = Parser $ 
+  \input -> do
+    (ys, rest) <- run (many splType) input
+    let ret = if length ys > 1 then foldr1 FunType ys else head ys
+    Right (ret, rest)
 
 -- ===== RetType =====
 retType :: Parser (Token, Loc, Loc) SPLType
@@ -175,9 +179,6 @@ voidType :: Parser (Token, Loc, Loc) SPLType
 voidType = pTokenGen VoidToken Void
 
 -- ===== Type =====
-splType :: Parser (Token, Loc, Loc) SPLType
-splType = rigidType <|> idType <|> voidType <|> retType
-
 rigidType :: Parser (Token, Loc, Loc) SPLType
 rigidType = typeBasic <|> tupleType <|> arrayType
 
@@ -445,33 +446,15 @@ all' p = (:) <$> p <*> all p
         [] -> Right ([], [])
         xs -> run (all' p) xs
 
+
+-- ========================== Parser Mains: ==========================
+
 tokeniseAndParse :: Parser (Token, Loc, Loc) a -> [Char] -> Either Error (a, [(Token, Loc, Loc)])
 tokeniseAndParse parser x = runTokenise x >>= run parser
 
 splFilePath = "../SPL_test_code/"
 
-funTypeParser = Parser $ \case
-  (FunTypeToken, line, col) : xs -> do
-    (ys, rest) <- run (many splType) xs
-    -- (ys, rest) <- run funType xs
-    let ret = if length ys > 1 then foldr1 FunType ys else head ys
-    Right (Just ret, rest)
-  x -> Right (Nothing, x)
-
-funTypeTest = tokeniseAndParse funTypeParser ":: Int Bool -> Char"
-
--- main :: String -> IO()
--- tokeniseAndParseFile2 filename = do
---        file <- readFile $ splFilePath++filename
---        bta (tokeniseAndParse mainSegments file) 0 empty
-
--- Right (x, _) -> do
---        exists <- doesFileExist "SPL_test_code/out.spl"
---        when exists $ removeFile "SPL_test_code/out.spl"
---        writeFile "SPL_test_code/out.spl"$ show x
--- Left x -> do
---        print x
---        exitFailure
+-- funTypeTest = tokeniseAndParse funTypeParser ":: Int Bool -> Char"
 
 tokeniseFile :: String -> IO ()
 tokeniseFile filename = do

@@ -6,32 +6,34 @@ import Data.List ( intercalate )
 import Debug.Trace
 
 newtype SPL =  SPL [Decl] 
-  deriving (Show, Eq)
+    deriving (Show, Eq)
 
 
-data Decl = VarMain VarDecl
-          | FuncMain FunDecl
-          | MutRec [FunDecl]
-          deriving (Eq, Show)
+data Decl 
+    = VarMain VarDecl
+    | FuncMain FunDecl
+    | MutRec [FunDecl]
+        deriving (Eq, Show)
 
-data VarDecl = VarDeclVar IDLoc Exp
-             | VarDeclType SPLType IDLoc Exp 
-             deriving (Eq, Show)
+data VarDecl 
+    = VarDeclVar IDLoc Exp
+    | VarDeclType SPLType IDLoc Exp 
+        deriving (Eq, Show)
 
 data FunDecl = 
-  FunDecl IDLoc [IDLoc] (Maybe SPLType) [VarDecl] [Stmt]
-  -- FunDecl IDLoc [IDLoc] (Maybe SPLType) [VarDecl] [Stmt]
-             deriving (Eq, Show)
-
+    FunDecl IDLoc [IDLoc] (Maybe SPLType) [VarDecl] [Stmt]
+        deriving (Eq, Show)
 
 data SPLType 
-  = TypeBasic Loc BasicType Loc
-  | TupleType Loc (SPLType, SPLType) Loc
-  | ArrayType Loc SPLType Loc
-  | IdType IDLoc
-  | FunType SPLType SPLType 
-  | Void Loc Loc
-  deriving (Show)
+    = TypeBasic Loc BasicType Loc
+    | TupleType Loc (SPLType, SPLType) Loc
+    | ArrayType Loc SPLType Loc
+    | IdType IDLoc
+    | FunType SPLType SPLType
+    | Void Loc Loc
+    
+    | Bracket SPLType
+    deriving (Show)
 
 
 instance Eq SPLType where
@@ -87,6 +89,7 @@ data Exp
   | ExpList Loc [Exp] Loc (Maybe SPLType)
   | ExpTuple Loc (Exp, Exp) Loc (Maybe SPLType)
 
+  | ExpCurry Loc FunCurry Loc
   | ExpFunction Loc IDLoc Loc (Maybe SPLType)
   deriving(Show)
 
@@ -106,8 +109,13 @@ instance Eq Exp where
 
   (==) (ExpFunction _ id1 _ t1) (ExpFunction _ id2 _ t2) = id1 == id2  && t2 == t1
 
+data FunCall
+    = FunCall IDLoc [Exp] (Maybe SPLType)
+    deriving (Show, Eq)
 
-
+data FunCurry
+    = FunCurry IDLoc [Exp] SPLType
+    deriving (Show, Eq)
 
 newtype Field
   = Field [StandardFunction]
@@ -129,12 +137,7 @@ instance Eq IDLoc where
 instance Ord IDLoc where
   compare (ID _ id _) (ID _ id' _) = id `compare` id'
 
--- ===================== FunCall and Operators ============================
-
-data FunCall
-    = FunCall IDLoc [Exp] (Maybe SPLType)
-    deriving (Show, Eq)
-
+-- =====================Operators ============================
 -- ==== Op1 ====
 data Op1 = Neg | Not deriving (Eq, Show)
 

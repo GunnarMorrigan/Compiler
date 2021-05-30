@@ -1,13 +1,19 @@
-function (n, b, l, _printa2, _printa3, _printa4) :: a2 a3 a4 (a2 -> Void) (a3 -> Void) (a4 -> Void) -> Void {
+f (n, b, l, _printa2, _printa3, _printa4) :: a2 a3 a4 (a2 -> Void) (a3 -> Void) (a4 -> Void) -> Void {
     _printa2(n) /*:: a2 -> Void*/;
     _printa3(b) /*:: a3 -> Void*/;
     _printa4(l) /*:: a4 -> Void*/;
     return;
 }
 
+g (x, y, z, _printa12, _printa13, _printa14) :: a12 a13 a14 (a12 -> Void) (a13 -> Void) (a14 -> Void) -> Void {
+    f(x, y, z, _printa12, _printa13, _printa14) /*:: a12 a13 a14 (a12 -> Void) (a13 -> Void) (a14 -> Void) -> Void*/;
+    return;
+}
+
 main () :: Void {
     [Int] list = (1 : (2 : (3 : [])));
 
-    function(15, False, list, _printInt, _printBool, _printArrayInt) /*:: Int Bool [Int] (Int -> Void) (Bool -> Void) ([Int] -> Void) -> Void*/;
+    print(1) /*:: Int -> Void*/;
+    g(15, False, list, _printInt, _printBool, _printArrayInt) /*:: Int Bool [Int] (Int -> Void) (Bool -> Void) ([Int] -> Void) -> Void*/;
 }
 

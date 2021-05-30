@@ -38,7 +38,7 @@ rtgaStmtsForLevel stmts (ID locA fname locB) fType =
                     t -> Left (missingReturn fname t locA)
         xs ->  if allTheSame (Prelude.map isVoidReturn xs) 
                 then case fType of
-                    Nothing -> Right (isVoidReturn $ head xs) 
+                    Nothing -> Right (isVoidReturn $ head xs)
                     (Just y) ->  case last $ getArgsTypes y of
                         (Void _ _) -> if isVoidReturn $ head xs
                                 then Right True

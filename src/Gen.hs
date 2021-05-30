@@ -8,7 +8,7 @@ import Parser
 import MutRec
 import TImisc
 import TI
-import Ssm
+import SSM
 
 import Data.Char
 import Data.List ( intercalate )
@@ -100,7 +100,7 @@ genGlobals [] env = return ([],env)
 genGlobals (g:gs) env = do
     (g', env') <- genVarDecl g [] GlobalScope env
     (res, env'') <- genGlobals gs env'
-    return (Ssm.Global g':res, env'')
+    return (SSM.Global g':res, env'')
 
 genVarDecls :: [VarDecl] -> [Instruct] -> Scope -> GenEnv -> Gen ([Instruct], GenEnv)
 genVarDecls [] c _ env = return (c,  env)
@@ -240,7 +240,7 @@ genFuncCall (FunCall (ID locA "print" locB) args (Just (FunType t t'))) c env = 
     insertFunCall (FunCall (ID locA "print" locB) args (Just (FunType t t')))
     genExps args (BSR printName:AJS (-1):c) env
 genFuncCall (FunCall (ID _ "isEmpty" _) args (Just fType)) c env = do
-    genExps args (LDC 0:Ssm.EQ:c) env
+    genExps args (LDC 0:SSM.EQ:c) env
 genFuncCall (FunCall id args (Just fType)) c env = do
     let c' = (if isVoidFun fType then c else LDR RR:c)
     let c'' = (if Prelude.null args then c' else AJS (negate $ length args):c')
@@ -319,10 +319,10 @@ genOp2Typed (Op2 Con _ _) c env =
 
 genOp2Typed (Op2 op (Just (FunType (TypeBasic _ BasicBool _) _))_) c env = 
     case op of
-        Le  -> return (Ssm.GT:c,env)
-        Ge  -> return (Ssm.LT:c,env)
-        Leq -> return (Ssm.GE:c,env)
-        Geq -> return (Ssm.NE:c,env)
+        Le  -> return (SSM.GT:c,env)
+        Ge  -> return (SSM.LT:c,env)
+        Leq -> return (SSM.GE:c,env)
+        Geq -> return (SSM.NE:c,env)
         _   -> return (op2Func op:c,env)
 genOp2Typed (Op2 op (Just (FunType (ArrayType _ (IdType _) _) _))_) c env =
     return (op2Func op:c,env)
@@ -398,7 +398,7 @@ printArray printA printName = [LABEL printName (LINK 1),
     TRAP 1,
     ResPoint (printName++"ResPoint") (LDL 1),
     LDC 0,
-    Ssm.EQ,
+    SSM.EQ,
     BRT (printName++"End"),
     LDL 1,
     LDH (-1),
@@ -406,7 +406,7 @@ printArray printA printName = [LABEL printName (LINK 1),
     LDL 1,
     LDH 0,
     LDC 0,
-    Ssm.EQ,
+    SSM.EQ,
     BRT (printName++"End"),
     LDC 44,
     TRAP 1,
@@ -440,10 +440,10 @@ genOverloadedOp (Op2 op (Just (ArrayType locA a locB)) opLoc) =
 
 genCompare :: Op2 -> SPLType -> (Instruct, [SsmFunction])
 genCompare op (TypeBasic _ BasicBool _) = case op of
-        Le  -> (Ssm.GT, [])
-        Ge  -> (Ssm.LT, [])
-        Leq -> (Ssm.GE, [])
-        Geq -> (Ssm.NE, [])
+        Le  -> (SSM.GT, [])
+        Ge  -> (SSM.LT, [])
+        Leq -> (SSM.GE, [])
+        Geq -> (SSM.NE, [])
         _   -> (op2Func op, [])
 genCompare op TypeBasic {} = (op2Func op, [])
 genCompare op (TupleType locA (t1,t2) locB) = do
@@ -473,11 +473,11 @@ compArray op compareA compName | op == Eq || op == Neq =
     STL 2,
     ResPoint (compName++"ResPoint") (COMMENT (LDL 1) "End of first list?"), 
     LDC 0,
-    Ssm.EQ,
+    SSM.EQ,
     COMMENT (LDL 2) "End of sec list?", 
     LDC 0,
-    Ssm.EQ,
-    COMMENT Ssm.OR "Any list (or both) Empty?",
+    SSM.EQ,
+    COMMENT SSM.OR "Any list (or both) Empty?",
     STR RR,
     LDR RR,
     BRT (compName++"End"),
@@ -507,15 +507,15 @@ compArray op compareA compName  =
     STL 2,
     ResPoint (compName++"ResPoint") (COMMENT (LDL 1) "End of first list?"),
     LDC 0,
-    Ssm.EQ,
+    SSM.EQ,
     STL 3,
     COMMENT (LDL 2) "End of sec list?",
     LDC 0,
-    Ssm.EQ,
+    SSM.EQ,
     STL 4,
     LDL 3,
     LDL 4,
-    Ssm.OR,
+    SSM.OR,
     BRT (compName++"Ret"),
     LDL 1,
     LDH (-1),
@@ -537,13 +537,13 @@ compArray op compareA compName  =
     STR RR,
     LDL 3,
     LDL 4,
-    Ssm.AND,
+    SSM.AND,
     BRT (compName++"End"),
     LDC (defFromOp op),
     STR RR,
     LDL 3,
     LDC (-1),
-    Ssm.EQ,
+    SSM.EQ,
     BRT (compName++"End"),
     LDR RR,
     NOT,
@@ -567,12 +567,12 @@ closeSqBracket c = LDC 93:TRAP 1:c
 comma c = LDC 44:TRAP 1:c
 
 op2Func :: Op2 -> Instruct
-op2Func Le  = Ssm.LT
-op2Func Ge  = Ssm.GT
-op2Func Leq = Ssm.LE
-op2Func Geq = Ssm.GE
-op2Func Eq  = Ssm.EQ
-op2Func Neq = Ssm.NE
+op2Func Le  = SSM.LT
+op2Func Ge  = SSM.GT
+op2Func Leq = SSM.LE
+op2Func Geq = SSM.GE
+op2Func Eq  = SSM.EQ
+op2Func Neq = SSM.NE
 
 -- ==================== Helper functions ====================
 combineResult :: Gen ([a], GenEnv) -> (GenEnv -> Gen ([a], GenEnv)) -> Gen ([a], GenEnv)

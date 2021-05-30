@@ -1,4 +1,4 @@
-module Ssm where
+module SSM where
     
 import AST
 
@@ -95,9 +95,9 @@ unary = undefined
 size :: Instruct -> Int
 size a | a `elem` nullary = 1
 size (LDResP _) = 2
-size (ResPoint _ i) = Ssm.size i
-size (LABEL _ i) = Ssm.size i
-size (COMMENT i _) = Ssm.size i
+size (ResPoint _ i) = SSM.size i
+size (LABEL _ i) = SSM.size i
+size (COMMENT i _) = SSM.size i
 
 size (SWPRR _ _) = 3
 -- size (LDMH _ _) = 3
@@ -151,9 +151,9 @@ resPoints ass = resolution (findLocations (assemble ass) 0) ass
 
 findLocations :: [Instruct] -> Int -> Map String Int
 findLocations [] loc = Map.empty 
-findLocations (ResPoint key i:xs) loc = singleton key loc `union` findLocations xs (loc + Ssm.size i)
-findLocations (LABEL key i:xs) loc = singleton key loc `union` findLocations xs (loc + Ssm.size i)
-findLocations (x:xs) loc = findLocations xs (loc + Ssm.size x)
+findLocations (ResPoint key i:xs) loc = singleton key loc `union` findLocations xs (loc + SSM.size i)
+findLocations (LABEL key i:xs) loc = singleton key loc `union` findLocations xs (loc + SSM.size i)
+findLocations (x:xs) loc = findLocations xs (loc + SSM.size x)
 
 instance PrettyPrinter SSM where
    pp (SSM globals functions) = 

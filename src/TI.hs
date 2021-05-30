@@ -7,51 +7,6 @@ import Parser
 import ReturnGraph
 import MutRec
 import TImisc
-    -- ( Monomorphization(..),
-    --   Overloaded,
-    --   MGU(mgu),
-    --   Types(apply),
-    --   Subst,
-    --   Scope(..),
-    --   Scheme(OverScheme, Scheme),
-    --   TypeEnv(..),
-    --   TI,
-    --   runTI,
-    --   insert,
-    --   insertID,
-    --   insertMore,
-    --   generalizeFuncs,
-    --   insertOp2TI,
-    --   insertFunCallTI,
-    --   generalize,
-    --   instantiate,
-    --   instantiateOver,
-    --   nullSubst,
-    --   composeSubst,
-    --   newSPLVar,
-    --   getFuncTypes,
-    --   getType,
-    --   op2Type,
-    --   overloadFunction,
-    --   overloadedTypeName,
-    --   overloadedOpName,
-    --   containsIDTypeMaybe,
-    --   containsIDType,
-    --   emptyOL,
-    --   singletonOLOp,
-    --   singletonOLFun,
-    --   unionOL,
-    --   toListOL,
-    --   nullOL,
-    --   injectErrLoc,
-    --   injectErrLocMsg,
-    --   injectErrMsgAddition,
-    --   lookupKey,
-    --   isGoodScope,
-    --   stdLib,
-    --   builtin,
-    --   printEnv,
-    --   printSubst )
 
 
 import Data.Map as Map
@@ -493,9 +448,6 @@ typeCheckExps id monomorph env s [] [] (func:funcs) (t:ts) = do
         let exp = ExpFunction defaultLoc (idLocCreator name) defaultLoc (Just funcType')
         (s2,es',ol) <- typeCheckExps id monomorph env cs1 [] [] funcs ts
         return (s2 `composeSubst` cs1, exp:es',ol)
-
-
-
 
 tiExpsList :: TypeEnv -> [Exp] -> TI (Subst, SPLType, Exp)
 tiExpsList env [e] = do

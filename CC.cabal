@@ -30,17 +30,12 @@ library
     Lexer,
     AST,
     Parser,
+    MutRec,
     ReturnGraph,
     TImisc,
     TI,
-    MutRec,
-    Ssm,
+    SSM,
     Gen
---   other-modules:
---     AST,
---     Parser,
---     TI,
---     MutRec
   hs-source-dirs:
       src
   build-depends:

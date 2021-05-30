@@ -11,10 +11,8 @@ import Lexer
 import Parser
 import AST
 
-
 import System.Directory
 import System.IO.Unsafe
-
 
 -- ==================== Parser checks that test full output ====================
 parserTest1 =  TestCase $ do

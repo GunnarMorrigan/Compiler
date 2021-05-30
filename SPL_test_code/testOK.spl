@@ -1,14 +1,20 @@
-function (n, b, l){
+f (n, b, l){
     print(n);
     print(b);
     print(l);
     return;
 }
 
+g(x,y,z){
+    f(x,y,z);
+    return;
+}
+
 main () :: -> Void{
     [Int] list = 1:2:3:[];
 
-    // Three arguments
-    function(15, False, list);
-}
+    print(1);
 
+    // Three arguments
+    g(15, False, list);
+}
