@@ -44,7 +44,7 @@ getTypeTests = [TestLabel "getTypeTest1" getTypeTest1, TestLabel "getTypeTest2" 
 expTest1 = TestCase (assertEqual "tiExp test 1" expected f)
     where
         f = let (res, s) = runTI (tiExp (TypeEnv Map.empty) (ExpId (idLocCreator "hoi") (Field [Head defaultLoc defaultLoc, Snd defaultLoc defaultLoc, Head defaultLoc defaultLoc]))) in res
-        expected = These (ErrorD (DLoc defaultLoc defaultLoc) "Variable: 'hoi', referenced on Line -1 and, Col -1, has not been defined yet. (i.e. reference before declaration)") (fromList [],IdType (ID defaultLoc "a0" defaultLoc),ExpId (ID defaultLoc "hoi" defaultLoc) (Field [Head defaultLoc defaultLoc,Snd defaultLoc defaultLoc,Head defaultLoc defaultLoc]))
+        expected = These (ErrorD (DLoc defaultLoc defaultLoc) "Variable: 'hoi', referenced on Line -1 and, Col -1, has not been defined yet. (i.e. reference before declaration)") (empty, IdType (ID defaultLoc "a0" defaultLoc),ExpId (ID defaultLoc "hoi" defaultLoc) (Field [Head defaultLoc defaultLoc,Snd defaultLoc defaultLoc,Head defaultLoc defaultLoc]))
 
 -- expTest2 = TestCase (assertEqual "tiExp test 2" expected f)
 --     where

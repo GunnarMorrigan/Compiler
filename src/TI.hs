@@ -377,7 +377,8 @@ typeCheckExps id monomorph env s (e:es) ops funcs (t:ts) = do
     defType <- newSPLVar
     let def = (nullSubst, defType, e)
 
-    (s1, t1, e') <- injectErrMsgAddition def (tiExp env e) (getDLoc e) "typeCheckExps"
+    -- (s1, t1, e') <- injectErrMsgAddition def (tiExp env e) (getDLoc e) "typeCheckExps"
+    (s1, t1, e') <- injectErrLoc def (tiExp env e) (getDLoc e)
     let cs1 = s1 `composeSubst` s
     -- s2 <- injectErrLocMsg nullSubst (mgu (apply cs1 t) t1) (getDLoc e) ("Argument '"++ pp e ++ "' should have type "++ pp t)
     -- s2 <- trace ("Argument '"++ pp e ++ "' should have type "++ pp t ++ " and has "++ pp t1) $  injectErrLoc nullSubst (mgu (apply cs1 t) t1) (getDLoc e)
@@ -471,6 +472,8 @@ tiExpsList env (e:es) = do
 tiExp :: TypeEnv -> Exp -> TI (Subst, SPLType, Exp)
 tiExp (TypeEnv env) (ExpId id (Field [])) = do
     case Map.lookup id env of
+        Just (OverScheme lVars lT lOps lFuncs, _) -> 
+            confess (overloadedAsArgument id)
         Just (scheme,_) -> do
             t <- instantiate scheme 
             return (nullSubst, t, ExpId id (Field []))
@@ -581,6 +584,8 @@ tiFunCall (TypeEnv env) monomorph (FunCall id args _) =
             (s1, args', ol) <- typeCheckExps id monomorph (TypeEnv env) nullSubst args [] [] (init argTypes)
             let returnType = last argTypes
             return (s1, apply s1 returnType, FunCall id args' (Just $ apply s1 t), ol)
+        Just (OverScheme lVars lT lOps lFuncs, _) -> 
+            confess (overloadedAsArgument id)
         Just (scheme, ArgScope) -> do
             t <- instantiate scheme
             funTypes <-  if isFunctionType t
@@ -590,18 +595,31 @@ tiFunCall (TypeEnv env) monomorph (FunCall id args _) =
             let funType = foldr1 FunType funTypes
             s1 <- mgu funType t
             
-            -- let funTypes = trace (pp id ++ " has type " ++ pp t ++ "\n" ++ pp createdTypes) apply s1 createdTypes
 
             (s2, args', ol) <- trace (pp id ++ " has type " ++ pp t ++ ", " ++ pp funType) $ typeCheckExps id monomorph (TypeEnv env) nullSubst args [] [] (init funTypes)
             let returnType = last funTypes
             let cs1 = s2 `composeSubst` s1
             return (cs1, apply cs1 returnType, FunCall id args' (Just $ apply cs1 funType), ol)
-
             -- t <- newSPLVar
             -- dictate (applVarAsFunc id ) >> return (nullSubst, t, FunCall id args Nothing, emptyOL)
+        -- Just (OverScheme lVars lT lOps lFuncs, ArgScope) -> do
+        --     (t, ops, funcs) <- instantiateOver (OverScheme lVars lT lOps lFuncs)
+        --     let ol1 = toOLOpFun ops funcs
+        --     funTypes <-  if isFunctionType t
+        --         then return $ getArgsTypes t
+        --         else replicateM (length args+1) newSPLVar
 
-            -- t <- newSPLVar
-            -- dictate (applVarAsFunc id ) >> return (nullSubst, t, FunCall id args Nothing, emptyOL)
+        --     let funType = foldr1 FunType funTypes
+        --     s1 <- mgu funType t
+            
+
+        --     (s2, args', ol2) <- trace (pp id ++ " has type " ++ pp t ++ ", " ++ pp funType) $ typeCheckExps id monomorph (TypeEnv env) nullSubst args [] [] (init funTypes)
+        --     let returnType = last funTypes
+        --     let cs1 = s2 `composeSubst` s1
+        --     return (cs1, apply cs1 returnType, FunCall id args' (Just $ apply cs1 funType), ol1 `unionOL` ol2)
+        --     -- t <- newSPLVar
+        --     -- dictate (applVarAsFunc id ) >> return (nullSubst, t, FunCall id args Nothing, emptyOL)
+        
         Nothing -> do
             t <- newSPLVar
             dictate (refBeforeDec "Function:" id) >> return (nullSubst, t, FunCall id args Nothing, emptyOL)
@@ -725,8 +743,8 @@ typeInference :: SPL -> Either Error (Subst, TypeEnv, SPL)
 typeInference code = do
     case runTI (tiSPL code) of
         (That (s1, env, spl), state) -> do
-            let SPL code' = apply s1 spl
-            -- let SPL code' = spl
+            -- let SPL code' = apply s1 spl
+            let SPL code' = spl
             -- cleanCode <- removeDeadCode (SPL $ removeMutRec code')
             let cleanCode = SPL $ removeMutRec code'
             -- let updatedCode = apply s1 cleanCode

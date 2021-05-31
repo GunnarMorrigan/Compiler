@@ -1,7 +1,11 @@
 var a = 10;
 
 a(){
+    var x = 10
     return;
+    if (True){
+    print(True);
+    }
 }
 
 
@@ -11,11 +15,11 @@ main(){
 }
 
 
-/*
-complexCombined (a b n) :: [Char] Bool Int -> Void {
+
+complexCombined (a, b, n) :: [Char] Bool Int -> Void {
     [Char] c = [];
-    if(a.isEmpty) {
-        if(a.isEmpty) {
+    if(isEmpty(a)) {
+        if(isEmpty(a)) {
             return;
         }
         return;
@@ -26,5 +30,3 @@ complexCombined (a b n) :: [Char] Bool Int -> Void {
     }
     print (c);
 }
-
- */

@@ -69,12 +69,13 @@ data BasicType
   | BasicChar
   deriving (Eq, Show)
 
-data Stmt = StmtIf Exp [Stmt] (Maybe [Stmt]) Loc
-          | StmtWhile Exp [Stmt] Loc 
-          | StmtAssignVar IDLoc Field Exp (Maybe SPLType)
-          | StmtFuncCall FunCall Loc
-          | StmtReturn (Maybe Exp) Loc
-          deriving (Eq, Show)
+data Stmt 
+  = StmtIf Exp [Stmt] (Maybe [Stmt]) Loc
+  | StmtWhile Exp [Stmt] Loc 
+  | StmtAssignVar IDLoc Field Exp (Maybe SPLType)
+  | StmtFuncCall FunCall Loc
+  | StmtReturn (Maybe Exp) Loc
+  deriving (Eq, Show)
 
 data Exp
   = ExpId IDLoc Field

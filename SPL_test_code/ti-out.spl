@@ -1,19 +1,17 @@
-f (n, b, l, _printa2, _printa3, _printa4) :: a2 a3 a4 (a2 -> Void) (a3 -> Void) (a4 -> Void) -> Void {
-    _printa2(n) /*:: a2 -> Void*/;
-    _printa3(b) /*:: a3 -> Void*/;
-    _printa4(l) /*:: a4 -> Void*/;
+h (x, y) :: Int Int -> Void {
+    print(x) /*:: Int -> Void*/;
     return;
 }
 
-g (x, y, z, _printa12, _printa13, _printa14) :: a12 a13 a14 (a12 -> Void) (a13 -> Void) (a14 -> Void) -> Void {
-    f(x, y, z, _printa12, _printa13, _printa14) /*:: a12 a13 a14 (a12 -> Void) (a13 -> Void) (a14 -> Void) -> Void*/;
-    return;
+f (x, y, k) :: a4 a5 (a4 a5 -> a10) -> a10 {
+    return k(x, y) /*:: a4 a5 -> a10*/;
+}
+
+g (x, y, f) :: a16 a17 (a16 a17 (Int Int -> Void) -> a23) -> a23 {
+    return f(x, y, h) /*:: a16 a17 (Int Int -> Void) -> a23*/;
 }
 
 main () :: Void {
-    [Int] list = (1 : (2 : (3 : [])));
-
-    print(1) /*:: Int -> Void*/;
-    g(15, False, list, _printInt, _printBool, _printArrayInt) /*:: Int Bool [Int] (Int -> Void) (Bool -> Void) ([Int] -> Void) -> Void*/;
+    g(10, 12, f) /*:: Int Int (Int Int (Int Int -> Void) -> Void) -> Void*/;
 }
 

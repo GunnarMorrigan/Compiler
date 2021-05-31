@@ -1,0 +1,11 @@
+f(x, y){
+    return x+y;
+}
+
+g(x, y, f){
+    return f(x,y);
+}
+
+main(){
+    g(10, 12, f);
+}

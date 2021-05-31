@@ -1,0 +1,11 @@
+a (c -> d) -> b
+a (c) -> b
+a b c -> (b a -> c)
+(a, b) -> a
+(a, b) -> b
+((a, b) -> c) a b -> c
+(a b -> c) (a, b) -> c
+a -> c
+b -> Bool
+c -> Char
+c -> Int

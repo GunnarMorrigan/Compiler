@@ -1,20 +1,20 @@
-f (n, b, l){
-    print(n);
-    print(b);
-    print(l);
+f (x, y, k) {
+    //var l = k(x,y);
+    return k(x,y);
+}
+
+g (x, y, f) {
+    //var g = f(y, x, h);
+
+    return f(x, y, h);
+}
+
+h(x,y) :: Int Int -> Void{
+    print(x);
     return;
 }
 
-g(x,y,z){
-    f(x,y,z);
-    return;
+main () :: Void {
+    g(10, 12, f);
 }
 
-main () :: -> Void{
-    [Int] list = 1:2:3:[];
-
-    print(1);
-
-    // Three arguments
-    g(15, False, list);
-}

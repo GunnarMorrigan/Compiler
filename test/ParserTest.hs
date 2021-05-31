@@ -5,6 +5,7 @@ import Control.Monad
 
 import Data.Map as Map
 import Data.List as DL
+import Data.Either
 
 import Error
 import Lexer
@@ -30,10 +31,30 @@ parserTest2 = TestCase $ do
     expected <- readFile  "./test/AutoTestSPL/test2_expected.spl"
     case tokeniseAndParse mainSegments file of
         Right (x, _) -> do
-            assertEqual "ti test 2" expected (pp x)
+            assertEqual "Parser test 2" expected (pp x)
         Left x -> do
             assertFailure $ show x ++ "\n" ++ showPlaceOfError file x
 
+-- ==================== Type parser tests (for extension currying/higher order) ====================
+{-# NOINLINE parserTypeTests #-}
+parserTypeTests = unsafePerformIO $ do
+    file <- readFile  "./test/parser/custom/types.spl"
+    let content = lines file
+    let (errs,tokenTypes) = partitionEithers $ Prelude.map runTokenise content
+    if Prelude.null errs
+        then return $ zipWith (curry parserTypeTest) content tokenTypes
+        else assertFailure $ showError file (Prelude.foldr1 (<>) errs)
+
+parserTypeTest (text,tokens) = TestLabel ("Parser type tests "++ text) $ TestCase $ do
+    case run funType tokens of
+        Right (x, _) ->
+            assertEqual "" text (pp x)
+            -- assertEqual "ti test 2" expected (pp x)
+        Left x -> do
+            assertFailure $ show x
+
+
+-- ==================== Generic parser tests ====================
 {-# NOINLINE parserTestsOnGivenFiles #-}
 parserTestsOnGivenFiles = unsafePerformIO $
     do
@@ -69,9 +90,11 @@ parserTestsSucceeding filepath = TestLabel ("Parser test " ++ filepath) $ TestCa
 --             Right (x, _) -> assertBool "" True 
 
 
-parserTests = 
-      [ 
-      TestLabel "Parser Test 1" parserTest1
-      , TestLabel "Parser Test 2" parserTest2
-      ] ++ 
-      parserTestsOnGivenFiles
+parserTests =
+    [ TestLabel "Parser Test 1" parserTest1
+    , TestLabel "Parser Test 2" parserTest2
+    ]
+    ++
+    parserTestsOnGivenFiles
+    ++
+    parserTypeTests
