@@ -1,17 +1,13 @@
-h (x, y) :: Int Int -> Void {
-    print(x) /*:: Int -> Void*/;
-    return;
+f (x) :: a2 -> a5 {
+    return g(x) /*:: a2 -> a5*/;
 }
 
-f (x, y, k) :: a4 a5 (a4 a5 -> a10) -> a10 {
-    return k(x, y) /*:: a4 a5 -> a10*/;
-}
-
-g (x, y, f) :: a16 a17 (a16 a17 (Int Int -> Void) -> a23) -> a23 {
-    return f(x, y, h) /*:: a16 a17 (Int Int -> Void) -> a23*/;
+g (x) :: a2 -> a5 {
+    return f(x) /*:: a2 -> a3*/;
 }
 
 main () :: Void {
-    g(10, 12, f) /*:: Int Int (Int Int (Int Int -> Void) -> Void) -> Void*/;
+    g(42) /*:: Int -> a3*/;
+    print(1) /*:: Int -> Void*/;
 }
 

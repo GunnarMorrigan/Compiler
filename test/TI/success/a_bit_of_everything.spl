@@ -22,7 +22,7 @@ facI ( n ) :: Int -> Int {
 
 // A main function to check the results
 // It takes no arguments, so the type looks like this:
-main ( ) :: Void {
+main ( ) :: -> Void {
     var n = 0;
     var facN = 1;
     var ok = True;

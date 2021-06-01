@@ -1,20 +1,12 @@
-f (x, y, k) {
-    //var l = k(x,y);
-    return k(x,y);
+f (x) {
+	return g (x);
 }
 
-g (x, y, f) {
-    //var g = f(y, x, h);
-
-    return f(x, y, h);
+g (x) {
+	return f (x);
 }
 
-h(x,y) :: Int Int -> Void{
-    print(x);
-    return;
+main () {
+    g(42);
+	print(1);
 }
-
-main () :: Void {
-    g(10, 12, f);
-}
-

@@ -33,13 +33,13 @@ rtgaStmtsForLevel stmts (ID locA fname locB) fType =
         [] -> case fType of
             Nothing -> Right True 
             (Just x) -> 
-                case last (getArgsTypes x) of
+                case getReturnType x of
                     (Void _ _) -> Right True 
                     t -> Left (missingReturn fname t locA)
         xs ->  if allTheSame (Prelude.map isVoidReturn xs) 
                 then case fType of
                     Nothing -> Right (isVoidReturn $ head xs)
-                    (Just y) ->  case last $ getArgsTypes y of
+                    (Just y) ->  case getReturnType y of
                         (Void _ _) -> if isVoidReturn $ head xs
                                 then Right True
                                 else let l = getLocReturn (last xs) in Left (expectedReturn fname (Void l l) "non Void" l)

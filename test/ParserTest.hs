@@ -38,7 +38,7 @@ parserTest2 = TestCase $ do
 -- ==================== Type parser tests (for extension currying/higher order) ====================
 {-# NOINLINE parserTypeTests #-}
 parserTypeTests = unsafePerformIO $ do
-    file <- readFile  "./test/parser/custom/types.spl"
+    file <- readFile  "./test/parser/extension/types.spl"
     let content = lines file
     let (errs,tokenTypes) = partitionEithers $ Prelude.map runTokenise content
     if Prelude.null errs

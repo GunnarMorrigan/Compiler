@@ -74,7 +74,7 @@ insertOp2 (Op2 op (Just t) loc) = do
 insertFunCall :: FunCall -> Gen ()
 insertFunCall (FunCall (ID locA id locB) args (Just (FunType t t'))) = do
     (ifS, globalS, (ops, funcCalls)) <- get
-    let f = Map.insert (overloadedTypeName id t) (FunCall (ID locA id locB)[] (Just $ FunType t t')) funcCalls
+    let f = Map.insert (overloadedTypeName id (head t)) (FunCall (ID locA id locB)[] (Just $ FunType t t')) funcCalls
     put (ifS, globalS, (ops, f))
 
 -- ===== Generation =====
@@ -224,19 +224,19 @@ genStmt (StmtReturn exp loc) c (ID locA name locB) env =
 genStmt stmt c (ID locA name locB) env = throwError $ Error defaultLoc ("Failed to catch an statement in function " ++ name ++" object:\n" ++ show stmt)
 
 genFuncCall :: FunCall -> [Instruct] -> GenEnv -> Gen ([Instruct], GenEnv)
-genFuncCall (FunCall (ID locA "print" locB) args (Just (FunType (TypeBasic locA' t locB') t'))) c env =
+genFuncCall (FunCall (ID locA "print" locB) args (Just (FunType (TypeBasic locA' t locB':xs) t'))) c env =
     case t of
         BasicInt  -> genExps args (TRAP 0:c) env
         BasicChar -> genExps args (TRAP 1:c) env
         BasicBool -> do
             let printName = overloadedTypeName "print" (TypeBasic locA' t locB')
-            insertFunCall (FunCall (ID locA "print" locB) args (Just (FunType (TypeBasic locA'  t locB') t')))
+            insertFunCall (FunCall (ID locA "print" locB) args (Just (FunType (TypeBasic locA' t locB':xs) t')))
             genExps args (BSR printName:AJS (-1):c) env
 -- genFuncCall (FunCall (ID locA "print" locB) args (Just (FunType (ArrayType locA' (IdType id) locB') t'))) c env = do
 --     let printName = "_printPolyEmptyList"
 --     genExps args (COMMENT (LDC 91) "_printPolyEmptyList":TRAP 1:LDC 93:TRAP 1:c) env
 genFuncCall (FunCall (ID locA "print" locB) args (Just (FunType t t'))) c env = do
-    let printName = overloadedTypeName "print" t
+    let printName = overloadedTypeName "print" (head t)
     insertFunCall (FunCall (ID locA "print" locB) args (Just (FunType t t')))
     genExps args (BSR printName:AJS (-1):c) env
 genFuncCall (FunCall (ID _ "isEmpty" _) args (Just fType)) c env = do
@@ -317,20 +317,20 @@ genOp2Typed (Op2 Or _ _) c env = return (OR:c, env)
 genOp2Typed (Op2 Con _ _) c env =
     return (STMH 2:c,env)
 
-genOp2Typed (Op2 op (Just (FunType (TypeBasic _ BasicBool _) _))_) c env = 
+genOp2Typed (Op2 op (Just (FunType (TypeBasic _ BasicBool _:xs) _)) _) c env = 
     case op of
         Le  -> return (SSM.GT:c,env)
         Ge  -> return (SSM.LT:c,env)
         Leq -> return (SSM.GE:c,env)
         Geq -> return (SSM.NE:c,env)
         _   -> return (op2Func op:c,env)
-genOp2Typed (Op2 op (Just (FunType (ArrayType _ (IdType _) _) _))_) c env =
+genOp2Typed (Op2 op (Just (FunType (ArrayType _ (IdType _) _:xs) _))_) c env =
     return (op2Func op:c,env)
-genOp2Typed (Op2 op (Just (FunType TypeBasic{} _))_) c env = 
+genOp2Typed (Op2 op (Just (FunType (TypeBasic{}:xs) _))_) c env = 
     return (op2Func op:c,env)
 genOp2Typed (Op2 op (Just (FunType t t')) loc) c env = trace ("THIS IS the type:\n"++ pp t) $ do
-    let func = overloadedOpName op t
-    insertOp2 (Op2 op (Just t) loc)
+    let func = overloadedOpName op (head t)
+    insertOp2 (Op2 op (Just (FunType t t')) loc)
     return (BSR func:AJS (-2):LDR RR:c, env)
 
 -- ==================== Overloading functions ====================
@@ -340,7 +340,7 @@ genOverloadedFuns funcs = concatMap (snd . genPrint) $ Map.elems (getOverloadedF
 getOverloadedFuns :: [(String, FunCall)] -> Map String SPLType
 getOverloadedFuns [] = Map.empty
 getOverloadedFuns ((name, FunCall (ID _ "print" _) _ (Just (FunType t t'))):xs) = 
-    getOverloadedFun "print" t `Map.union` getOverloadedFuns xs
+    getOverloadedFun "print" (head t) `Map.union` getOverloadedFuns xs
 
 getOverloadedFun :: String -> SPLType -> Map String SPLType
 getOverloadedFun funcName (TypeBasic _ BasicInt _) = Map.empty 
@@ -590,9 +590,9 @@ insertComment comment gen = BI.first f <$> gen
 
 -- ==================== Environment ====================
 constructEnv :: GenEnv -> SPLType -> [IDLoc] -> [VarDecl] -> GenEnv
-constructEnv env fType xs ys = Map.fromList decls `Map.union` Map.fromList args `Map.union` env
+constructEnv env (FunType argsTypes retType) xs ys = Map.fromList decls `Map.union` Map.fromList args `Map.union` env
     where
-        args = zipWith3 (\ id loc typ -> (id, L loc typ)) xs [(negate (length xs)-1 )..] (init $ getArgsTypes fType)
+        args = zipWith3 (\ id loc typ -> (id, L loc typ)) xs [(negate (length xs)-1 )..] argsTypes
         decls = zipWith (\(VarDeclType t id e) b -> (id, L b t) ) ys [1..]
 
 -- ==================== Instructions ====================

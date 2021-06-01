@@ -12,7 +12,7 @@ import Data.Set as Set
 import Data.Maybe
 import Data.These
 import Data.Bifunctor as BI ( Bifunctor(first) )
-import Data.List hiding (find)
+import Data.List as List hiding (find) 
 
 import Control.Applicative
 import Control.Monad.Reader
@@ -75,11 +75,11 @@ insertOp2TI (Op2 op (Just t) loc) =
 
 insertFunCallTI :: FunCall -> TI ()
 insertFunCallTI (FunCall (ID locA id locB) args (Just (FunType t t'))) =
-     if containsIDType t
+     if containsIDTypeList t
         then confess (ErrorD (DLoc locA locB) "Trying to insert overloaded op2 functions with polymorphic type")
         else do
             (s, (ops, funcCalls)) <- get
-            let f = Map.insert (overloadedTypeName id t) (FunCall (ID locA id locB)[] (Just $ FunType t t')) funcCalls
+            let f = Map.insert (overloadedTypeName id (head t)) (FunCall (ID locA id locB)[] (Just $ FunType t t')) funcCalls
             put (s, (ops, f))
 
 -- ===================== Scheme ============================
@@ -291,9 +291,9 @@ instance MGU a => MGU (Maybe a) where
     generateError _ Nothing = undefined
 
 instance MGU SPLType where
-    mgu (BracketType a) (BracketType b) = mgu a b
-    mgu (BracketType a) b = mgu a b
-    mgu a (BracketType b) = mgu a b
+    -- mgu (BracketType a) (BracketType b) = mgu a b
+    -- mgu (BracketType a) b = mgu a b
+    -- mgu a (BracketType b) = mgu a b
 
     mgu (FunType arg ret) (FunType arg' ret') = do
         s1 <- mgu arg arg'
@@ -361,7 +361,7 @@ getFuncTypes ((FunDecl funName args (Just fType) vars stmts):xs) = do
 getFuncTypes ((FunDecl funName args Nothing vars stmts):xs) = do
     argTypes <- replicateM (length args) newSPLVar
     retType <- newSPLVar
-    let fType = if not (Prelude.null argTypes) then foldr1 FunType (argTypes ++ [retType]) else retType
+    let fType = FunType argTypes  retType
     fTypes <- getFuncTypes xs
     return $ (funName, fType, GlobalScope):fTypes
 
@@ -410,50 +410,48 @@ op2Type x e1loc e2loc | x == Plus || x == Min || x == Mult || x == Div || x == M
     let e2T = TypeBasic (getFstLoc e2loc) BasicInt (getSndLoc e2loc)
 
     let retType = TypeBasic defaultLoc  BasicInt defaultLoc
-    return (e1T, e2T, retType, FunType e1T (FunType e2T retType))
+    return (e1T, e2T, retType, FunType [e1T,e2T] retType)
 op2Type x e1loc e2loc | x == Eq || x == Neq = do
     tv <- newSPLVar
 
     let t = TypeBasic defaultLoc BasicBool defaultLoc
     let t = TypeBasic defaultLoc BasicBool defaultLoc
-    return (tv, tv, t, FunType tv (FunType tv t))
+    return (tv, tv, t, FunType [tv,tv] t)
 op2Type x e1loc e2loc | x == Le || x == Ge || x == Leq || x == Geq  = do
     tv <- newSPLVarLoc (getFstLoc e1loc)
 
     let t = TypeBasic defaultLoc BasicBool defaultLoc
-    return (tv, tv, t, FunType tv (FunType tv t))
+    return (tv, tv, t, FunType [tv,tv] t)
 op2Type x e1loc  e2loc | x== And || x == Or = do
     let e1T = TypeBasic (getFstLoc e1loc) BasicBool (getSndLoc e1loc)
     let e2T = TypeBasic (getFstLoc e2loc) BasicBool (getSndLoc e2loc)
 
     let t = TypeBasic defaultLoc BasicBool defaultLoc
-    return (e1T, e2T, t, FunType e1T (FunType e2T t))
+    return (e1T, e2T, t, FunType [e1T,e2T] t)
 op2Type Con e1loc e2loc = do
     e1T <- newSPLVarLoc (getFstLoc e1loc)
 
     let e2T = ArrayType (getFstLoc e1loc) e1T (getFstLoc e1loc)
     let t = ArrayType defaultLoc e1T defaultLoc
-    return (e1T, e2T, t, FunType e1T (FunType e2T t))
+    return (e1T, e2T, t, FunType [e1T,e2T] t)
 
 -- ===================== Overloading ============================
 overloadFunction :: [IDLoc] -> SPLType -> TypeEnv ->  [Op2Typed] -> [FunCall] -> ([IDLoc], SPLType, Scheme)
-overloadFunction args fType env ops funcs = do
+overloadFunction args (FunType argsTypes retType) env ops funcs = do
     let (argsOps, ops', typeOps) = combine $ Prelude.map opToStuff ops
     let (argsFuncs, funcs', typeFuncs) = combine $ Prelude.map funcToStuff funcs
     let args' = args ++ argsOps ++ argsFuncs
     -- trace ("overloadFunction\n" ++ show (zip argsFuncs typeFuncs) ++ "\nend overloadFunction") $ do
-    let fType' =
-                let typesOfArgs = getArgsTypes fType
-                in foldr1 FunType (init typesOfArgs ++ typeOps ++ typeFuncs ++ [last typesOfArgs] )
+    let fType' = FunType (argsTypes ++ typeOps ++ typeFuncs) retType
     let scheme = generalizeOver env fType' ops funcs
     (args', fType', scheme)
     where
         combine [] = ([],[],[])
         combine (x:xs) = (\(a,b,c) (as,bs,cs) -> (a:as,b:bs,c:cs) ) x (combine xs)
         opToStuff (Op2 op (Just (FunType t t')) loc) =
-            (idLocCreator $ overloadedOpName op t,Op2 op (Just (FunType t t')) loc, FunType t t')
+            (idLocCreator $ overloadedOpName op (head t),Op2 op (Just (FunType t t')) loc, FunType t t')
         funcToStuff (FunCall (ID locA "print" locB) args (Just (FunType t t'))) =
-            (idLocCreator $ overloadedTypeName "print" t,FunCall (ID locA "print" locB) args (Just (FunType t t')), FunType t t')
+            (idLocCreator $ overloadedTypeName "print" (head t), FunCall (ID locA "print" locB) args (Just (FunType t t')), FunType t t')
         funcToStuff (FunCall id args (Just (FunType t t'))) | "_" `isPrefixOf` pp id = 
             (id,FunCall id args (Just (FunType t t')), FunType t t' ) 
 
@@ -467,7 +465,7 @@ typeToName :: SPLType -> String
 typeToName (TypeBasic _ x _) = pp x
 typeToName (TupleType _ (t1,t2) _) = "Tuple" ++ typeToName t1 ++ typeToName t2
 typeToName (ArrayType _ a1 _) = "Array"++ typeToName a1
-typeToName (FunType arg f) = typeToName arg ++"-"++ typeToName f
+typeToName (FunType arg f) = intercalate "-" (Prelude.map typeToName arg) ++ "-" ++ typeToName f
 typeToName (Void _ _) = "Void"
 typeToName (IdType id) = pp id
 
@@ -483,13 +481,16 @@ containsIDTypeMaybe :: Maybe SPLType -> Bool
 containsIDTypeMaybe Nothing = False
 containsIDTypeMaybe (Just t) = containsIDType t
 
+containsIDTypeList :: [SPLType] -> Bool
+containsIDTypeList (x:xs) = List.foldr ((&&) . containsIDType) False xs
+
 containsIDType :: SPLType -> Bool
 containsIDType (Void _ _) = False
 containsIDType TypeBasic {} = False
 containsIDType (IdType _) = True
 containsIDType (TupleType _ (t1, t2) _) = containsIDType t1 || containsIDType t2
 containsIDType (ArrayType _ a1 _) = containsIDType a1
-containsIDType (FunType arg f) = containsIDType arg || containsIDType f
+containsIDType (FunType arg f) = containsIDTypeList arg || containsIDType f
 
 data Overloaded = OL (Map String Op2Typed) (Map String FunCall)
 
@@ -578,11 +579,11 @@ stdLib :: TI TypeEnv
 stdLib = do
     let env = TypeEnv Map.empty
     t1 <- newSPLVar
-    let isEmptyType = FunType (ArrayType defaultLoc t1 defaultLoc) (TypeBasic defaultLoc BasicBool defaultLoc)
+    let isEmptyType = FunType [ArrayType defaultLoc t1 defaultLoc] (TypeBasic defaultLoc BasicBool defaultLoc)
     let env' = TImisc.insert env (idLocCreator "isEmpty") (generalize env isEmptyType) GlobalScope
 
     t2 <- newSPLVar
-    let printType = FunType t2 (Void defaultLoc defaultLoc)
+    let printType = FunType [t2] (Void defaultLoc defaultLoc)
     let env'' = TImisc.insert env' (idLocCreator "print") (generalize env' printType) GlobalScope
     return env''
 

@@ -29,10 +29,11 @@ data SPLType
     | TupleType Loc (SPLType, SPLType) Loc
     | ArrayType Loc SPLType Loc
     | IdType IDLoc
-    | FunType SPLType SPLType
+
+    | FunType [SPLType] SPLType
     | Void Loc Loc
     
-    | BracketType SPLType
+--    | BracketType SPLType
     deriving (Show)
 
 
@@ -61,7 +62,8 @@ isFunctionType _ = False
 
 
 isVoidFun :: SPLType -> Bool
-isVoidFun x = last (getArgsTypes x) == Void (Loc (-1) (-1)) (Loc (-1) (-1))
+isVoidFun (FunType _ ret) = ret == Void (Loc (-1) (-1)) (Loc (-1) (-1))
+isVoidFun _ = False
 
 data BasicType
   = BasicInt
@@ -229,7 +231,7 @@ instance LOC SPLType where
   getDLoc (TypeBasic locA  _ locB) = DLoc locA locB
   getDLoc (ArrayType locA  _ locB) =  DLoc locA locB
   getDLoc (TupleType locA  _ locB) =  DLoc locA locB
-  getDLoc (FunType arg ret) = DLoc (getFstLoc arg) (getSndLoc ret)
+  getDLoc (FunType arg ret) = DLoc (getFstLoc $ head arg) (getSndLoc ret)
   getDLoc (IdType idloc) =  getDLoc idloc
   getDLoc (Void locA locB) = DLoc locA locB
 
@@ -342,18 +344,21 @@ instance PrettyPrinter SPLType where
   pp (IdType id) = pp id
   -- Prints function types haskell style:
   -- pp (FunType arg ret) = pp arg ++ " -> " ++ pp ret
-  pp (FunType arg ret) = let args = getArgsTypes (FunType arg ret) in concatMap (\x -> ppFuncs x ++ " "  ) (init args) ++ "-> " ++ pp (last args)
+  pp (FunType args ret) = concatMap (\x -> ppFuncs x ++ " "  ) args ++ "-> " ++ pp ret
     where ppFuncs x = if isFunctionType x then "("++ pp x ++")" else pp x
   pp (Void _ _) = "Void"
 
-  pp (BracketType t) = "(" ++ pp t ++ ")"
+  -- pp (BracketType t) = "(" ++ pp t ++ ")"
 
 
-getArgsTypes :: SPLType -> [SPLType]
-getArgsTypes (FunType arg ret) = arg:getArgsTypes ret
-getArgsTypes (BracketType x) = [x]
-getArgsTypes x = [x]
+getAllTypes :: SPLType -> [SPLType]
+getAllTypes (FunType args ret) = args ++ [ret]
 
+getArgTypes :: SPLType -> [SPLType]
+getArgTypes (FunType args ret) = args
+
+getReturnType :: SPLType -> SPLType
+getReturnType (FunType args ret) = ret
 
 instance PrettyPrinter BasicType where
   pp BasicInt = "Int"

@@ -181,17 +181,19 @@ splType = bracketType <|> rigidType <|> idType <|> voidType
 funType :: Parser (Token, Loc, Loc) SPLType
 funType = do
   ys <- many'' splType
-  ret <- case length ys of
-    0 -> Just <$> retType
-    1 -> optional retType
-    _ -> Just <$> retType
-  let all = if isJust ret
-      then ys ++ [fromJust ret]
-      else ys
-  case length all of
-    0 -> undefined 
-    1 -> return $ head all
-    _ -> return $ foldr1 FunType all
+  FunType ys <$> retType
+  -- ys <- many'' splType
+  -- ret <- case length ys of
+  --   0 -> Just <$> retType
+  --   1 -> optional retType
+  --   _ -> Just <$> retType
+  -- let all = if isJust ret
+  --     then ys ++ [fromJust ret]
+  --     else ys
+  -- case length all of
+  --   0 -> undefined 
+  --   1 -> return $ 
+  --   _ -> return $ foldr1 FunType all
 
 
 -- ===== RetType =====
@@ -210,9 +212,10 @@ bracketType = do
   pToken BrackOToken
   t <- funType
   pToken BrackCToken
-  if isFunctionType t
-    then return $ BracketType t
-    else return t
+  return t
+  -- if isFunctionType t
+  --   then return $ BracketType t
+  --   else return t
 
 
 typeBasic :: Parser (Token, Loc, Loc) SPLType

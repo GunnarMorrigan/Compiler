@@ -153,7 +153,7 @@ funcCallLessArgs id = ErrorD (getDLoc id) ("Function: '" ++ pp id ++ "',  " ++ s
 
 applVarAsFunc id = ErrorD (getDLoc id) ("Variable: '" ++ pp id ++ "', is being used as a function  " ++ showLoc id)
 
-overloadedAsArgument id = ErrorD (getDLoc id) ("Function: '" ++ pp id ++ "', uses unclear overloading. \nUsing this as a higher order function is not allowed. \nProviding more rigid type signature may help.")
+overloadedAsArgument id = ErrorD (getDLoc id) ("Function: '" ++ pp id ++ "', uses unclear overloading. \nUsing '" ++ pp id  ++ "' as a higher order function is not allowed. \nProviding a fully rigid type signature may help.")
 
 -- ========== Colors ==========
 reset = "\x1b[0m"
