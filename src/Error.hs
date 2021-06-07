@@ -155,6 +155,8 @@ applVarAsFunc id = ErrorD (getDLoc id) ("Variable: '" ++ pp id ++ "', is being u
 
 overloadedAsArgument id = ErrorD (getDLoc id) ("Function: '" ++ pp id ++ "', uses unclear overloading. \nUsing '" ++ pp id  ++ "' as a higher order function is not allowed. \nProviding a fully rigid type signature may help.")
 
+appliedStdOnFunction stds id loc = ErrorD loc ("Cannot apply: " ++ p stds ++ " to function: '" ++ pp id ++ "'")
+  where p x = intercalate ", " (map pp x)
 -- ========== Colors ==========
 reset = "\x1b[0m"
 bright = "\x1b[1m"

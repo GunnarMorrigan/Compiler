@@ -1,12 +1,16 @@
-f (x) {
-	return g (x);
+var x = 10;
+
+app(x, f){
+    var y = f.hd;
+    return f(x);
 }
 
-g (x) {
-	return f (x);
+
+equal(x, y){
+    x = 10;
+    return x == y;
 }
 
-main () {
-    g(42);
-	print(1);
+correct(x, y) :: Int Int -> Bool{
+    return equal(x, y);
 }

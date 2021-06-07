@@ -154,7 +154,7 @@ funDecl =
     <*> (pToken BrackOToken *> customSepBy CommaToken (pToken CommaToken) idPLoc <* pToken BrackCToken)
     <*> functionType
     <*> (pToken CBrackOToken *> many' varDecl)
-    <*> some stmt
+    <*> some' stmt
     <* pToken CBrackCToken
 
 -- ===== FunType =====
@@ -375,7 +375,7 @@ expTuple = (\a (b,c) -> ExpTuple a b c) <$> firstLocParser <*> pLastLocParser tu
     tuple = pToken BrackOToken *> ((,) <$> expParser <* pToken CommaToken <*> expParser) <* pToken BrackCToken
 
 expFunCall :: Parser (Token, Loc, Loc) Exp
-expFunCall = (\a (b,c) -> ExpFunCall a b c  ) <$> firstLocParser <*> pLastLocParser funCall
+expFunCall = ExpFunCall <$> funCall
 
 basicExpParser :: Parser (Token, Loc, Loc) Exp
 basicExpParser =
@@ -406,7 +406,7 @@ standardFunctionP =
 
 -- ===================== FunCall ============================
 funCall :: Parser (Token, Loc, Loc) FunCall
-funCall = FunCall <$> idPLoc <*> (pToken BrackOToken *> actArgs <* pToken BrackCToken) <*> pure Nothing
+funCall = (\a b (c,d) -> FunCall a b c d Nothing ) <$> firstLocParser <*> idPLoc <*> pLastLocParser (pToken BrackOToken *> actArgs <* pToken BrackCToken)
 
 -- ===================== ActArgs ============================
 actArgs = customSepBy CommaToken (pToken CommaToken) expParser
@@ -464,6 +464,7 @@ customSepBy sepToken sep elem = Parser $ \input ->
 
 many'' :: Parser (Token, Loc, Loc) a -> Parser (Token, Loc, Loc) [a]
 many'' p = ((:) <$> p <*> many p) <|||> pure []
+
 some'' :: Parser (Token, Loc, Loc) a -> Parser (Token, Loc, Loc) [a]
 some'' p = (:) <$> p <*> many'' p
 

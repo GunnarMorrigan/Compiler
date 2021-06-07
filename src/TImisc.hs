@@ -74,12 +74,12 @@ insertOp2TI (Op2 op (Just t) loc) =
             put (s, (Map.insert (overloadedOpName op t) (Op2 op (Just t) loc) ops, funcCalls))
 
 insertFunCallTI :: FunCall -> TI ()
-insertFunCallTI (FunCall (ID locA id locB) args (Just (FunType t t'))) =
+insertFunCallTI (FunCall locA id args locB (Just (FunType t t'))) =
      if containsIDTypeList t
         then confess (ErrorD (DLoc locA locB) "Trying to insert overloaded op2 functions with polymorphic type")
         else do
             (s, (ops, funcCalls)) <- get
-            let f = Map.insert (overloadedTypeName id (head t)) (FunCall (ID locA id locB)[] (Just $ FunType t t')) funcCalls
+            let f = Map.insert (overloadedTypeName (getID id) (head t)) (FunCall locA id [] locB (Just (FunType t t'))) funcCalls
             put (s, (ops, f))
 
 -- ===================== Scheme ============================
@@ -225,9 +225,9 @@ instance Types Exp where
         let e2' = apply s e2
         let op' = apply s op
         ExpOp2 locA e1' op'  e2' locB
-    apply s (ExpFunCall locA fCall locB) =  do
+    apply s (ExpFunCall fCall) =  do
         let fCall' = apply s fCall
-        ExpFunCall locA fCall' locB
+        ExpFunCall fCall'
     apply s (ExpList locA es locB typ) = do
         let es' = apply s es
         ExpList locA es' locB (apply s typ)
@@ -247,13 +247,13 @@ instance Types Op2Typed where
     ftv _ = undefined
 
 instance Types FunCall where
-    apply s (FunCall id es (Just t)) = do
+    apply s (FunCall locA id es locB (Just t)) = do
         let es' = apply s es
-        FunCall id es' (Just $ apply s t)
-    apply s (FunCall id es Nothing) = 
+        FunCall locA id es' locB (Just $ apply s t)
+    apply s (FunCall locA id es locB Nothing) = 
         let es' = apply s es in
-        FunCall id es' Nothing
-    ftv (FunCall (ID locA name locB) es (Just t)) = ftv t
+        FunCall locA id es' locB Nothing
+    ftv (FunCall _ id es _ (Just t)) = ftv t
     ftv _ = undefined
 
 
@@ -264,11 +264,18 @@ newSPLVar =
         return $ IdType (idLocCreator ('a':show s))
 
 
-newSPLVarLoc :: Loc -> TI SPLType
-newSPLVarLoc loc =
+newSPLVarLoc :: Loc -> Loc -> TI SPLType
+newSPLVarLoc locA locB =
     do  (s,overloaded) <- get
         put (s+1,overloaded)
-        return $ IdType (ID loc ('a':show s) loc )
+        return $ IdType (ID locA ('a':show s) locB )
+
+
+newSPLVarDLoc :: ErrorLoc -> TI SPLType
+newSPLVarDLoc (DLoc locA locB) =
+    do  (s,overloaded) <- get
+        put (s+1,overloaded)
+        return $ IdType (ID locA ('a':show s) locB )
 
 -- ===================== Most General Unifier ============================
 class MGU a where
@@ -324,10 +331,10 @@ instance MGU SPLType where
 
     generateError t1 t2 = case getFstLoc t1 `compare` getFstLoc t2 of
         LT -> ErrorD (getDLoc t2) ("Type "++ pp t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
-        GT -> ErrorD (getDLoc t1) ("Type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
+        GT -> ErrorD (getDLoc t1) ("Type "++ pp t1 ++" "++ show  t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
         EQ -> case getDLoc t2 of
-                        (DLoc (Loc (-1) (-1)) _) -> Error defaultLoc ("Types do not unify: " ++ pp t1 ++ " vs. " ++ pp t2)
-                        x -> ErrorD x ("Type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
+                (DLoc (Loc (-1) (-1)) _) -> Error defaultLoc ("Types do not unify: " ++ pp t1 ++ " vs. " ++ pp t2)
+                x -> ErrorD x ("Type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
 
 varBind :: IDLoc -> SPLType -> TI Subst
 varBind id (IdType t) | id == t = return nullSubst
@@ -370,8 +377,9 @@ getType t [] = do
     tv <- newSPLVar
     return (nullSubst, tv, tv)
 getType t [Head locA locB] = do
-    tv <- newSPLVar
-    let t' = ArrayType (getFstLoc t) tv (getSndLoc t)
+    tv <- newSPLVarLoc locA locB
+
+    let t' = ArrayType (locA) tv (locB)
     s1 <- mgu t t'
     return (s1, apply s1  t', tv)
 getType t [Tail loc _] = case t of
@@ -382,7 +390,7 @@ getType t [Tail loc _] = case t of
         let t' = ArrayType (getFstLoc t) tv (getSndLoc t)
         s1 <- mgu t t'
         return (s1, apply s1 t', t')
-getType t [Fst loc _] = case t of
+getType t [Fst locA locB] = case t of
     TupleType _ (a, b) _ -> do
         return(nullSubst, t, a)
     _ -> do
@@ -409,16 +417,17 @@ op2Type x e1loc e2loc | x == Plus || x == Min || x == Mult || x == Div || x == M
     let e1T = TypeBasic (getFstLoc e1loc) BasicInt (getSndLoc e1loc)
     let e2T = TypeBasic (getFstLoc e2loc) BasicInt (getSndLoc e2loc)
 
-    let retType = TypeBasic defaultLoc  BasicInt defaultLoc
+    let retType = TypeBasic (getFstLoc e1loc) BasicInt (getSndLoc e2loc)
     return (e1T, e2T, retType, FunType [e1T,e2T] retType)
 op2Type x e1loc e2loc | x == Eq || x == Neq = do
-    tv <- newSPLVar
+    e1T <- newSPLVarLoc (getFstLoc e1loc) (getSndLoc e1loc)
+    let IdType (ID _ id _) = e1T
+    let e2T = IdType (ID (getFstLoc e2loc) id (getSndLoc e2loc))
 
-    let t = TypeBasic defaultLoc BasicBool defaultLoc
-    let t = TypeBasic defaultLoc BasicBool defaultLoc
-    return (tv, tv, t, FunType [tv,tv] t)
+    let t = TypeBasic (getFstLoc e1loc) BasicBool (getSndLoc e2loc)
+    return (e1T, e2T, t, FunType [e1T,e2T] t)
 op2Type x e1loc e2loc | x == Le || x == Ge || x == Leq || x == Geq  = do
-    tv <- newSPLVarLoc (getFstLoc e1loc)
+    tv <- newSPLVarLoc (getFstLoc e1loc) (getSndLoc e1loc)
 
     let t = TypeBasic defaultLoc BasicBool defaultLoc
     return (tv, tv, t, FunType [tv,tv] t)
@@ -426,13 +435,13 @@ op2Type x e1loc  e2loc | x== And || x == Or = do
     let e1T = TypeBasic (getFstLoc e1loc) BasicBool (getSndLoc e1loc)
     let e2T = TypeBasic (getFstLoc e2loc) BasicBool (getSndLoc e2loc)
 
-    let t = TypeBasic defaultLoc BasicBool defaultLoc
+    let t = TypeBasic (getFstLoc e1loc) BasicBool (getSndLoc e2loc)
     return (e1T, e2T, t, FunType [e1T,e2T] t)
 op2Type Con e1loc e2loc = do
-    e1T <- newSPLVarLoc (getFstLoc e1loc)
+    e1T <- newSPLVarLoc (getFstLoc e1loc) (getSndLoc e1loc)
 
     let e2T = ArrayType (getFstLoc e1loc) e1T (getFstLoc e1loc)
-    let t = ArrayType defaultLoc e1T defaultLoc
+    let t = ArrayType (getFstLoc e1loc) e1T (getSndLoc e2loc)
     return (e1T, e2T, t, FunType [e1T,e2T] t)
 
 -- ===================== Overloading ============================
@@ -450,10 +459,10 @@ overloadFunction args (FunType argsTypes retType) env ops funcs = do
         combine (x:xs) = (\(a,b,c) (as,bs,cs) -> (a:as,b:bs,c:cs) ) x (combine xs)
         opToStuff (Op2 op (Just (FunType t t')) loc) =
             (idLocCreator $ overloadedOpName op (head t),Op2 op (Just (FunType t t')) loc, FunType t t')
-        funcToStuff (FunCall (ID locA "print" locB) args (Just (FunType t t'))) =
-            (idLocCreator $ overloadedTypeName "print" (head t), FunCall (ID locA "print" locB) args (Just (FunType t t')), FunType t t')
-        funcToStuff (FunCall id args (Just (FunType t t'))) | "_" `isPrefixOf` pp id = 
-            (id,FunCall id args (Just (FunType t t')), FunType t t' ) 
+        funcToStuff (FunCall locA id args locB (Just (FunType t t'))) | getID id == "print" =
+            (idLocCreator $ overloadedTypeName "print" (head t), FunCall locA id args locB (Just (FunType t t')), FunType t t')
+        funcToStuff (FunCall locA id args locB (Just (FunType t t'))) | "_" `isPrefixOf` pp id = 
+            (id,FunCall locA id args locB (Just (FunType t t')), FunType t t' ) 
 
 overloadedTypeName :: String -> SPLType -> String
 overloadedTypeName start t = '_':start ++ typeToName t
@@ -477,12 +486,21 @@ op2String Geq = "ge"
 op2String Eq  = "eq"
 op2String Neq = "ne"
 
+op2String x | x `elem` [Plus,Min,Mult,Div,Mod] = undefined
+op2String x | x `elem` [And,Or] = undefined
+op2String Con = undefined
+  
+
+
+
 containsIDTypeMaybe :: Maybe SPLType -> Bool
 containsIDTypeMaybe Nothing = False
 containsIDTypeMaybe (Just t) = containsIDType t
 
 containsIDTypeList :: [SPLType] -> Bool
-containsIDTypeList (x:xs) = List.foldr ((&&) . containsIDType) False xs
+containsIDTypeList [] = False
+containsIDTypeList [x] = containsIDType x
+containsIDTypeList (x:xs) = containsIDType x || containsIDTypeList xs
 
 containsIDType :: SPLType -> Bool
 containsIDType (Void _ _) = False
@@ -490,7 +508,7 @@ containsIDType TypeBasic {} = False
 containsIDType (IdType _) = True
 containsIDType (TupleType _ (t1, t2) _) = containsIDType t1 || containsIDType t2
 containsIDType (ArrayType _ a1 _) = containsIDType a1
-containsIDType (FunType arg f) = containsIDTypeList arg || containsIDType f
+containsIDType (FunType arg ret) = containsIDTypeList arg || containsIDType ret
 
 data Overloaded = OL (Map String Op2Typed) (Map String FunCall)
 
@@ -505,15 +523,15 @@ singletonOLOp (Op2 op (Just t) loc) = OL (Map.singleton key (Op2 op (Just t) loc
     where key = overloadedOpName op t
 
 singletonOLFun :: FunCall -> Overloaded
-singletonOLFun (FunCall (ID locA id locB) es (Just t)) = OL Map.empty (Map.singleton key (FunCall (ID locA id locB) es (Just t)))
-    where key = overloadedTypeName id t
+singletonOLFun (FunCall locA id es locB (Just t)) = OL Map.empty (Map.singleton key (FunCall locA id es locB (Just t)))
+    where key = overloadedTypeName (getID id) t
 
 singletonOLOpFun :: Op2Typed -> FunCall -> Overloaded
-singletonOLOpFun (Op2 op (Just t) loc) (FunCall id es (Just t')) = OL ops funcs
+singletonOLOpFun (Op2 op (Just t) loc) (FunCall locA id es locB (Just t')) = OL ops funcs
     where 
         ops = Map.singleton opKey (Op2 op (Just t) loc)
         opKey = overloadedOpName op t
-        funcs = Map.singleton funcKey (FunCall id es (Just t'))
+        funcs = Map.singleton funcKey (FunCall locA id es locB (Just t'))
         funcKey = overloadedTypeName (pp id) t'
 
 toOLOpFun :: [Op2Typed] -> [FunCall] -> Overloaded
@@ -524,8 +542,8 @@ toOLOpFun ops funcs =
     where 
         toMapOp (Op2 op (Just t) loc) 
                 = (overloadedOpName op t, Op2 op (Just t) loc)
-        toMapFun (FunCall id es (Just t'))
-                = (overloadedTypeName (pp id) t', FunCall id es (Just t'))
+        toMapFun (FunCall locA id es locB (Just t'))
+                = (overloadedTypeName (pp id) t', FunCall locA id es locB (Just t'))
 
 
 unionOL :: Overloaded -> Overloaded -> Overloaded
@@ -561,6 +579,15 @@ injectErrMsgAddition def runable loc m = case runTI runable of
     (This (Error _ msg), state) -> dictate (ErrorD loc (m++" "++msg)) >> return def
     (This (ErrorD _ msg), state) -> dictate (ErrorD loc (m++" "++msg)) >> return def
     (This (Errors (ErrorD _ msg:xs)), state) -> dictate (Errors (ErrorD loc (m++" "++msg):xs)) >> return def
+
+injectLocType :: ErrorLoc -> SPLType -> SPLType
+injectLocType (DLoc locA locB) (TypeBasic _ t _) = TypeBasic locA t locB
+injectLocType (DLoc locA locB) (TupleType _ (t1, t2) _) = TupleType locA (t1, t2) locB
+injectLocType (DLoc locA locB) (ArrayType _ t _) = ArrayType locA t locB
+injectLocType (DLoc locA locB) (IdType (ID _ id _)) = IdType (ID locA id locB)
+injectLocType (DLoc locA locB) (FunType t ret) = FunType (Prelude.map (injectLocType (DLoc locA locB)) t) (injectLocType (DLoc locA locB) ret)
+injectLocType (DLoc locA locB) (Void _ _) = Void locA locB
+
 
 lookupKey :: Ord a => a -> Map a b -> Maybe (b,a)
 lookupKey a dict =

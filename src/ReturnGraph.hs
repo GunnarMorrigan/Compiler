@@ -48,8 +48,6 @@ rtgaStmtsForLevel stmts (ID locA fname locB) fType =
                                 else let l = getLocReturn(head xs) in Left (expectedReturn fname t "Void" l)
                 else let l = getLocReturn (last xs) in Left $ conflictingReturn fname l
 
-
-
 getLocReturn :: Stmt -> Loc 
 getLocReturn (StmtReturn _  loc) = loc
 
@@ -100,6 +98,7 @@ checkReturns (x:xs) expect fName fType = case x of
 ppFtype :: Maybe SPLType  -> String
 ppFtype Nothing = "non Void"
 ppFtype (Just x) = pp x
+
 ppExp :: Maybe Exp -> String 
 ppExp Nothing = ""
 ppExp (Just e) = ": '" ++ pp e ++ "'"

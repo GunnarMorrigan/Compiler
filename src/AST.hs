@@ -60,7 +60,6 @@ isFunctionType :: SPLType -> Bool
 isFunctionType (FunType arg ret) = True 
 isFunctionType _ = False
 
-
 isVoidFun :: SPLType -> Bool
 isVoidFun (FunType _ ret) = ret == Void (Loc (-1) (-1)) (Loc (-1) (-1))
 isVoidFun _ = False
@@ -87,7 +86,7 @@ data Exp
   | ExpBracket Exp
   | ExpOp2 Loc Exp Op2Typed Exp Loc
   | ExpOp1 Loc Op1 Exp Loc
-  | ExpFunCall Loc FunCall Loc
+  | ExpFunCall FunCall
   | ExpEmptyList Loc Loc
   | ExpList Loc [Exp] Loc (Maybe SPLType)
   | ExpTuple Loc (Exp, Exp) Loc (Maybe SPLType)
@@ -105,7 +104,7 @@ instance Eq Exp where
   (==) (ExpBracket e1) (ExpBracket e2) = e1 == e2 
   (==) (ExpOp2 _ l1 op1 l2 _) (ExpOp2 _ r1 op2 r2 _) = l1 == r1 && l2 == r2 && op1 == op2 
   (==) (ExpOp1 _ op1 e1 _) (ExpOp1 _ op2 e2 _) = op1 == op2 && e1 == e2 
-  (==) (ExpFunCall _ f1 _) (ExpFunCall _ f2 _) = f1 == f2
+  (==) (ExpFunCall f1) (ExpFunCall f2) = f1 == f2
   (==) (ExpEmptyList _ _) (ExpEmptyList _ _) = True
   (==) (ExpList _ es1 _ t1) (ExpList _ es2 _ t2) = es1 == es2 && t1 == t2
   (==) (ExpTuple _ (l1, l2) _ t1) (ExpTuple _ (r1, r2) _ t2) = l1 == r1 && l2 == r2 && t1 == t2
@@ -113,7 +112,7 @@ instance Eq Exp where
   (==) (ExpFunction _ id1 _ t1) (ExpFunction _ id2 _ t2) = id1 == id2  && t2 == t1
 
 data FunCall
-    = FunCall IDLoc [Exp] (Maybe SPLType)
+    = FunCall Loc IDLoc [Exp] Loc (Maybe SPLType)
     deriving (Show, Eq)
 
 data FunCurry
@@ -134,6 +133,8 @@ data StandardFunction
 type ID = String
 data IDLoc = ID Loc String Loc
   deriving (Show)
+
+getID (ID _ id _) = id
 
 instance Eq IDLoc where
   (==) (ID _ id _) (ID _ id' _) = id == id'
@@ -262,7 +263,7 @@ instance LOC Exp where
   getDLoc (ExpBracket e) =  getDLoc e
   getDLoc (ExpOp2 locA _ _ _ locB) = DLoc locA locB
   getDLoc (ExpOp1 locA _ _ locB) = DLoc locA locB
-  getDLoc (ExpFunCall locA _ locB) = DLoc locA locB
+  getDLoc (ExpFunCall f) = getDLoc f
   getDLoc (ExpEmptyList locA locB) = DLoc locA locB
   getDLoc (ExpList locA _ locB _) = DLoc locA locB
   getDLoc (ExpTuple locA _ locB _) = DLoc locA locB
@@ -272,30 +273,22 @@ instance LOC Exp where
   getSndLoc x = let (DLoc _ b) = getDLoc x in b
 
   getLineNum x = getLineNum $ getFstLoc x
-  -- getLineNum (ExpId idloc _) = getLineNum idloc
-  -- getLineNum (ExpInt locA _ locB) =  getLineNum locA
-  -- getLineNum (ExpBool locA _ locB) = getLineNum locA
-  -- getLineNum (ExpChar locA _ locB) =  getLineNum locA
-  -- getLineNum (ExpBracket e) =  getLineNum e
-  -- getLineNum (ExpOp2 locA _ _ _ locB) = getLineNum locA
-  -- getLineNum (ExpOp1 locA _ _ locB) =  getLineNum locA
-  -- getLineNum (ExpFunCall locA _ locB) = getLineNum locA
-  -- getLineNum (ExpEmptyList  locA locB) = getLineNum locA
-  -- getLineNum (ExpList locA _ locB _) = getLineNum locA
-  -- getLineNum (ExpTuple locA _ locB _) = getLineNum locA
 
   getColNum x = getColNum $ getFstLoc x
-  -- getColNum (ExpId idloc _) = getColNum idloc
-  -- getColNum (ExpInt locA _ locB) =  getColNum locA
-  -- getColNum (ExpBool locA _ locB) =  getColNum locA
-  -- getColNum (ExpChar locA _ locB) =  getColNum locA
-  -- getColNum (ExpBracket e) =  getColNum e
-  -- getColNum (ExpOp2 locA _ _ _ locB) = getColNum locA
-  -- getColNum (ExpOp1 locA _ _ locB) =   getColNum locA
-  -- getColNum (ExpFunCall locA _ locB) = getColNum locA
-  -- getColNum (ExpEmptyList locA locB) = getColNum locA
-  -- getColNum (ExpList locA _ locB _) = getColNum locA
-  -- getColNum (ExpTuple locA _ locB _) = getColNum locA
+
+instance LOC FunCall where
+  getDLoc (FunCall locA _ _ locB _) = DLoc locA locB
+
+instance LOC StandardFunction where
+  showLoc x = showLoc $ getFstLoc x
+  getDLoc (Head a b) = DLoc a b
+  getDLoc (Tail a b) = DLoc a b
+  getDLoc (Fst a b) = DLoc a b
+  getDLoc (Snd a b) = DLoc a b
+  getFstLoc x = getFstLoc $ getDLoc x
+  getSndLoc x = getSndLoc $ getDLoc x
+  getLineNum x = getLineNum $ getFstLoc x
+  getColNum x = getColNum $ getFstLoc x
 
 -- ===================== prettyPrinter ============================
 prettyPrinter :: PrettyPrinter a => [a] -> String
@@ -387,7 +380,7 @@ instance PrettyPrinter Exp where
   pp (ExpBracket e) = "("++ pp e++")"
   pp (ExpOp2 _ e1 (Op2 op _ _) e2 _) = "("++ pp e1  ++" "++ pp op++" " ++ pp e2++")"
   pp (ExpOp1 _ op e _) = pp op ++ pp e
-  pp (ExpFunCall _ c _) = pp c;
+  pp (ExpFunCall c) = pp c;
   pp (ExpList _ xs _ _) =  "["++ intercalate "," (Prelude.map pp xs)  ++ "]"
   pp (ExpTuple _ (a,b) _ _) =  "(" ++ pp a ++ ", " ++ pp b ++")"
   pp (ExpEmptyList _ _) = "[]"
@@ -406,8 +399,8 @@ instance PrettyPrinter IDLoc where
   pp (ID _ id _) = id
 
 instance PrettyPrinter FunCall where
-  pp (FunCall i eS Nothing) = pp i ++ "("++ intercalate ", " (Prelude.map pp eS) ++") /*:: Nothing*/"
-  pp (FunCall i eS (Just fType)) = pp i ++ "("++ intercalate ", " (Prelude.map pp eS) ++") /*:: "++ pp fType ++"*/"
+  pp (FunCall _ i eS _ Nothing) = pp i ++ "("++ intercalate ", " (Prelude.map pp eS) ++") /*:: Nothing*/"
+  pp (FunCall _ i eS _ (Just fType)) = pp i ++ "("++ intercalate ", " (Prelude.map pp eS) ++") /*:: "++ pp fType ++"*/"
 
 instance PrettyPrinter Op1 where
   pp Neg = "-"

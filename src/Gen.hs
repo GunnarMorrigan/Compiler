@@ -72,9 +72,9 @@ insertOp2 (Op2 op (Just t) loc) = do
     put (ifS, globalS, (Map.insert (overloadedOpName op t) (Op2 op (Just t) loc) ops, funcCalls))
 
 insertFunCall :: FunCall -> Gen ()
-insertFunCall (FunCall (ID locA id locB) args (Just (FunType t t'))) = do
+insertFunCall (FunCall locF (ID locA id locB) args locF'(Just (FunType t t'))) = do
     (ifS, globalS, (ops, funcCalls)) <- get
-    let f = Map.insert (overloadedTypeName id (head t)) (FunCall (ID locA id locB)[] (Just $ FunType t t')) funcCalls
+    let f = Map.insert (overloadedTypeName id (head t)) (FunCall locF (ID locA id locB) [] locF' (Just $ FunType t t')) funcCalls
     put (ifS, globalS, (ops, f))
 
 -- ===== Generation =====
@@ -224,24 +224,24 @@ genStmt (StmtReturn exp loc) c (ID locA name locB) env =
 genStmt stmt c (ID locA name locB) env = throwError $ Error defaultLoc ("Failed to catch an statement in function " ++ name ++" object:\n" ++ show stmt)
 
 genFuncCall :: FunCall -> [Instruct] -> GenEnv -> Gen ([Instruct], GenEnv)
-genFuncCall (FunCall (ID locA "print" locB) args (Just (FunType (TypeBasic locA' t locB':xs) t'))) c env =
+genFuncCall (FunCall locF (ID locA "print" locB) args locF' (Just (FunType (TypeBasic locA' t locB':xs) t'))) c env =
     case t of
         BasicInt  -> genExps args (TRAP 0:c) env
         BasicChar -> genExps args (TRAP 1:c) env
         BasicBool -> do
             let printName = overloadedTypeName "print" (TypeBasic locA' t locB')
-            insertFunCall (FunCall (ID locA "print" locB) args (Just (FunType (TypeBasic locA' t locB':xs) t')))
+            insertFunCall (FunCall locF (ID locA "print" locB) args locF' (Just (FunType (TypeBasic locA' t locB':xs) t')))
             genExps args (BSR printName:AJS (-1):c) env
 -- genFuncCall (FunCall (ID locA "print" locB) args (Just (FunType (ArrayType locA' (IdType id) locB') t'))) c env = do
 --     let printName = "_printPolyEmptyList"
 --     genExps args (COMMENT (LDC 91) "_printPolyEmptyList":TRAP 1:LDC 93:TRAP 1:c) env
-genFuncCall (FunCall (ID locA "print" locB) args (Just (FunType t t'))) c env = do
+genFuncCall (FunCall locF (ID locA "print" locB) args locF' (Just (FunType t t'))) c env = do
     let printName = overloadedTypeName "print" (head t)
-    insertFunCall (FunCall (ID locA "print" locB) args (Just (FunType t t')))
+    insertFunCall (FunCall locF (ID locA "print" locB) args locF' (Just (FunType t t')))
     genExps args (BSR printName:AJS (-1):c) env
-genFuncCall (FunCall (ID _ "isEmpty" _) args (Just fType)) c env = do
+genFuncCall (FunCall locF (ID _ "isEmpty" _) args locF' (Just fType)) c env = do
     genExps args (LDC 0:SSM.EQ:c) env
-genFuncCall (FunCall id args (Just fType)) c env = do
+genFuncCall (FunCall locF id args locF' (Just fType)) c env = do
     let c' = (if isVoidFun fType then c else LDR RR:c)
     let c'' = (if Prelude.null args then c' else AJS (negate $ length args):c')
     genExps args (BSR (pp id):c'') env
@@ -270,7 +270,7 @@ genExp (ExpEmptyList _ _) c env =
 genExp (ExpTuple _ (e1, e2) _ (Just (TupleType _ (t1,t2) _))) c env = do
     let storeTuple = STMH 2:c
     combineResult (genExp e2 [] env) (genExp e1 storeTuple)   
-genExp (ExpFunCall _ funcall _) c env =
+genExp (ExpFunCall funcall) c env =
     genFuncCall funcall c env
 genExp (ExpOp2 _ e1 op e2 _) c env  = do
     (operator, env') <- genOp2Typed op c env
@@ -339,7 +339,7 @@ genOverloadedFuns funcs = concatMap (snd . genPrint) $ Map.elems (getOverloadedF
 
 getOverloadedFuns :: [(String, FunCall)] -> Map String SPLType
 getOverloadedFuns [] = Map.empty
-getOverloadedFuns ((name, FunCall (ID _ "print" _) _ (Just (FunType t t'))):xs) = 
+getOverloadedFuns ((name, FunCall _ (ID _ "print" _) _ _ (Just (FunType t t'))):xs) = 
     getOverloadedFun "print" (head t) `Map.union` getOverloadedFuns xs
 
 getOverloadedFun :: String -> SPLType -> Map String SPLType

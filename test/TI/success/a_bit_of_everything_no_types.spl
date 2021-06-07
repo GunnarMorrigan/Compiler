@@ -107,7 +107,3 @@ squareOddNumbers ( list ) {
     }
     return list;
 }
-
-main(){
-  return;
-}

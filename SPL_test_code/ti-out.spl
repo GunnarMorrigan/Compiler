@@ -1,13 +1,17 @@
-f (x) :: a2 -> a5 {
-    return g(x) /*:: a2 -> a5*/;
+Int x = 10;
+
+equal (x, y) :: Int Int -> Bool {
+    x = 10;
+    return (x == y);
 }
 
-g (x) :: a2 -> a5 {
-    return f(x) /*:: a2 -> a3*/;
+correct (x, y) :: Int Int -> Bool {
+    return equal(x, y) /*:: Int Int -> Bool*/;
 }
 
-main () :: Void {
-    g(42) /*:: Int -> a3*/;
-    print(1) /*:: Int -> Void*/;
+app (x, f) :: a9 (a9 -> a13) -> a13 {
+    a9 -> a13 y = f;
+
+    return f(x) /*:: a9 -> a13*/;
 }
 
