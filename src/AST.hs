@@ -309,10 +309,12 @@ instance PrettyPrinter Decl where
   pp (VarMain x) = pp x
   pp (FuncMain x) = pp x  
   pp (MutRec x) = prettyPrinter x
+  
 
 instance PrettyPrinter VarDecl where
   pp (VarDeclVar i e) = "var " ++ pp i ++ " = "++ pp e ++ ";"
   pp (VarDeclType t i e ) = pp t ++ " " ++ pp i ++ " = "++ pp e ++ ";"
+  
 
 instance PrettyPrinter FunDecl where
   pp (FunDecl fName fArgs fType fVard fStmts) = 
@@ -322,6 +324,7 @@ instance PrettyPrinter FunDecl where
     prettyPrinter fVard ++ (if not (Prelude.null fVard) then "\n" else "") ++
     prettyPrinter fStmts ++ 
     "}"
+  
 
 instance PrettyPrinter SPLType where
   pp (TypeBasic _ x loc) = pp x
@@ -333,6 +336,7 @@ instance PrettyPrinter SPLType where
   pp (FunType _ args ret _) = concatMap (\x -> ppFuncs x ++ " "  ) args ++ "-> " ++ ppFuncs ret
     where ppFuncs x = if isFunctionType x then "("++ pp x ++")" else pp x
   pp (Void _ _) = "Void"
+  
 
   -- pp (BracketType t) = "(" ++ pp t ++ ")"
 
@@ -364,6 +368,7 @@ instance PrettyPrinter Stmt where
   pp (StmtAssignVar id f e _) = pp id ++ pp f ++ " = " ++ pp e ++ ";"
   pp (StmtFuncCall c _) = pp c ++ ";"
   pp (StmtReturn e _) = "return" ++ maybe "" ((" "++) . pp) e ++ ";"
+  
 
 instance PrettyPrinter Exp where
   pp (ExpId s f) = pp s ++ pp f
@@ -378,22 +383,30 @@ instance PrettyPrinter Exp where
   pp (ExpTuple _ (a,b) _ (Just t)) =  "(" ++ pp a ++ ", " ++ pp b ++ ")" 
   pp (ExpEmptyList _ _) = "[]"
   pp (ExpFunction _ id _ (Just t)) = pp id ++ "/* f */" {-- ++ " :: " ++ pp t --}
+  
+  pp (ExpTuple _ (a,b) _ Nothing) =  "(" ++ pp a ++ ", " ++ pp b ++ ") /* N */" 
+
+  pp e = error ("Forggoten match: " ++ show e) 
+
+
 
 instance PrettyPrinter Field where
   pp (Field xs) = concatMap pp xs
+  
 
 instance PrettyPrinter StandardFunction where
   pp (Head _ _) = ".hd"
   pp (Tail _ _) = ".tl"
   pp (Fst _ _) = ".fst"
   pp (Snd _ _) = ".snd"
-
+  
 instance PrettyPrinter IDLoc where
   pp (ID _ id _) = id
-
+  
 instance PrettyPrinter FunCall where
   pp (FunCall _ i eS _ Nothing) = pp i ++ "("++ intercalate ", " (Prelude.map pp eS) ++") /*:: Nothing*/"
   pp (FunCall _ i eS _ (Just fType)) = pp i ++ "("++ intercalate ", " (Prelude.map pp eS) ++") /*:: "++ pp fType ++"*/"
+  
 
 instance PrettyPrinter Op1 where
   pp Neg = "-"

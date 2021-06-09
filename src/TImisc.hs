@@ -389,15 +389,17 @@ getType :: SPLType -> [StandardFunction] -> TI (Subst, SPLType, SPLType)
 getType t [] = do
     tv <- newSPLVar
     return (nullSubst, tv, tv)
-getType t [Head locA locB] = do
-    tv <- newSPLVarLoc locA locB
+getType t [Head locA locB] = case t of
+    ArrayType _ inT _ -> return(nullSubst, t, inT)
+    _ -> do
+        tv <- newSPLVarLoc locA locB
+        let t' = ArrayType locA tv locB
 
-    let t' = ArrayType locA tv locB
-    s1 <- mgu t t'
-    return (s1, apply s1  t', tv)
+        s1 <- mgu t t'
+
+        return (s1, apply s1 t', apply s1 tv)
 getType t [Tail loc _] = case t of
-    ArrayType {} -> do
-        return(nullSubst, t, t)
+    ArrayType {} -> return(nullSubst, t, t)
     _ -> do
         tv <- newSPLVar
         let t' = ArrayType (getFstLoc t) tv (getSndLoc t)

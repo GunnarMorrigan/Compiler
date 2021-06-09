@@ -134,7 +134,7 @@ genFunDecl (FunDecl (ID locA "main" locB) [] (Just fType) vDecls stmts) env = do
     -- env' <- catchError ( constructEnv env fType [] vDecls) (const $ throwError (Error defaultLoc ("In main")))
     env' <- constructEnv env fType [] vDecls
 
-    (res,env'') <- combineResult (genVarDecls vDecls [] LocalScope env') (genStmts stmts [HALT] (ID locA "main" locB))
+    (res,env'') <- combineResult (genVarDecls vDecls [] LocalScope env') (genStmts False stmts [HALT] (ID locA "main" locB))
 
     return (Function "main" (LABEL "main" (LINK (length vDecls)):res), env'')
 genFunDecl (FunDecl (ID locA name locB) args (Just fType) vDecls stmts) env = do
@@ -143,7 +143,7 @@ genFunDecl (FunDecl (ID locA name locB) args (Just fType) vDecls stmts) env = do
     -- trace (name ++ " type: " ++ pp fType ++ " " ++ pp args ++ " " ++ show env') $ return () 
     (res, env'') <- combineResult
                         (genVarDecls vDecls [] LocalScope env')
-                        (genStmts stmts (genReturn fType name []) (ID locA name locB))
+                        (genStmts False stmts (genReturn fType name []) (ID locA name locB))
     
     return (Function name (LABEL name (LINK (length vDecls)):res), env'')
 genFunDecl (FunDecl (ID locA "main" locB) _ _ _ _) _ = 
@@ -153,55 +153,55 @@ genReturn :: SPLType -> String -> [Instruct] -> [Instruct]
 genReturn fType fName c | isVoidFun fType = LABEL (fName++"End") UNLINK:RET:c
 genReturn fType fName c = LABEL (fName++"End") (STR RR):UNLINK:RET:c
 
-genStmts :: [Stmt] -> [Instruct] -> IDLoc -> GenEnv -> Gen ([Instruct], GenEnv)
-genStmts [] c id env = return (c, env)
+genStmts :: Bool -> [Stmt] -> [Instruct] -> IDLoc -> GenEnv -> Gen ([Instruct], GenEnv)
+genStmts recCall [] c id env = return (c, env)
 -- The following two are here and not in genStmt because here we know if we need a continuation for something after the if stmt.
-genStmts ((StmtIf e stmts Nothing loc):xs) c id env = do
+genStmts recCall ((StmtIf e stmts Nothing loc):xs) c id env = do
     let (ID _ fname _) = id
     (th, _, contin) <- newIf fname
 
-    (ifStmt, env') <- combineResult (genExp e [BRF contin] env) (genStmts stmts [] id)
+    (ifStmt, env') <- combineResult (genExp e [BRF contin] env) (genStmts True stmts [] id)
     
-    (rest, env'') <- genStmts xs c id env'
+    (rest, env'') <- genStmts True xs c id env'
     let rest' = insertLabel contin rest
 
     return $ if Prelude.null xs 
             then (ifStmt, env')
-            else (ifStmt ++ rest, env'')
-genStmts ((StmtIf e stmts (Just els) loc):xs) c id env = do
+            else (ifStmt ++ rest', env'')
+genStmts recCall ((StmtIf e stmts (Just els) loc):xs) c id env = do
     let (ID _ fname _) = id
     (th, _, contin) <- newIf fname
 
     let elseBranchEnd = if Prelude.null xs then [BRA (fname++"End")] else [BRA contin]
 
-    (elseStmt, env') <- combineResult (genExp e [BRT th] env) (genStmts els elseBranchEnd id)
+    (elseStmt, env') <- combineResult (genExp e [BRT th] env) (genStmts True els elseBranchEnd id)
 
-    (ifElseStmt, env'') <- genStmts stmts [] id env'
+    (ifElseStmt, env'') <- genStmts True stmts [] id env'
     let ifElseStmt' = insertLabel th ifElseStmt
 
-    (rest, env''') <- genStmts xs c id env''
+    (rest, env''') <- genStmts True xs c id env''
     let rest' = insertLabel contin rest
 
     return $ if Prelude.null xs 
                 then (elseStmt++ifElseStmt++c, env'') 
                 else (elseStmt++ifElseStmt++rest', env''')
-genStmts ((StmtWhile e stmts loc):xs) c id env = do
+genStmts recCall ((StmtWhile e stmts loc):xs) c id env = do
     let (ID _ fname _) = id
     whileName <- newWhile fname
     let whileEnd = whileName++"End"
     let fEnd = fname++"End"
     (cond, envCond) <- genExp e [] env
-    (stmt, envStmt) <- genStmts stmts [] id env
-    (rst, envRst) <- genStmts xs c id envStmt
+    (stmt, envStmt) <- genStmts True stmts [] id env
+    (rst, envRst) <- genStmts True xs c id envStmt
     return $ if Prelude.null xs
         then (insertLabel whileName cond ++ [BRF fEnd] ++ stmt ++ BRA whileName:c, envStmt)
         else (insertLabel whileName cond ++ [BRF whileEnd] ++ stmt ++ BRA whileName :insertLabel whileEnd rst, envRst)
-genStmts [StmtReturn exp loc] c id env =
+genStmts recCall [StmtReturn exp loc] c id env | not recCall =
     case exp of
         Nothing -> return (c, env)
         Just e -> genExp e c env
-genStmts (x:xs) c id env = do
-    combineResult (genStmt x [] id env) (genStmts xs c id) 
+genStmts recCall (x:xs) c id env = do
+    combineResult (genStmt x [] id env) (genStmts True xs c id) 
 
 genStmt :: Stmt -> [Instruct] -> IDLoc -> GenEnv -> Gen ([Instruct], GenEnv)
 genStmt (StmtAssignVar (ID locA name locB) (Field []) exp t) c _ env = 
@@ -245,6 +245,11 @@ genFuncCall (FunCall locF (ID locA "print" locB) args locF' (Just (FunType locF1
     genExps args (BSR printName:AJS (-1):c) env
 genFuncCall (FunCall locF (ID _ "isEmpty" _) args locF' (Just fType)) c env = do
     genExps args (LDC 0:SSM.EQ:c) env
+genFuncCall (FunCall locF id args locF' (Just fType)) c env | Map.member id env = do
+    let memId = env ! id -- Allready checked by guard so ! allowed
+    let c' = (if isVoidFun fType then c else LDR RR:c)
+    let c'' = (if Prelude.null args then c' else AJS (negate $ length args):c')
+    genExps args (load memId++JSR:c'') env
 genFuncCall (FunCall locF id args locF' (Just fType)) c env = do
     let c' = (if isVoidFun fType then c else LDR RR:c)
     let c'' = (if Prelude.null args then c' else AJS (negate $ length args):c')

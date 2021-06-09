@@ -1,4 +1,14 @@
 BRA main
+app:  LINK 0
+	LDL -4
+	LDL -3
+	LDL -2
+	JSR
+	AJS -2
+	LDR RR
+	appEnd:  STR RR
+	UNLINK
+	RET
 correct:  LINK 0
 	LDL -4
 	LDL -3
@@ -12,58 +22,52 @@ correct:  LINK 0
 equal:  LINK 0
 	LDL -4
 	LDL -3
-	BSR _eqa6
+	LDL -2
+	JSR
 	AJS -2
 	LDR RR
 	equalEnd:  STR RR
 	UNLINK
 	RET
-_eqInt:  LINK 0
+kaasfunctie:  LINK 2
+	LDC 10
+	STL 1
+	LDC 0
+	STL 2
+	LDL -2
+	LDC 1
+	LT
+	BRF kaasfunctie_ifCon0
+	LDL 2
+	STR RR
+	BRA kaasfunctieEnd
+	kaasfunctie_ifCon0:  LDL 1
+	LDL -3
+	MUL
+	LDL -2
+	MUL
 	LDL -3
 	LDL -2
-	EQ
+	LDC 1
+	SUB
+	BSR kaasfunctie
+	AJS -2
+	LDR RR
+	SUB
+	LDLA 2
+	STA 0
+	LDL 2
 	STR RR
-	UNLINK
-	RET
-_printBool:  LINK 0
-	LDL -2
-	BRF _printFalse
-	LDC 101
-	LDC 117
-	LDC 114
-	LDC 84
-	TRAP 1
-	TRAP 1
-	TRAP 1
-	TRAP 1
-	UNLINK
-	RET
-	_printFalse:  LDC 101
-	LDC 115
-	LDC 108
-	LDC 97
-	LDC 70
-	TRAP 1
-	TRAP 1
-	TRAP 1
-	TRAP 1
-	TRAP 1
+	BRA kaasfunctieEnd
+	kaasfunctieEnd:  STR RR
 	UNLINK
 	RET
 main:  LINK 0
-	LDC 1
+	LDC 10
 	LDC 2
-	LDC 36
-	BSR equal
+	LDC 54
+	BSR app
 	AJS -3
 	LDR RR
-	BSR _printBool
-	AJS -1
-	LDC -1
-	LDC 0
-	BSR correct
-	AJS -2
-	LDR RR
-	BSR _printBool
-	AJS -1
+	TRAP 0
 	HALT

@@ -1,13 +1,129 @@
-equal (x, y, _eqa6) :: a6 a6 (a6 a6 -> Bool) -> Bool {
-    return _eqa6(x, y) /*:: a6 a6 -> Bool*/;
+Int size = 100;
+Int program_pos = 0;
+[Char] program = ('+' : ('+' : ('+' : ('+' : ('+' : ('+' : ('+' : ('+' : ('[' : ('>' : ('+' : ('+' : ('+' : ('+' : ('[' : ('>' : ('+' : ('+' : ('>' : ('+' : ('+' : ('+' : ('>' : ('+' : ('+' : ('+' : ('>' : ('+' : ('<' : ('<' : ('<' : ('<' : ('-' : (']' : ('>' : ('+' : ('>' : ('+' : ('>' : ('-' : ('>' : ('>' : ('+' : ('[' : ('<' : (']' : ('<' : ('-' : (']' : ('>' : ('>' : ('.' : ('>' : ('-' : ('-' : ('-' : ('.' : ('+' : ('+' : ('+' : ('+' : ('+' : ('+' : ('+' : ('.' : ('.' : ('+' : ('+' : ('+' : ('.' : ('>' : ('>' : ('.' : ('<' : ('-' : ('.' : ('<' : ('.' : ('+' : ('+' : ('+' : ('.' : ('-' : ('-' : ('-' : ('-' : ('-' : ('-' : ('.' : ('-' : ('-' : ('-' : ('-' : ('-' : ('-' : ('-' : ('-' : ('.' : ('>' : ('>' : ('+' : ('.' : ('>' : ('+' : ('+' : ('.' : []))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))));
+Int pos = 0;
+
+init (s) :: Int -> [Int] {
+    [Int] list = [];
+
+    while ((s > 0)) {
+        list = (0 : list);
+        s = (s - 1);
+    }
+    return list;
 }
 
-correct (l, k, _eqa14) :: a14 a14 (a14 a14 -> Bool) -> Bool {
-    return equal(l, k, _eqa14) /*:: a14 a14 (a14 a14 -> Bool) -> Bool*/;
+get_at (prog, i) :: [Char] Int -> Char {
+    Int tmp = i;
+    [Char] p = prog;
+
+    while ((tmp > 0)) {
+        p = p.tl;
+        tmp = (tmp - 1);
+    }
+    return p.hd;
+}
+
+search_left () :: -> Void {
+    Int depth = 1;
+    Char cur = '0';
+
+    program_pos = (program_pos - 1);
+    while ((depth > 0)) {
+        cur = get_at(program, program_pos) /*:: [Char] Int -> Char*/;
+        if ((cur == ']')) {
+            depth = (depth + 1);
+        } else {
+            if ((cur == '[')) {
+                depth = (depth - 1);
+            } else {
+            }
+        }
+        program_pos = (program_pos - 1);
+    }
+    program_pos = (program_pos + 1);
+}
+
+search_right () :: -> Void {
+    Int depth = 1;
+    Char cur = '0';
+
+    program_pos = (program_pos + 1);
+    while ((depth > 0)) {
+        cur = get_at(program, program_pos) /*:: [Char] Int -> Char*/;
+        if ((cur == '[')) {
+            depth = (depth + 1);
+        } else {
+            if ((cur == ']')) {
+                depth = (depth - 1);
+            } else {
+            }
+        }
+        program_pos = (program_pos + 1);
+    }
+    program_pos = (program_pos - 1);
+}
+
+[Int] cells = [];
+
+get_current () :: -> [Int] {
+    Int tmp = pos;
+    [Int] cell = cells;
+
+    while ((tmp > 0)) {
+        cell = cell.tl;
+        tmp = (tmp - 1);
+    }
+    return cell;
+}
+
+execute (prog) :: [Char] -> Void {
+    Char head = prog.hd;
+    [Int] current = [];
+
+    while ((pos < 1000)) {
+        head = get_at(program, program_pos) /*:: [Char] Int -> Char*/;
+        current = get_current() /*:: -> [Int]*/;
+        if ((head == '+')) {
+            current.hd = ((current.hd + 1) % 256);
+        } else {
+            if ((head == '-')) {
+                current.hd = ((current.hd - 1) % 256);
+            } else {
+                if ((head == '>')) {
+                    pos = (pos + 1);
+                } else {
+                    if ((head == '<')) {
+                        pos = (pos - 1);
+                    } else {
+                        if ((head == '[')) {
+                            if ((current.hd == 0)) {
+                                search_right() /*:: -> Void*/;
+                            } else {
+                            }
+                        } else {
+                            if ((head == ']')) {
+                                if ((current.hd == 0)) {
+                                } else {
+                                    search_left() /*:: -> Void*/;
+                                }
+                            } else {
+                                if ((head == '.')) {
+                                    print(current.hd) /*:: Int -> Void*/;
+                                } else {
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        program_pos = (program_pos + 1);
+    }
 }
 
 main () :: -> Void {
-    print(equal(1, 2, _eqInt/* f */) /*:: Int Int (Int Int -> Bool) -> Bool*/) /*:: Bool -> Void*/;
-    correct(True, False, _eqBool/* f */) /*:: Bool Bool (Bool Bool -> Bool) -> Bool*/;
+    cells = init(size) /*:: Int -> [Int]*/;
+    execute(program) /*:: [Char] -> Void*/;
 }
 

@@ -1,0 +1,465 @@
+BRA main
+abs:  LINK 0
+	LDL -2
+	LDC 0
+	LT
+	BRT _abs_ifTh0
+	LDL -2
+	STR RR
+	BRA absEnd
+	BRA absEnd
+	LDL -2
+	NEG
+	STR RR
+	BRA absEnd
+	absEnd:  STR RR
+	UNLINK
+	RET
+append:  LINK 0
+	LDL -3
+	LDC 0
+	EQ
+	BRT _append_ifTh0
+	LDL -3
+	LDH 0
+	LDL -2
+	BSR append
+	AJS -2
+	LDR RR
+	LDL -3
+	STA 0
+	LDL -3
+	STR RR
+	BRA appendEnd
+	BRA appendEnd
+	LDL -2
+	STR RR
+	BRA appendEnd
+	appendEnd:  STR RR
+	UNLINK
+	RET
+correct:  LINK 0
+	LDL -4
+	LDL -3
+	LDL -2
+	BSR equal
+	AJS -3
+	LDR RR
+	correctEnd:  STR RR
+	UNLINK
+	RET
+equal:  LINK 0
+	LDL -4
+	LDL -3
+	LDL -2
+	JSR
+	AJS -2
+	LDR RR
+	equalEnd:  STR RR
+	UNLINK
+	RET
+facI:  LINK 1
+	LDC 1
+	STL 1
+	_facI_while0:  LDL -2
+	LDC 1
+	GT
+	BRF _facI_while0End
+	LDL 1
+	LDL -2
+	MUL
+	LDLA 1
+	STA 0
+	LDL -2
+	LDC 1
+	SUB
+	LDLA -2
+	STA 0
+	BRA _facI_while0
+	_facI_while0End:  LDL 1
+	STR RR
+	BRA facIEnd
+	facIEnd:  STR RR
+	UNLINK
+	RET
+facL:  LINK 0
+	LDC 1
+	LDL -2
+	BSR fromTo
+	AJS -2
+	LDR RR
+	BSR product
+	AJS -1
+	LDR RR
+	facLEnd:  STR RR
+	UNLINK
+	RET
+facR:  LINK 0
+	LDL -2
+	LDC 2
+	LT
+	BRT _facR_ifTh0
+	LDL -2
+	LDL -2
+	LDC 1
+	SUB
+	BSR facR
+	AJS -1
+	LDR RR
+	MUL
+	STR RR
+	BRA facREnd
+	BRA facREnd
+	LDC 1
+	STR RR
+	BRA facREnd
+	facREnd:  STR RR
+	UNLINK
+	RET
+fromTo:  LINK 0
+	LDL -3
+	LDL -2
+	LE
+	BRT _fromTo_ifTh0
+	LDC 0
+	STR RR
+	BRA fromToEnd
+	BRA fromToEnd
+	LDL -3
+	LDL -3
+	LDC 1
+	ADD
+	LDL -2
+	BSR fromTo
+	AJS -2
+	LDR RR
+	STMH 2
+	STR RR
+	BRA fromToEnd
+	fromToEnd:  STR RR
+	UNLINK
+	RET
+product:  LINK 0
+	LDL -2
+	LDC 0
+	EQ
+	BRT _product_ifTh0
+	LDL -2
+	LDH -1
+	LDL -2
+	LDH 0
+	BSR product
+	AJS -1
+	LDR RR
+	MUL
+	STR RR
+	BRA productEnd
+	BRA productEnd
+	LDC 1
+	STR RR
+	BRA productEnd
+	productEnd:  STR RR
+	UNLINK
+	RET
+reverse:  LINK 1
+	LDC 0
+	STL 1
+	_reverse_while0:  LDL -2
+	LDC 0
+	EQ
+	NOT
+	BRF _reverse_while0End
+	LDL -2
+	LDH -1
+	LDL 1
+	STMH 2
+	LDLA 1
+	STA 0
+	LDL -2
+	LDH 0
+	LDLA -2
+	STA 0
+	BRA _reverse_while0
+	_reverse_while0End:  LDL 1
+	STR RR
+	BRA reverseEnd
+	reverseEnd:  STR RR
+	UNLINK
+	RET
+squareOddNumbers:  LINK 0
+	_squareOddNumbers_while0:  LDL -2
+	LDC 0
+	EQ
+	LDL -2
+	LDH -1
+	LDC 2
+	MOD
+	LDC 0
+	EQ
+	AND
+	NOT
+	BRF _squareOddNumbers_while0End
+	LDL -2
+	LDH 0
+	LDLA -2
+	STA 0
+	BRA _squareOddNumbers_while0
+	_squareOddNumbers_while0End:  LDL -2
+	LDC 0
+	EQ
+	NOT
+	BRF squareOddNumbers_ifCon1
+	LDL -2
+	LDH -1
+	LDL -2
+	LDH -1
+	MUL
+	LDL -2
+	LDC -1
+	ADD
+	STA 0
+	LDL -2
+	LDH 0
+	BSR squareOddNumbers
+	AJS -1
+	LDR RR
+	LDL -2
+	STA 0
+	squareOddNumbers_ifCon1:  LDL -2
+	STR RR
+	BRA squareOddNumbersEnd
+	squareOddNumbersEnd:  STR RR
+	UNLINK
+	RET
+swap:  LINK 1
+	LDL -2
+	LDH 0
+	STL 1
+	LDL -2
+	LDH -1
+	LDL -2
+	STA 0
+	LDL 1
+	LDL -2
+	LDC -1
+	ADD
+	STA 0
+	LDL -2
+	STR RR
+	BRA swapEnd
+	swapEnd:  STR RR
+	UNLINK
+	RET
+swapCopy:  LINK 0
+	LDL -2
+	LDH 0
+	LDL -2
+	LDH -1
+	STMH 2
+	swapCopyEnd:  STR RR
+	UNLINK
+	RET
+_eqBool:  LINK 0
+	LDL -3
+	LDL -2
+	EQ
+	STR RR
+	UNLINK
+	RET
+_eqInt:  LINK 0
+	LDL -3
+	LDL -2
+	EQ
+	STR RR
+	UNLINK
+	RET
+_printArrayInt:  LINK 1
+	LDL -2
+	STL 1
+	LDC 91
+	TRAP 1
+	LDL 1
+	LDC 0
+	EQ
+	BRT _printArrayIntEnd
+	LDL 1
+	LDH -1
+	TRAP 0
+	LDL 1
+	LDH 0
+	LDC 0
+	EQ
+	BRT _printArrayIntEnd
+	LDC 44
+	TRAP 1
+	LDL 1
+	LDH 0
+	STL 1
+	LDC 502
+	STR PC
+	_printArrayIntEnd:  LDC 93
+	TRAP 1
+	UNLINK
+	RET
+_printBool:  LINK 0
+	LDL -2
+	BRF _printFalse
+	LDC 101
+	LDC 117
+	LDC 114
+	LDC 84
+	TRAP 1
+	TRAP 1
+	TRAP 1
+	TRAP 1
+	UNLINK
+	RET
+	_printFalse:  LDC 101
+	LDC 115
+	LDC 108
+	LDC 97
+	LDC 70
+	TRAP 1
+	TRAP 1
+	TRAP 1
+	TRAP 1
+	TRAP 1
+	UNLINK
+	RET
+_printTupleBoolInt:  LINK 0
+	LDC 40
+	TRAP 1
+	LDL -2
+	LDH 0
+	BSR _printBool
+	LDC 44
+	TRAP 1
+	LDL -2
+	LDH -1
+	TRAP 0
+	LDC 41
+	TRAP 1
+	UNLINK
+	RET
+_printTupleIntBool:  LINK 0
+	LDC 40
+	TRAP 1
+	LDL -2
+	LDH 0
+	TRAP 0
+	LDC 44
+	TRAP 1
+	LDL -2
+	LDH -1
+	BSR _printBool
+	LDC 41
+	TRAP 1
+	UNLINK
+	RET
+main:  LINK 4
+	LDC 1
+	LDC 2
+	LDC 3
+	LDC 4
+	LDC 5
+	LDC 0
+	STMH 2
+	STMH 2
+	STMH 2
+	STMH 2
+	STMH 2
+	STL 1
+	LDC 20
+	LDL 1
+	STMH 2
+	STL 2
+	LDC -1
+	LDC 1
+	STMH 2
+	STL 3
+	LDC 10
+	BSR facR
+	AJS -1
+	LDR RR
+	LDC 10
+	BSR facL
+	AJS -1
+	LDR RR
+	EQ
+	STL 4
+	LDL 1
+	BSR _printArrayInt
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDL 2
+	BSR _printArrayInt
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDL 1
+	BSR reverse
+	AJS -1
+	LDR RR
+	BSR _printArrayInt
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDL 1
+	LDC 6
+	LDC 7
+	LDC 8
+	LDC 9
+	LDC 10
+	LDC 0
+	STMH 2
+	STMH 2
+	STMH 2
+	STMH 2
+	STMH 2
+	BSR append
+	AJS -2
+	LDR RR
+	BSR _printArrayInt
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDL 3
+	BSR _printTupleIntBool
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDL 3
+	BSR swapCopy
+	AJS -1
+	LDR RR
+	BSR _printTupleBoolInt
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDL 4
+	BSR _printBool
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDC 1
+	LDC 5
+	LDC 481
+	BSR equal
+	AJS -3
+	LDR RR
+	BSR _printBool
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDC -1
+	LDC 0
+	LDC 470
+	BSR correct
+	AJS -3
+	LDR RR
+	BSR _printBool
+	AJS -1
+	LDC 10
+	TRAP 1
+	HALT

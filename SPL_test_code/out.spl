@@ -1,11 +1,11 @@
 swap (tuple) :: (a, a) -> (a, a) {
     var tmp = tuple.fst;
 
-    tuple = (tuple.snd, tmp);
+    tuple = (tuple.snd, tmp) /* N */;
     return tuple;
 }
 
-(Int, Char) hoi = (1, 'c');
+(Int, Char) hoi = (1, 'c') /* N */;
 (Int, Char) hoi2 = hoi;
 (Char, Char) doei = swap(hoi) /*:: Nothing*/;
 

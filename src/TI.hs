@@ -217,6 +217,10 @@ tiFunDecl env (FunDecl funName args (Just funType) vars stmts) = do
             let funType' = apply cs2 funType
             let funDecl = FunDecl funName args (Just funType') (apply cs2 vars') (apply cs2 stmts')
 
+            
+            -- if (getID funName == "execute")
+            --     then traceM ( red ++ "Execute\n" ++ printEnv (apply cs2 env''') ++ reset)
+            --     else return ()
 
             -- let funcScheme = generalize env funType in
             --     return (cs2, TImisc.insert (apply cs2 env) funName funcScheme GlobalScopeFun, funDecl)
@@ -268,7 +272,8 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
     let funType = apply s $ apply cs2 fType
 
 
-    if  nullOL overloaded
+    -- if  nullOL overloaded
+    if True
         then
             -- trace ("No 'poly' overloading in " ++ pp funName) $
             let funcScheme = generalize env funType in
@@ -355,7 +360,7 @@ tiStmt (TypeEnv env) (StmtAssignVar id (Field []) e typ) =
         (s1, t1, e') <- tiExp (TypeEnv env) e
         s2 <- mgu (apply s1 t) t1
         let cs1 = s2 `composeSubst` s1
-        return (cs1, Nothing, StmtAssignVar id (Field []) e' (Just t1))
+        return (cs1, Nothing, StmtAssignVar id (Field []) e' (Just $ apply cs1 t1))
     Nothing ->
         dictate (refBeforeDec "Variable:" id) >>
         return (nullSubst, Nothing, StmtAssignVar id (Field []) e typ)
@@ -624,7 +629,7 @@ tiFunCall (TypeEnv env) monomorph (FunCall locA id args locB _) = do
     case Map.lookup id env of
         Just (OverScheme lockedvars lockedType lockedOps lockedFuncs,s) | isGlobalScope s -> do
 
-            traceM (yellow ++ pp id ++ " " ++ show monomorph ++ reset)
+            -- traceM (yellow ++ pp id ++ " " ++ show monomorph ++ reset)
             (t, ops, funcs) <- instantiateOver (OverScheme lockedvars lockedType lockedOps lockedFuncs)
             (s1, args',ol) <- typeCheckExps id monomorph (TypeEnv env) nullSubst args ops funcs (getArgTypes t)
             let returnType = getReturnType t
@@ -650,8 +655,7 @@ tiFunCall (TypeEnv env) monomorph (FunCall locA id args locB _) = do
 
             s1 <- injectErrLoc nullSubst (mgu funType t) (DLoc locA locB)
             
-
-            (s2, args', ol) <- {-- trace (pp id ++ " has type " ++ pp t ++ ", " ++ pp funType) $ --} typeCheckExps id monomorph (TypeEnv env) nullSubst args [] [] (getArgTypes funType)
+            (s2, args', ol) <- typeCheckExps id monomorph (TypeEnv env) nullSubst args [] [] (getArgTypes funType)
             let returnType = getReturnType funType
             let cs1 = s2 `composeSubst` s1
             return (cs1, apply cs1 returnType, FunCall locA id args' locB (Just $ apply cs1 funType), ol)
@@ -765,9 +769,9 @@ instance Monomorphization FunCall where
         defT <- newSPLVar
         let def = (nullSubst, defT, FunCall locA id args locB t,emptyOL)
         
-        traceM (green ++ pp id ++ " " ++ show True ++ reset)
+        -- traceM (green ++ pp id ++ " " ++ show True ++ reset)
         (s,_,funcall,overloaded) <- tiFunCall env True (FunCall locA id args locB t)
-        traceM (green ++ printSubst s ++ reset)
+        -- traceM (green ++ printSubst s ++ reset)
 
         -- trace ( "\nMonomorphizing "++pp id++"\n"++show overloaded ++ "\nEND\n") $ 
         return (funcall, s, overloaded)
@@ -794,8 +798,8 @@ typeInference code = do
             let SPL code' = spl
             -- cleanCode <- removeDeadCode (SPL $ removeMutRec code')
             let cleanCode = SPL $ removeMutRec code'
-            -- let updatedCode = apply s1 cleanCode
-            Right (s1, env, cleanCode, maps)
+            let updatedCode = apply s1 cleanCode
+            Right (s1, env, updatedCode, maps)
         (These errs a, state) -> Left errs
         (This errs, state) -> Left errs
 

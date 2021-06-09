@@ -128,7 +128,7 @@ main () {
     //Tuples
     print(t);
     print('\n');
-    print(swap(t));
+    print(swapCopy(t));
     print('\n');
 
     // Function calls
