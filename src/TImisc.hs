@@ -404,7 +404,8 @@ getType t [Tail loc _] = case t of
         tv <- newSPLVar
         let t' = ArrayType (getFstLoc t) tv (getSndLoc t)
         s1 <- mgu t t'
-        return (s1, apply s1 t', t')
+        let ret = apply s1 t'
+        return (s1, ret, ret)
 getType t [Fst locA locB] = case t of
     TupleType _ (a, b) _ -> do
         return(nullSubst, t, a)
@@ -419,13 +420,13 @@ getType t [Snd loc _] = do
     b <- newSPLVar
     let t' = TupleType (getFstLoc t) (a, b) (getSndLoc t)
     s1 <- mgu t t'
-    return (s1, apply s1  t', b)
+    return (s1, apply s1 t', apply s1 b)
 getType t (x:xs) = do
     (s1, t', ret) <- getType t [x]
     (s2, t'', ret') <- getType ret xs
     let cs1 = s2 `composeSubst` s1
     let s3 = applySubst s2 s1
-    return (s3, apply s3 t, ret')
+    return (s3, apply s3 t, apply s3 ret')
 
 op2Type :: Op2 -> ErrorLoc -> ErrorLoc -> ErrorLoc -> TI (SPLType, SPLType, SPLType, SPLType)
 op2Type x e1loc e2loc (DLoc begin end) | x == Plus || x == Min || x == Mult || x == Div || x == Mod = do
