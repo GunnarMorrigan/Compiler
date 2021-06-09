@@ -32,6 +32,10 @@ runTI :: TI a -> (These Error a, TIState)
 runTI t = runState (runChronicleT t) initTIState
   where initTIState = (0, (Map.empty, Map.empty))
 
+-- runTIState :: TI a -> (These Error a, TIState)
+runTIState :: TI a -> TIState -> (These Error a, TIState)
+runTIState t = runState (runChronicleT t)
+
 -- ===================== TypeEnv ============================
 newtype TypeEnv = TypeEnv (Map IDLoc (Scheme,Scope))
     deriving (Eq, Show)
@@ -59,28 +63,46 @@ generalizeFuncs :: TypeEnv -> [IDLoc] -> TI TypeEnv
 generalizeFuncs env [] = return env
 generalizeFuncs (TypeEnv env) (x:xs) = case Map.lookup x env of
     Just (Scheme [] t,scope) -> let scheme = generalize (TypeEnv env) t in
-        generalizeFuncs (TypeEnv $ Map.insert x (scheme,GlobalScope) env) xs
+        generalizeFuncs (TypeEnv $ Map.insert x (scheme,GlobalScopeFun) env) xs
     _ ->
         dictate (ErrorD (getDLoc x) ("Function " ++ pp x ++  " is mutual recursive and should therefore be in the type environment but it is not.")) >>
         return (TypeEnv env)
 
 -- ===================== State ============================
 insertOp2TI :: Op2Typed -> TI ()
-insertOp2TI (Op2 op (Just t) loc) =
-    if containsIDType t
+insertOp2TI (Op2 op (Just (FunType locF1 t t' locF2)) loc) =
+    if containsIDType (FunType locF1 t t' locF2)
         then confess (Error loc "Trying to insert overloaded op2 functions with polymorphic type")
         else do
             (s, (ops, funcCalls)) <- get
-            put (s, (Map.insert (overloadedOpName op t) (Op2 op (Just t) loc) ops, funcCalls))
+            put (s+1, (Map.insert (overloadedOpName op (head t)) (Op2 op (Just (FunType locF1 t t' locF2)) loc) ops, funcCalls))
 
 insertFunCallTI :: FunCall -> TI ()
-insertFunCallTI (FunCall locA id args locB (Just (FunType t t'))) =
+insertFunCallTI (FunCall locA id args locB (Just (FunType locF1 t t' locF2))) =
      if containsIDTypeList t
         then confess (ErrorD (DLoc locA locB) "Trying to insert overloaded op2 functions with polymorphic type")
         else do
             (s, (ops, funcCalls)) <- get
-            let f = Map.insert (overloadedTypeName (getID id) (head t)) (FunCall locA id [] locB (Just (FunType t t'))) funcCalls
-            put (s, (ops, f))
+            let f = Map.insert (overloadedTypeName (getID id) (head t)) (FunCall locA id [] locB (Just (FunType locF1 t t' locF2))) funcCalls
+            put (s+1, (ops, f))
+
+newSPLVar :: TI SPLType
+newSPLVar =
+    do  (s,overloaded) <- get
+        put (s+1,overloaded)
+        return $ IdType (idLocCreator ('a':show s))
+
+newSPLVarLoc :: Loc -> Loc -> TI SPLType
+newSPLVarLoc locA locB =
+    do  (s,overloaded) <- get
+        put (s+1,overloaded)
+        return $ IdType (ID locA ('a':show s) locB )
+
+newSPLVarDLoc :: ErrorLoc -> TI SPLType
+newSPLVarDLoc (DLoc locA locB) =
+    do  (s,overloaded) <- get
+        put (s+1,overloaded)
+        return $ IdType (ID locA ('a':show s) locB )
 
 -- ===================== Scheme ============================
 data Scheme =
@@ -88,8 +110,22 @@ data Scheme =
     OverScheme [IDLoc] SPLType [Op2Typed] [FunCall]
     deriving (Show, Eq)
 
-data Scope = GlobalScope | LocalScope | ArgScope
-    deriving (Show,Eq)
+data Scope = GlobalScopeVar | GlobalScopeFun | ArgScope | LocalScope 
+    deriving (Show)
+
+instance Eq Scope where
+    (==) ArgScope ArgScope = True
+    (==) LocalScope LocalScope = True
+    (==) GlobalScopeVar GlobalScopeVar = True
+    (==) GlobalScopeVar GlobalScopeFun = True
+    (==) GlobalScopeFun GlobalScopeFun = True
+    (==) GlobalScopeFun GlobalScopeVar = True
+    (==) _ _ = False
+
+isGlobalScope :: Scope -> Bool 
+isGlobalScope GlobalScopeFun = True
+isGlobalScope GlobalScopeVar = True
+isGlobalScope _ = False
 
 find :: IDLoc -> TypeEnv -> Maybe Scheme
 find id (TypeEnv env) = fst <$> Map.lookup id env
@@ -113,7 +149,7 @@ instantiate (OverScheme vars t ops funcs) = do
     let s = Map.fromList (zip vars nvars)
     return $ apply s t
 
-instantiateOver :: Scheme -> TI(SPLType,[Op2Typed],[FunCall])
+instantiateOver :: Scheme -> TI (SPLType,[Op2Typed],[FunCall])
 instantiateOver (OverScheme vars t ops funcs) = do
     nvars <- mapM (const newSPLVar) vars
     let s = Map.fromList (zip vars nvars)
@@ -164,12 +200,12 @@ instance Types SPLType where
     ftv (TypeBasic _ x _) = Set.empty
     ftv (TupleType _ (x,y) _) = ftv x `Set.union` ftv y
     ftv (ArrayType _ x _) = ftv x
-    ftv (FunType args ret) = ftv args `Set.union` ftv ret
+    ftv (FunType _ args ret _) = ftv args `Set.union` ftv ret
     ftv (IdType x ) = Set.singleton x
     apply s (IdType x) = case Map.lookup x s of
                         Just t -> t
                         Nothing -> IdType x
-    apply s (FunType args ret) = FunType (apply s args) (apply s ret)
+    apply s (FunType locA args ret locB) = FunType locA (apply s args) (apply s ret) locB
     apply s (TupleType locA (x,y) locB) = TupleType locA (apply s x, apply s y) locB
     apply s (ArrayType locA x locB) = ArrayType locA (apply s x) locB
     apply _ x = x
@@ -198,10 +234,6 @@ instance Types FunDecl where
     ftv = undefined
 
 instance Types Stmt where
-    -- apply s (StmtIf e stmts Nothing loc) = do
-    --     let e' = apply s e
-    --     let stmts' = apply s stmts
-    --     StmtIf e' stmts' Nothing loc
     apply s (StmtIf e stmts els loc) = do
         let e' = apply s e
         let stmts' = apply s stmts
@@ -256,96 +288,77 @@ instance Types FunCall where
     ftv (FunCall _ id es _ (Just t)) = ftv t
     ftv _ = undefined
 
-
-newSPLVar :: TI SPLType
-newSPLVar =
-    do  (s,overloaded) <- get
-        put (s+1,overloaded)
-        return $ IdType (idLocCreator ('a':show s))
-
-
-newSPLVarLoc :: Loc -> Loc -> TI SPLType
-newSPLVarLoc locA locB =
-    do  (s,overloaded) <- get
-        put (s+1,overloaded)
-        return $ IdType (ID locA ('a':show s) locB )
-
-
-newSPLVarDLoc :: ErrorLoc -> TI SPLType
-newSPLVarDLoc (DLoc locA locB) =
-    do  (s,overloaded) <- get
-        put (s+1,overloaded)
-        return $ IdType (ID locA ('a':show s) locB )
-
 -- ===================== Most General Unifier ============================
+mgu :: MGU a => a -> a -> TI Subst
+mgu = mguB []
+
 class MGU a where
-    mgu :: a -> a -> TI Subst
-    generateError :: a -> a -> Error
+    mguB :: [(SPLType,SPLType)] -> a -> a ->  TI Subst
+    generateError :: [(SPLType,SPLType)] -> a -> a -> Error
 
 instance MGU a => MGU [a] where
-    mgu [] [] = return nullSubst
-    mgu (x:xs) (y:ys) = do s1 <- mgu x y
-                           s2 <- mgu xs ys
-                           return (s1 `composeSubst` s2)
+    mguB _ [] [] = return nullSubst
+    mguB pre (x:xs) (y:ys) = do 
+        s1 <- mguB [] x y
+        s2 <- mguB [] xs ys
+        return (s1 `composeSubst` s2)
     generateError xs ys = undefined
 
 instance MGU a => MGU (Maybe a) where
-    mgu (Just l) (Just r) = mgu l r
-    mgu Nothing _ = return nullSubst
-    mgu _ Nothing = return nullSubst
-    generateError (Just l) (Just r) = generateError l r
-    generateError Nothing _ = undefined
-    generateError _ Nothing = undefined
+    mguB pre (Just l) (Just r) = mguB pre l r
+    mguB pre Nothing _ = return nullSubst
+    mguB pre _ Nothing = return nullSubst
+    generateError pre (Just l) (Just r) = generateError pre l r
+    generateError pre Nothing _ = undefined
+    generateError pre _ Nothing = undefined
 
 instance MGU SPLType where
-    -- mgu (BracketType a) (BracketType b) = mgu a b
-    -- mgu (BracketType a) b = mgu a b
-    -- mgu a (BracketType b) = mgu a b
-
-    mgu (FunType arg ret) (FunType arg' ret') = do
-        s1 <- mgu arg arg'
-        s2 <- mgu (apply s1 ret) (apply s1 ret')
+    mguB pre (FunType a args ret b) (FunType c args' ret' d) = do
+        let pre' = (FunType a args ret b, FunType c args' ret' d):pre
+        s1 <- mguB pre' args args'
+        s2 <- mguB pre' (apply s1 ret) (apply s1 ret')
         return (s2 `composeSubst` s1)
 
-    -- mgu (FunType arg ret) t1 = confess $ generateError (FunType arg ret) t1
-    -- mgu t1 (FunType arg ret) = confess $ generateError (FunType arg ret) t1
-    -- mgu (IdType id) r | not $ isFunctionType r = varBind id r
-    -- mgu l (IdType id) | not $ isFunctionType l = varBind id l
+    mguB pre (TypeBasic _ x _) (TypeBasic _ y _) | x == y = return nullSubst
 
-    mgu (TypeBasic _ x _) (TypeBasic _ y _) | x == y = return nullSubst
+    mguB pre (Void _ _) (Void _ _) = return nullSubst
 
-    mgu (Void _ _) (Void _ _) = return nullSubst
-
-    mgu (TupleType  _ (l1,r1) _) (TupleType _ (l2,r2) _) = do
-        s1 <- mgu l1 l2
-        s2 <- mgu r1 r2
+    mguB pre (TupleType locA (l1,r1) locB) (TupleType locC (l2,r2) locD) = do
+        let pre' = (TupleType locA (l1,r1) locB, TupleType locC (l2,r2) locD):pre
+        s1 <- mguB pre' l1 l2
+        s2 <- mguB pre' (apply s1 r1) (apply s1 r2)
         return (s1 `composeSubst` s2)
-    mgu (ArrayType _ x _) (ArrayType _ y _) = mgu x y
 
-    mgu (IdType id) r = varBind id r
-    mgu l (IdType id) = varBind id l
+    mguB pre (ArrayType a x b) (ArrayType c y d) = 
+        let pre' = (ArrayType a x b, ArrayType c y d):pre
+        in mguB pre' x y
 
-    mgu t1 t2 =
-        dictate (generateError t1 t2) >>
-        return nullSubst
+    mguB pre (IdType id) r = varBind pre id r
+    mguB pre l (IdType id) = varBind pre id l
 
-    generateError t1 t2 = case getFstLoc t1 `compare` getFstLoc t2 of
-        LT -> ErrorD (getDLoc t2) ("Type "++ pp t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
-        GT -> ErrorD (getDLoc t1) ("Type "++ pp t1 ++" "++ show  t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
+    mguB pre t1 t2 =
+        confess (generateError pre t1 t2)
+
+    generateError pre t1 t2 = case getFstLoc t1 `compare` getFstLoc t2 of
+        LT -> ErrorD (getDLoc t2) ("Type "++ pp t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2 ++ printExtra pre)
+        GT -> ErrorD (getDLoc t1) ("Type "++ pp t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2 ++ printExtra pre)
         EQ -> case getDLoc t2 of
-                (DLoc (Loc (-1) (-1)) _) -> Error defaultLoc ("Types do not unify: " ++ pp t1 ++ " vs. " ++ pp t2)
-                x -> ErrorD x ("Type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2)
+                (DLoc (Loc (-1) (-1)) _) -> Error defaultLoc ("Types do not unify: " ++ pp t1 ++ " vs. " ++ pp t2 ++ printExtra pre)
+                x -> ErrorD x ("Type "++ pp t1 ++" "++ showLoc t1 ++" does not unify with: " ++ pp t2 ++" "++ showLoc t2 ++ printExtra pre)
 
-varBind :: IDLoc -> SPLType -> TI Subst
-varBind id (IdType t) | id == t = return nullSubst
-varBind id (IdType t) = return $ Map.singleton id (IdType t)
-varBind id t | id `Set.member` ftv t =
+varBind :: [(SPLType,SPLType)] -> IDLoc -> SPLType -> TI Subst
+varBind pre id (IdType t) | id == t = return nullSubst
+varBind pre id (IdType t) = return $ Map.singleton id (IdType t)
+varBind pre id t | id `Set.member` ftv t =
     case getDLoc id `compare` getDLoc t of
-        EQ -> dictate (ErrorD (getDLoc t) ("These types can not be bound\n Occurs check fails: " ++ pp id ++ " vs. " ++ pp t))
-        LT -> dictate (ErrorD (getDLoc t) ("These types can not be bound\n Occurs check fails: " ++ pp id ++ " vs. " ++ pp t))
-        GT -> dictate (ErrorD (getDLoc id) ("These types can not be bound\n Occurs check fails: " ++ pp id ++ " vs. " ++ pp t))
+        EQ -> dictate (ErrorD (getDLoc t) ("These types can not be bound\n Occurs check fails: " ++ pp id ++ " vs. " ++ pp t ++ printExtra pre))
+        LT -> dictate (ErrorD (getDLoc t) ("These types can not be bound\n Occurs check fails: " ++ pp id ++ " vs. " ++ pp t ++ printExtra pre))
+        GT -> dictate (ErrorD (getDLoc id) ("These types can not be bound\n Occurs check fails: " ++ pp id ++ " vs. " ++ pp t ++ printExtra pre))
     >> return nullSubst
-varBind id t = return $ Map.singleton id t
+varBind pre id t = return $ Map.singleton id t
+
+printExtra [] = ""
+printExtra ((a,b):xs) = "\nIn " ++ pp a ++ " and " ++ pp b ++ printExtra xs
 
 -- ===================== Helper functions ============================
 isComplexType :: SPLType -> Bool
@@ -364,13 +377,13 @@ getFuncTypes :: [FunDecl] -> TI [(IDLoc, SPLType, Scope)]
 getFuncTypes [] = return []
 getFuncTypes ((FunDecl funName args (Just fType) vars stmts):xs) = do
     fTypes <- getFuncTypes xs
-    return $ (funName, fType, GlobalScope):fTypes
+    return $ (funName, fType, GlobalScopeFun):fTypes
 getFuncTypes ((FunDecl funName args Nothing vars stmts):xs) = do
     argTypes <- replicateM (length args) newSPLVar
     retType <- newSPLVar
-    let fType = FunType argTypes  retType
+    let fType = FunType (getFstLoc funName) argTypes retType (getSndLoc (last args))
     fTypes <- getFuncTypes xs
-    return $ (funName, fType, GlobalScope):fTypes
+    return $ (funName, fType, GlobalScopeFun):fTypes
 
 getType :: SPLType -> [StandardFunction] -> TI (Subst, SPLType, SPLType)
 getType t [] = do
@@ -379,12 +392,12 @@ getType t [] = do
 getType t [Head locA locB] = do
     tv <- newSPLVarLoc locA locB
 
-    let t' = ArrayType (locA) tv (locB)
+    let t' = ArrayType locA tv locB
     s1 <- mgu t t'
     return (s1, apply s1  t', tv)
 getType t [Tail loc _] = case t of
-    TupleType _ (a, b) _ -> do
-        return(nullSubst, t, b)
+    ArrayType {} -> do
+        return(nullSubst, t, t)
     _ -> do
         tv <- newSPLVar
         let t' = ArrayType (getFstLoc t) tv (getSndLoc t)
@@ -412,57 +425,57 @@ getType t (x:xs) = do
     let s3 = applySubst s2 s1
     return (s3, apply s3 t, ret')
 
-op2Type :: Op2 -> ErrorLoc -> ErrorLoc -> TI (SPLType, SPLType, SPLType, SPLType)
-op2Type x e1loc e2loc | x == Plus || x == Min || x == Mult || x == Div || x == Mod = do
+op2Type :: Op2 -> ErrorLoc -> ErrorLoc -> ErrorLoc -> TI (SPLType, SPLType, SPLType, SPLType)
+op2Type x e1loc e2loc (DLoc begin end) | x == Plus || x == Min || x == Mult || x == Div || x == Mod = do
     let e1T = TypeBasic (getFstLoc e1loc) BasicInt (getSndLoc e1loc)
     let e2T = TypeBasic (getFstLoc e2loc) BasicInt (getSndLoc e2loc)
 
-    let retType = TypeBasic (getFstLoc e1loc) BasicInt (getSndLoc e2loc)
-    return (e1T, e2T, retType, FunType [e1T,e2T] retType)
-op2Type x e1loc e2loc | x == Eq || x == Neq = do
+    let retType = TypeBasic begin BasicInt end
+    return (e1T, e2T, retType, FunType begin [e1T,e2T] retType end)
+op2Type x e1loc e2loc (DLoc begin end) | x == Eq || x == Neq = do
     e1T <- newSPLVarLoc (getFstLoc e1loc) (getSndLoc e1loc)
     let IdType (ID _ id _) = e1T
     let e2T = IdType (ID (getFstLoc e2loc) id (getSndLoc e2loc))
 
-    let t = TypeBasic (getFstLoc e1loc) BasicBool (getSndLoc e2loc)
-    return (e1T, e2T, t, FunType [e1T,e2T] t)
-op2Type x e1loc e2loc | x == Le || x == Ge || x == Leq || x == Geq  = do
-    tv <- newSPLVarLoc (getFstLoc e1loc) (getSndLoc e1loc)
+    let t = TypeBasic begin BasicBool end
+    return (e1T, e2T, t, FunType begin [e1T,e2T] t end)
+op2Type x e1loc e2loc (DLoc begin end) | x == Le || x == Ge || x == Leq || x == Geq  = do
+    tv <- newSPLVarLoc begin (getSndLoc e1loc)
 
-    let t = TypeBasic defaultLoc BasicBool defaultLoc
-    return (tv, tv, t, FunType [tv,tv] t)
-op2Type x e1loc  e2loc | x== And || x == Or = do
+    let t = TypeBasic begin BasicBool end
+    return (tv, tv, t, FunType begin [tv,tv] t end)
+op2Type x e1loc  e2loc (DLoc begin end) | x== And || x == Or = do
     let e1T = TypeBasic (getFstLoc e1loc) BasicBool (getSndLoc e1loc)
     let e2T = TypeBasic (getFstLoc e2loc) BasicBool (getSndLoc e2loc)
 
-    let t = TypeBasic (getFstLoc e1loc) BasicBool (getSndLoc e2loc)
-    return (e1T, e2T, t, FunType [e1T,e2T] t)
-op2Type Con e1loc e2loc = do
+    let t = TypeBasic begin BasicBool end
+    return (e1T, e2T, t, FunType begin [e1T,e2T] t end)
+op2Type Con e1loc e2loc (DLoc begin end) = do
     e1T <- newSPLVarLoc (getFstLoc e1loc) (getSndLoc e1loc)
-
     let e2T = ArrayType (getFstLoc e1loc) e1T (getFstLoc e1loc)
-    let t = ArrayType (getFstLoc e1loc) e1T (getSndLoc e2loc)
-    return (e1T, e2T, t, FunType [e1T,e2T] t)
+
+    let t = ArrayType begin e1T end
+    return (e1T, e2T, t, FunType begin [e1T,e2T] t end)
 
 -- ===================== Overloading ============================
 overloadFunction :: [IDLoc] -> SPLType -> TypeEnv ->  [Op2Typed] -> [FunCall] -> ([IDLoc], SPLType, Scheme)
-overloadFunction args (FunType argsTypes retType) env ops funcs = do
+overloadFunction args (FunType locF1 argsTypes retType locF2) env ops funcs = do
     let (argsOps, ops', typeOps) = combine $ Prelude.map opToStuff ops
     let (argsFuncs, funcs', typeFuncs) = combine $ Prelude.map funcToStuff funcs
     let args' = args ++ argsOps ++ argsFuncs
     -- trace ("overloadFunction\n" ++ show (zip argsFuncs typeFuncs) ++ "\nend overloadFunction") $ do
-    let fType' = FunType (argsTypes ++ typeOps ++ typeFuncs) retType
+    let fType' = FunType locF1 (argsTypes ++ typeOps ++ typeFuncs) retType locF2
     let scheme = generalizeOver env fType' ops funcs
     (args', fType', scheme)
     where
         combine [] = ([],[],[])
         combine (x:xs) = (\(a,b,c) (as,bs,cs) -> (a:as,b:bs,c:cs) ) x (combine xs)
-        opToStuff (Op2 op (Just (FunType t t')) loc) =
-            (idLocCreator $ overloadedOpName op (head t),Op2 op (Just (FunType t t')) loc, FunType t t')
-        funcToStuff (FunCall locA id args locB (Just (FunType t t'))) | getID id == "print" =
-            (idLocCreator $ overloadedTypeName "print" (head t), FunCall locA id args locB (Just (FunType t t')), FunType t t')
-        funcToStuff (FunCall locA id args locB (Just (FunType t t'))) | "_" `isPrefixOf` pp id = 
-            (id,FunCall locA id args locB (Just (FunType t t')), FunType t t' ) 
+        opToStuff (Op2 op (Just (FunType locF1 t t' locF2)) loc) =
+            (idLocCreator $ overloadedOpName op (head t),Op2 op (Just (FunType locF1 t t' locF2)) loc, FunType locF1 t t' locF2)
+        funcToStuff (FunCall locA id args locB (Just (FunType locF1 t t' locF2))) | getID id == "print" =
+            (idLocCreator $ overloadedTypeName "print" (head t), FunCall locA id args locB (Just (FunType locF1 t t' locF2)), FunType locF1 t t' locF2)
+        funcToStuff (FunCall locA id args locB (Just (FunType locF1 t t' locF2))) | "_" `isPrefixOf` pp id = 
+            (id,FunCall locA id args locB (Just (FunType locF1 t t' locF2)), FunType locF1 t t' locF2) 
 
 overloadedTypeName :: String -> SPLType -> String
 overloadedTypeName start t = '_':start ++ typeToName t
@@ -474,7 +487,7 @@ typeToName :: SPLType -> String
 typeToName (TypeBasic _ x _) = pp x
 typeToName (TupleType _ (t1,t2) _) = "Tuple" ++ typeToName t1 ++ typeToName t2
 typeToName (ArrayType _ a1 _) = "Array"++ typeToName a1
-typeToName (FunType arg f) = intercalate "-" (Prelude.map typeToName arg) ++ "-" ++ typeToName f
+typeToName (FunType _ args f _) = intercalate "-" (Prelude.map typeToName args) ++ "-" ++ typeToName f
 typeToName (Void _ _) = "Void"
 typeToName (IdType id) = pp id
 
@@ -508,7 +521,7 @@ containsIDType TypeBasic {} = False
 containsIDType (IdType _) = True
 containsIDType (TupleType _ (t1, t2) _) = containsIDType t1 || containsIDType t2
 containsIDType (ArrayType _ a1 _) = containsIDType a1
-containsIDType (FunType arg ret) = containsIDTypeList arg || containsIDType ret
+containsIDType (FunType _ args ret _) = containsIDTypeList args || containsIDType ret
 
 data Overloaded = OL (Map String Op2Typed) (Map String FunCall)
 
@@ -556,36 +569,42 @@ nullOL :: Overloaded -> Bool
 nullOL (OL a b) = Map.null a && Map.null b
 
 -- ===================== Error (Injection) ============================
-injectErrLoc :: a -> TI a -> ErrorLoc  -> TI a
-injectErrLoc def runable loc = case runTI runable of
-    (That a, state) -> return a
-    (These errs a, state) -> dictate errs >> return a
-    (This (Error _ msg), state) -> confess (ErrorD loc msg) >> return def
-    (This (ErrorD _ msg), state) -> confess (ErrorD loc msg) >> return def
-    (This (Errors (ErrorD _ msg:xs)), state) -> confess (Errors (ErrorD loc msg:xs)) >> return def
+injectErrLoc :: a -> TI a -> ErrorLoc -> TI a
+injectErrLoc def runable loc = do
+    s <- get
+    case runTIState runable s of
+        (That a, state) -> put state >> return a
+        (These errs a, state) -> runable
+        (This (Error _ msg), state) -> put state >> dictate (ErrorD loc msg) >> return def
+        (This (ErrorD _ msg), state) -> put state >> dictate (ErrorD loc msg) >> return def
+        (This (Errors (ErrorD _ msg:xs)), state) -> put state >> dictate (Errors (ErrorD loc msg:xs)) >> return def
 
 injectErrLocMsg :: a -> TI a -> ErrorLoc -> String -> TI a
-injectErrLocMsg def runable loc m = case runTI runable of
-    (That a, state) -> return a
-    (These errs a, state) -> runable
-    (This (Error _ _), state) -> dictate (ErrorD loc m) >> return def
-    (This (ErrorD _ _), state) -> dictate (ErrorD loc m) >> return def
-    (This (Errors (ErrorD _ _:xs)), state) -> dictate (Errors (ErrorD loc m:xs)) >> return def
+injectErrLocMsg def runable loc m = do
+    s <- get
+    case runTIState runable s of
+        (That a, state) -> put state >> return a
+        (These errs a, state) -> put state >> dictate errs >> return a
+        (This (Error _ _), state) -> put state >> dictate (ErrorD loc m) >> return def
+        (This (ErrorD _ _), state) -> put state >> dictate (ErrorD loc m) >> return def
+        (This (Errors (ErrorD _ _:xs)), state) -> put state >> dictate (Errors (ErrorD loc m:xs)) >> return def
 
 injectErrMsgAddition :: a -> TI a -> ErrorLoc -> String -> TI a
-injectErrMsgAddition def runable loc m = case runTI runable of
-    (That a, state) -> return a
-    (These errs a, state) -> runable
-    (This (Error _ msg), state) -> dictate (ErrorD loc (m++" "++msg)) >> return def
-    (This (ErrorD _ msg), state) -> dictate (ErrorD loc (m++" "++msg)) >> return def
-    (This (Errors (ErrorD _ msg:xs)), state) -> dictate (Errors (ErrorD loc (m++" "++msg):xs)) >> return def
+injectErrMsgAddition def runable loc m = do
+    s <- get
+    case runTIState runable s of
+        (That a, state) -> put state >> return a
+        (These errs a, state) -> put state >> dictate errs >> return a
+        (This (Error _ msg), state) -> put state >> dictate (ErrorD loc (m++" "++msg)) >> return def
+        (This (ErrorD _ msg), state) -> put state >> dictate (ErrorD loc (m++" "++msg)) >> return def
+        (This (Errors (ErrorD _ msg:xs)), state) -> put state >> dictate (Errors (ErrorD loc (m++" "++msg):xs)) >> return def
 
 injectLocType :: ErrorLoc -> SPLType -> SPLType
 injectLocType (DLoc locA locB) (TypeBasic _ t _) = TypeBasic locA t locB
 injectLocType (DLoc locA locB) (TupleType _ (t1, t2) _) = TupleType locA (t1, t2) locB
 injectLocType (DLoc locA locB) (ArrayType _ t _) = ArrayType locA t locB
 injectLocType (DLoc locA locB) (IdType (ID _ id _)) = IdType (ID locA id locB)
-injectLocType (DLoc locA locB) (FunType t ret) = FunType (Prelude.map (injectLocType (DLoc locA locB)) t) (injectLocType (DLoc locA locB) ret)
+injectLocType (DLoc locA locB) (FunType _ args ret _) = FunType locA args ret locB
 injectLocType (DLoc locA locB) (Void _ _) = Void locA locB
 
 
@@ -606,12 +625,12 @@ stdLib :: TI TypeEnv
 stdLib = do
     let env = TypeEnv Map.empty
     t1 <- newSPLVar
-    let isEmptyType = FunType [ArrayType defaultLoc t1 defaultLoc] (TypeBasic defaultLoc BasicBool defaultLoc)
-    let env' = TImisc.insert env (idLocCreator "isEmpty") (generalize env isEmptyType) GlobalScope
+    let isEmptyType = FunType defaultLoc [ArrayType defaultLoc t1 defaultLoc] (TypeBasic defaultLoc BasicBool defaultLoc) defaultLoc
+    let env' = TImisc.insert env (idLocCreator "isEmpty") (generalize env isEmptyType) GlobalScopeFun
 
     t2 <- newSPLVar
-    let printType = FunType [t2] (Void defaultLoc defaultLoc)
-    let env'' = TImisc.insert env' (idLocCreator "print") (generalize env' printType) GlobalScope
+    let printType = FunType defaultLoc [t2] (Void defaultLoc defaultLoc) defaultLoc
+    let env'' = TImisc.insert env' (idLocCreator "print") (generalize env' printType) GlobalScopeFun
     return env''
 
 std = Set.fromList ["isEmpty","print"]
@@ -620,31 +639,33 @@ builtin (ID _ id _) = Set.member id std
 
 -- ===================== Printing ============================
 printEnv :: TypeEnv -> String
-printEnv (TypeEnv env) = printEnv1 (Map.toList env)
-
--- printEnv1 :: [(IDLoc, (Scheme,Scope))] -> String
--- printEnv1 [] = ""
--- printEnv1 ((ID _ id _,(Scheme v t,GlobalScope)):xs) = id ++" :: " ++ pp t ++", "++ pp v ++ " Global\n"++ printEnv1 xs
--- printEnv1 ((ID _ id _,(Scheme v t,LocalScope)):xs) = id ++" :: " ++ pp t ++", "++ pp v ++ " Local\n"++ printEnv1 xs
--- printEnv1 ((ID _ id _,(Scheme v t,ArgScope)):xs) = id ++" :: " ++ pp t ++", "++ pp v ++ " arg\n"++ printEnv1 xs
--- printEnv1 ((ID _ id _,(OverScheme v t _ _,LocalScope)):xs) = id ++" :: " ++ pp t ++", "++ pp v ++ " over Local\n"++ printEnv1 xs
--- printEnv1 ((ID _ id _,(OverScheme v t _ _,GlobalScope)):xs) = id ++" :: " ++ pp t ++", "++ pp v ++ " over Global\n"++ printEnv1 xs
--- printEnv1 ((ID _ id _,(OverScheme v t _ _,ArgScope)):xs) = id ++" :: " ++ pp t ++ ", "++ pp v ++ " over arg\n"++ printEnv1 xs
-
+printEnv (TypeEnv env) = "\nEnv:\n" ++ printEnv1 (Map.toList env)
 
 printEnv1 :: [(IDLoc, (Scheme,Scope))] -> String
 printEnv1 [] = ""
-printEnv1 ((ID _ id _,(Scheme v t,GlobalScope)):xs) = id ++" :: " ++ pp t ++", Global\n"++ printEnv1 xs
+printEnv1 ((ID _ id _,(Scheme v t,GlobalScopeFun)):xs) = id ++" :: " ++ pp t ++", Global function\n"++ printEnv1 xs
+printEnv1 ((ID _ id _,(Scheme v t,GlobalScopeVar)):xs) = id ++" :: " ++ pp t ++", Global Var\n"++ printEnv1 xs
 printEnv1 ((ID _ id _,(Scheme v t,LocalScope)):xs) = id ++" :: " ++ pp t ++", Local\n"++ printEnv1 xs
 printEnv1 ((ID _ id _,(Scheme v t,ArgScope)):xs) = id ++" :: " ++ pp t ++", arg\n"++ printEnv1 xs
 printEnv1 ((ID _ id _,(OverScheme v t _ _,LocalScope)):xs) = id ++" :: " ++ pp t ++", over Local\n"++ printEnv1 xs
-printEnv1 ((ID _ id _,(OverScheme v t _ _,GlobalScope)):xs) = id ++" :: " ++ pp t ++", over Global\n"++ printEnv1 xs
+printEnv1 ((ID _ id _,(OverScheme v t _ _,GlobalScopeFun)):xs) = id ++" :: " ++ pp t ++", over Global function\n"++ printEnv1 xs
+printEnv1 ((ID _ id _,(OverScheme v t _ _,GlobalScopeVar)):xs) = id ++" :: " ++ pp t ++", over Global Var\n"++ printEnv1 xs
 printEnv1 ((ID _ id _,(OverScheme v t _ _,ArgScope)):xs) = id ++" :: " ++ pp t ++ ", over arg\n"++ printEnv1 xs
 
 
+printOverloading :: (Map String Op2Typed, Map String FunCall) -> String
+printOverloading (a,b) = "\nOverloading:\n" ++  printOverloading1 (Map.toList a) (Map.toList b)
 
-printSubst :: [(IDLoc,SPLType)] -> String
-printSubst [] = ""
-printSubst ((ID _ id _,t):xs) = id ++ " -> " ++ pp t ++ "\n"++ printSubst xs
+printOverloading1 :: [(String, Op2Typed)] -> [(String, FunCall)] -> String
+printOverloading1 [] [] = ""
+printOverloading1 ((name, Op2 op (Just t) _):xs) funcs = name ++ " " ++ pp op ++ " :: " ++ pp t ++"\n" ++ printOverloading1 xs funcs
+printOverloading1 [] ((name, FunCall _ name2 _ _ (Just t) ):xs) =  name ++ " :: " ++ pp t ++"\n" ++ printOverloading1 [] xs
+
+printSubst :: Subst -> String
+printSubst s = "\nSubst:\n" ++ printSubst1 (Map.toList s)
+
+printSubst1 :: [(IDLoc,SPLType)] -> String
+printSubst1 [] = ""
+printSubst1 ((ID _ id _,t):xs) = id ++ " -> " ++ pp t ++ "\n"++ printSubst1 xs
 
 

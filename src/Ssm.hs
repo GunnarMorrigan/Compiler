@@ -142,12 +142,14 @@ instance Assemble Instruct where
     resolution env (LDResP s) = 
         case Map.lookup s env of
             Just address -> LDC address
-            Nothing -> undefined undefined
+            Nothing -> error ("Problem finding: " ++ s)
     resolution env x = x
 
 
 resPoints :: SSM -> SSM
 resPoints ass = resolution (findLocations (assemble ass) 0) ass
+
+resPointsMonad ass = Right $ resolution (findLocations (assemble ass) 0) ass
 
 findLocations :: [Instruct] -> Int -> Map String Int
 findLocations [] loc = Map.empty 

@@ -44,7 +44,7 @@ tiDecls env (decl:decls) = do
 
 tiDecl :: TypeEnv -> Decl -> TI (Subst, TypeEnv, Decl)
 tiDecl env (VarMain x) = do
-    (s1, env, varDecl) <- tiVarDecl env x GlobalScope
+    (s1, env, varDecl) <- tiVarDecl env x GlobalScopeVar
     return (s1, env,VarMain varDecl)
 tiDecl env (FuncMain x) = do
     (s1, env, funDecl) <- tiFunDecl env x
@@ -87,7 +87,6 @@ tiVarDecl (TypeEnv env) (VarDeclType t id e) s =
         Just((scheme,s'),id') | s==s'-> dictate (doubleDef2 id id') >>
             return (nullSubst, TypeEnv env, VarDeclType t id e)
         Just((OverScheme lVars lT lOps lFuncs ,s'),id') -> do
-            -- ERROR
             (s1, t1, e') <- tiExp (TypeEnv env) e
             s2 <- mgu (apply s1 t) t1
             let cs1 = s2 `composeSubst` s1
@@ -106,8 +105,8 @@ tiVarDecl (TypeEnv env) (VarDeclType t id e) s =
 tiMutRecFunDecls :: TypeEnv -> [FunDecl] -> TI (Subst, TypeEnv, [FunDecl])
 tiMutRecFunDecls env [] = return (nullSubst, env, [])
 tiMutRecFunDecls (TypeEnv env) ((FunDecl funName args (Just funType) vars stmts):xs) = do
-    let FunType argTypes retType = funType
-    env' <- insertMore (TypeEnv env) (zip3 args argTypes (replicate (length args) GlobalScope)) -- With this function + args inserted
+    let FunType locF1 argTypes retType locF2 = funType
+    env' <- insertMore (TypeEnv env) (zip3 args argTypes (replicate (length args) ArgScope)) -- With this function + args inserted
 
     (s1, env'', vars') <- tiVarDecls env' vars LocalScope
 
@@ -129,9 +128,9 @@ tiMutRecFunDecls (TypeEnv env) ((FunDecl funName args (Just funType) vars stmts)
     return (cs3, apply cs3 env'', funDecl:funDecls)
 tiMutRecFunDecls (TypeEnv env) ((FunDecl funName args Nothing vars stmts):xs) = do
     case Map.lookup funName env of
-        Just (Scheme [] funType,GlobalScope) -> do
+        Just (Scheme [] funType,s) | isGlobalScope s ->  do
 
-            let FunType argTypes retType = funType
+            let FunType locF1 argTypes retType locF2 = funType
             env' <- insertMore (TypeEnv env) (zip3 args argTypes (replicate (length args) ArgScope)) -- With this function + args inserted
 
             (s1, env'', vars') <- tiVarDecls env' vars LocalScope
@@ -152,15 +151,13 @@ tiMutRecFunDecls (TypeEnv env) ((FunDecl funName args Nothing vars stmts):xs) = 
             let funDecl' = FunDecl funName args (Just $ apply cs3 funType) vars' stmts'
 
             return (cs3, apply cs2 env''', funDecl':funDecls')
-        Just _ -> do undefined
-
-        nothing ->
+        _ ->
             dictate (ErrorD (getDLoc funName) "Function is mutual recursive and should therefore be in the type environment but it is not.") >>
             return (nullSubst, TypeEnv env, [])
 
 tiFunDecl :: TypeEnv -> FunDecl -> TI (Subst, TypeEnv, FunDecl)
 tiFunDecl env (FunDecl funName args funType vars stmts) |
-    not $ isGoodScope GlobalScope funName env =
+    not $ isGoodScope GlobalScopeFun funName env =
         dictate (applVarAsFunc funName) >>
         return (nullSubst, env, FunDecl funName args funType vars stmts)
 tiFunDecl env (FunDecl funName args _ vars stmts) | pp funName == "main" =
@@ -168,33 +165,34 @@ tiFunDecl env (FunDecl funName args _ vars stmts) | pp funName == "main" =
         then
             confess (ErrorD (getDLoc funName) "main should have zero arguments.")
         else do
-            let fType = Void defaultLoc defaultLoc
+            let fType = FunType (getFstLoc funName) [] (Void defaultLoc defaultLoc) (getSndLoc funName)
             (s1, env', vars') <- tiVarDecls env vars LocalScope -- With this env + local varDecls inserted
 
             (s2, t1, stmts') <- tiStmts env' stmts
 
+
             let cs1 = s2 `composeSubst` s1
             let retType = fromMaybe (Void defaultLoc defaultLoc) t1
-            s3 <- mgu fType retType
+            s3 <- mgu (Void defaultLoc defaultLoc) retType
 
             let cs2 = s3 `composeSubst` cs1
 
-            -- let funDecl = FunDecl funName args (Just fType) (apply cs2 vars') (apply cs2 stmts')
-            let funDecl = FunDecl funName args (Just fType) vars' stmts'
+            let funDecl = FunDecl funName args (Just $ apply cs2 fType) (apply cs2 vars') (apply cs2 stmts')
+            -- let funDecl = FunDecl funName args (Just fType) vars' stmts'
             let finaleScheme = generalize env' fType
 
-            (_, overloaded) <- monomorphize funDecl env'
+            (_,s, overloaded) <- monomorphize funDecl env'
 
             if  nullOL overloaded
                 then
                     -- trace ("No 'poly' overloading in " ++ pp funName) $
-                    return (cs2, TImisc.insert (apply cs2 env) funName finaleScheme GlobalScope, funDecl)
+                    return (cs2, TImisc.insert (apply cs2 env) funName finaleScheme GlobalScopeFun, funDecl)
                 else
                     confess (Error (getFstLoc funName) ("Some functions require overloaded built-ins (print, ==, <, >, etc) but the type for these functions is unkown.\n" 
                                                 ++"It is thus impossible to create these for you."))
-            
+
 tiFunDecl env (FunDecl funName args (Just funType) vars stmts) = do
-    let FunType argTypes retType = funType
+    let FunType locF1 argTypes retType locF2 = funType
     case length args `compare` length argTypes of
         LT ->
             dictate (funcCallLessArgs funName) >>
@@ -203,7 +201,7 @@ tiFunDecl env (FunDecl funName args (Just funType) vars stmts) = do
             dictate (funcCallMoreArgs funName) >>
             return (nullSubst, env, FunDecl funName args (Just funType) vars stmts)
         EQ -> do
-            env' <- TImisc.insertID env funName funType GlobalScope -- With only this function inserted
+            env' <- TImisc.insertID env funName funType GlobalScopeFun -- With only this function inserted
             env'' <- insertMore env' (zip3 args argTypes (replicate (length args) ArgScope)) -- With this function + args inserted
             (s1, env''', vars') <- tiVarDecls env'' vars LocalScope -- With this function + args + local varDecls inserted
 
@@ -219,26 +217,31 @@ tiFunDecl env (FunDecl funName args (Just funType) vars stmts) = do
             let funType' = apply cs2 funType
             let funDecl = FunDecl funName args (Just funType') (apply cs2 vars') (apply cs2 stmts')
 
-            (funDecl', overloaded) <- monomorphize funDecl env'''
+
+            -- let funcScheme = generalize env funType in
+            --     return (cs2, TImisc.insert (apply cs2 env) funName funcScheme GlobalScopeFun, funDecl)
+
+            (funDecl', s, overloaded) <- monomorphize funDecl env'''
             let (polyOp2, polyFunCall) = toListOL overloaded
             if  nullOL overloaded
                 then
                     -- trace ("No 'poly' overloading in " ++ pp funName) $
                     -- let funcScheme = trace ("\n\nFree stuff in: " ++pp funName ++ "\n" ++ pp funType ++"\n" ++ pp (Set.toList $ ftv funType) ++ "\n\n" ++ pp (Set.toList $ ftv env)++ "\n\n") generalize env funType in
                     let funcScheme = generalize env funType in
-                    return (cs2, TImisc.insert (apply cs2 env) funName funcScheme GlobalScope, funDecl')
+                    return (cs2, TImisc.insert (apply cs2 env) funName funcScheme GlobalScopeFun, funDecl')
                 else
                     -- trace ("Poly overloading in " ++ pp funName {-- ++ "\n\n" ++ show polyOp2 ++ "\n\n" ++ show polyFunCall --}) $ 
                     do
-                        let (args', fType', scheme) = overloadFunction args funType env polyOp2 polyFunCall
+                        let (args', fType', scheme) = overloadFunction args (apply s funType) env polyOp2 polyFunCall
                         let FunDecl funName' _ (Just _) vars'' stmts'' = funDecl'
-                        return (cs2, TImisc.insert (apply cs2 env) funName scheme GlobalScope, FunDecl funName' args' (Just fType') vars'' stmts'')
+                        return (cs2, TImisc.insert (apply cs2 env) funName scheme GlobalScopeFun, FunDecl funName' args' (Just fType') vars'' stmts'')
+
 tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
     argTypes <- mapM (newSPLVarDLoc . getDLoc) args
     retType <- newSPLVar
 
-    let fType = FunType argTypes retType
-    env' <- TImisc.insertID env funName fType GlobalScope -- With only this function inserted
+    let fType = FunType (getFstLoc funName) argTypes retType (getSndLoc $ last args)
+    env' <- TImisc.insertID env funName fType GlobalScopeFun -- With only this function inserted
     env'' <- insertMore env' (zip3 args argTypes (replicate (length args) ArgScope)) -- With this function + args inserted
     (s1, env''', vars') <- tiVarDecls env'' vars LocalScope -- With this function + args + local varDecls inserted
 
@@ -252,26 +255,28 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
 
     -- let Just (Scheme [] t) = find funName env'''
 
-    let funType = apply cs2 fType
 
     -- trace ("HIERZO "++ pp funName ++ "\n" ++ printEnv env''' ++ printSubst (Map.toList cs1) ++  pp funType ++ "\nEND") $ do
-    let funDecl = FunDecl funName args (Just funType) (apply cs2 vars') (apply cs2 stmts')
+    let funDecl = FunDecl funName args (Just $ apply cs2 fType) (apply cs2 vars') (apply cs2 stmts')
     -- let funDecl = FunDecl funName args (Just funType) vars' stmts'
 
-
-    (funDecl', overloaded) <- monomorphize funDecl (apply cs2 env''')
+    (funDecl', s, overloaded) <- monomorphize funDecl (apply cs2 env''')
     let (polyOp2, polyFunCall) = toListOL overloaded
+
+    -- traceM (pp funName ++ " " ++ printSubst cs2 ++ red ++ show overloaded ++ reset)
+
+    let funType = apply s $ apply cs2 fType
+
+
     if  nullOL overloaded
         then
             -- trace ("No 'poly' overloading in " ++ pp funName) $
             let funcScheme = generalize env funType in
-            return (cs2, TImisc.insert (apply cs2 env) funName funcScheme GlobalScope, funDecl')
-        else
-            -- trace ("Poly overloading in " ++ pp funName {-- ++ "\n\n" ++ show polyOp2 ++ "\n\n" ++ show polyFunCall --}) $ 
-            do
+            return (cs2, TImisc.insert (apply cs2 env) funName funcScheme GlobalScopeFun, funDecl')
+        else do
                 let (args', fType', scheme) = overloadFunction args funType env polyOp2 polyFunCall
                 let FunDecl funName' _ (Just _) vars'' stmts'' = funDecl'
-                return (cs2, TImisc.insert (apply cs2 env) funName scheme GlobalScope, FunDecl funName' args' (Just fType') vars'' stmts'')
+                return (cs2, TImisc.insert (apply cs2 env) funName scheme GlobalScopeFun, FunDecl funName' args' (Just fType') vars'' stmts'')
 
 tiStmts :: TypeEnv -> [Stmt] -> TI (Subst, Maybe SPLType, [Stmt])
 tiStmts env [] = return (nullSubst, Nothing, [])
@@ -296,7 +301,8 @@ tiStmt env (StmtIf e stmts (Just els) loc) = do
 
     let cs1 = s2 `composeSubst` s1
     (s3, retIf, ifStmts) <- tiStmts (apply cs1 env) stmts
-
+    let Just a = retIf
+    -- traceM ("IF RETURN " ++ pp a)
     let cs2 = s3 `composeSubst` cs1
     (s4, retElse, elseStmts) <- tiStmts (apply cs2 env) els
 
@@ -366,19 +372,39 @@ tiStmt (TypeEnv env) (StmtAssignVar id (Field fields) e typ) =
             tDef <- newSPLVarDLoc (getDLoc id)
             retDef <- newSPLVarLoc (getFstLoc id) (getSndLoc (last fields))
             let typeDef = (nullSubst, tDef, retDef)
-            t <- instantiate scheme
-            let locationT = injectLocType (getDLoc id) t
-            (s1, t1, e') <- tiExp (TypeEnv env) e
-            (s2, t', ret) <- injectErrLoc typeDef (getType locationT fields) (getDLoc id)
+
+            typeOfLeft <- instantiate scheme
+            -- let locationT = injectLocType (getDLoc id) t
+            
+            -- traceM (red ++ pp id ++ " " ++ pp t ++ reset)
+
+            (s1, typeOfe, e') <- tiExp (TypeEnv env) e
+            (s2, typeOfLeft', ret) <- injectErrLoc typeDef (getType typeOfLeft fields) (getDLoc id)
             let cs1 = s2 `composeSubst` s1
-            s3 <- mgu (apply cs1 ret) t1
+            s3 <- mgu (apply cs1 ret) (apply cs1 typeOfe)
             let cs2 = s3 `composeSubst` cs1
-            s4 <- mgu (apply cs2 t') t
-            let cs3 = s4 `composeSubst` cs2
-            return (cs3, Nothing, StmtAssignVar id (Field fields) e' (Just $ apply cs3 ret))
+            
+            -- traceM (red ++ 
+            --             pp id ++ " " ++ pp typeOfLeft ++ " " ++ 
+            --             pp typeOfLeft' ++  " " ++ 
+            --             pp ret ++ " " ++ 
+            --             pp typeOfe ++ " " ++ 
+            --             reset)
+
+            -- traceM (red ++ 
+            --             pp id ++ " " ++ pp (apply cs2 typeOfLeft) ++ " " ++ 
+            --             pp (apply cs2 typeOfLeft') ++  " " ++ 
+            --             pp (apply cs2 ret) ++ " " ++ 
+            --             pp (apply cs2 typeOfe) ++ " " ++ 
+            --             reset)
+            -- traceM ("\n" ++ printSubst cs1 ++"\n")
+            -- s4 <- mgu (apply cs2 typeOfLeft') typeOfLeft
+            -- let cs3 = s4 `composeSubst` cs2
+            return (cs2, Nothing, StmtAssignVar id (Field fields) e' (Just $ apply cs2 ret))
 
 typeCheckExps :: IDLoc -> Bool -> TypeEnv -> Subst -> [Exp] -> [Op2Typed] -> [FunCall] -> [SPLType] -> TI (Subst, [Exp],Overloaded)
-typeCheckExps _ _ env s [] _ _ [] = return (s, [], emptyOL)
+typeCheckExps id _ env s [] _ _ [] = do
+    return (s, [], emptyOL)
 typeCheckExps id _ env s exps ops funcs argTypes | length exps < length argTypes && length exps + length ops + length funcs > length argTypes =
     dictate (funcCallMoreArgs id) >>
     -- dictate (stupidError ("Error\n" ++pp id ++ "\n" ++ pp exps ++ "\nhere on 529")) >>
@@ -390,12 +416,13 @@ typeCheckExps id monomorph env s (e:es) ops funcs (t:ts) = do
     defType <- newSPLVar
     let def = (nullSubst, defType, e)
 
-    -- (s1, t1, e') <- injectErrMsgAddition def (tiExp env e) (getDLoc e) "typeCheckExps"
     (s1, t1, e') <- injectErrLoc def (tiExp env e) (getDLoc e)
     let cs1 = s1 `composeSubst` s
-    -- s2 <- injectErrLocMsg nullSubst (mgu (apply cs1 t) t1) (getDLoc e) ("Argument '"++ pp e ++ "' should have type "++ pp t)
-    -- s2 <- trace ("Argument '"++ pp e ++ "' should have type "++ pp t ++ " and has "++ pp t1) $  injectErrLoc nullSubst (mgu (apply cs1 t) t1) (getDLoc e)
-    s2 <- injectErrLoc nullSubst (mgu (apply cs1 t) t1) (getDLoc e)
+
+    -- traceM (pp id ++ " " ++pp (apply cs1 t) ++ " " ++ pp t1 ++ " " ++ show (getDLoc e))
+
+    s2 <- injectErrLoc nullSubst (mgu t1 (apply cs1 t)) (getDLoc e)
+
     let cs2 = s2 `composeSubst` cs1
     (s3, es', ol) <- typeCheckExps id monomorph (apply cs1 env) cs2 es ops funcs ts
     return (s3 `composeSubst` cs2 , e':es', ol)
@@ -404,15 +431,15 @@ typeCheckExps id monomorph env s [] (op:ops) funcs (t:ts) = do
     s1 <- mgu t opType
     let cs1 = s1 `composeSubst` s
     let opType1 = apply cs1 opType
-    let FunType argTypes _ = opType1
+    let FunType locF1 argTypes _ locF2 = opType1
 
-    -- trace ("typeCheckExps op: " ++ pp op' ++" mono: "++ show monomorph ++ " " ++pp id ++ " \n" ++ pp opType ++ " \n" ++ pp opType1  ++ "\n" ++ pp (apply cs1 opType1) ++ "\n" ++ pp (apply cs1 t) ) $ 
     if containsIDType opType1
         then
             if monomorph
                 then do
                     let name = idLocCreator $ overloadedOpName op' (head argTypes)
-                    let exp = ExpFunction defaultLoc name defaultLoc (Just opType1)
+                
+                    let exp = ExpId name (Field [])
                     (s2,es',ol1) <- typeCheckExps id monomorph env cs1 [] ops funcs ts
                     let ol2 = singletonOLOp (Op2 op' (Just opType1) loc)
                     let ol3 = ol2 `unionOL` ol1
@@ -425,7 +452,8 @@ typeCheckExps id monomorph env s [] (op:ops) funcs (t:ts) = do
                     return (s2 `composeSubst` cs1, es', ol2 `unionOL` ol1)
         else do
                 -- Everything about the opType1 is known, we can thus insert safely.
-                insertOp2TI (Op2 op' (Just opType1) loc)
+                a <- insertOp2TI (Op2 op' (Just opType1) loc)
+
                 let name = overloadedOpName op' (head argTypes)
                 let exp = ExpFunction defaultLoc (idLocCreator name) defaultLoc (Just opType1)
                 (s2,es', ol) <- typeCheckExps id monomorph env cs1 [] ops funcs ts
@@ -435,7 +463,7 @@ typeCheckExps id monomorph env s [] [] (func:funcs) (t:ts) = do
     s1 <- mgu t funcType
     let cs1 = s1 `composeSubst` s
     let funcType' = apply cs1 t
-    let FunType argTypes _ = funcType'
+    let FunType locF1 argTypes _ locF2 = funcType'
 
     -- trace ("typeCheckExps func: "++ id' ++ " mono: "++ show monomorph ++ " " ++pp id ++ " \n"++ pp funcType ++ "\n" ++ pp funcType' ++ "\n" ++ pp t ++ "\n" ++ pp (apply cs1 t) ) $
     if containsIDType funcType'
@@ -443,7 +471,7 @@ typeCheckExps id monomorph env s [] [] (func:funcs) (t:ts) = do
         if monomorph
             then do
                 let name = ID locA (overloadedTypeName "print" (head argTypes)) locB
-                let exp = ExpFunction defaultLoc name defaultLoc (Just funcType')
+                let exp = ExpId name (Field [])
                 (s2,es',ol) <- typeCheckExps id monomorph env cs1 [] [] funcs ts
                 let overloaded = singletonOLFun (FunCall locF name es locF' (Just funcType'))
                 return (s2 `composeSubst` cs1, exp:es', overloaded `unionOL` ol)
@@ -455,7 +483,7 @@ typeCheckExps id monomorph env s [] [] (func:funcs) (t:ts) = do
                 return (s2 `composeSubst` cs1, es', overloaded `unionOL` ol)
     else do
         -- Everything about the FunCall is known, we can thus insert safely.
-        insertFunCallTI (FunCall locF (ID locA "print" locB) es locF' (Just funcType'))
+        a <- insertFunCallTI (FunCall locF (ID locA "print" locB) es locF' (Just funcType'))
         let name = overloadedTypeName "print" (head argTypes)
         let exp = ExpFunction defaultLoc (idLocCreator name) defaultLoc (Just funcType')
         (s2,es',ol) <- typeCheckExps id monomorph env cs1 [] [] funcs ts
@@ -465,20 +493,20 @@ typeCheckExps id mono env s exps _ _ argTypes = confess (Error defaultLoc (pp ex
 tiExpsList :: TypeEnv -> [Exp] -> TI (Subst, SPLType, Exp)
 tiExpsList env [e] = do
     (s1, t1, e') <- tiExp env e
+    let DLoc locA locB = getDLoc e
     let arrayType = let (DLoc locA locB) = getDLoc t1 in ArrayType locA t1 locB
-    let opType = Op2 Con (Just $ FunType [t1,arrayType] arrayType)
-    let (DLoc locA locB) = getDLoc e
+    let opType = Op2 Con (Just $ FunType locA [t1,arrayType] arrayType locB)
     return (s1, t1, ExpOp2 locA e' (opType locA) (ExpEmptyList locA locB) locB)
 tiExpsList env (e:es) = do
     (s1, t1, e' ) <- tiExp env e
     (s2, t2, es') <- tiExpsList (apply s1 env) es
     let cs1 = s2 `composeSubst` s1
     s3 <- injectErrLoc nullSubst (mgu (apply cs1 t1) t2) (getDLoc e)
-
+    let DLoc locA locB = getDLoc e
     let cs2 = s3 `composeSubst` cs1
 
-    let arrayType = ArrayType (getFstLoc t2) t2 (getSndLoc t2)
-    let opType = Op2 Con (Just $ FunType [t1,arrayType] arrayType)
+    let arrayType = ArrayType locA t2 locB
+    let opType = Op2 Con (Just $ FunType locA [t1,arrayType] arrayType locB)
 
     return (cs2, t2, ExpOp2 (getFstLoc e) e' (opType (getFstLoc e)) es' (getSndLoc e))
 
@@ -487,9 +515,9 @@ tiExp (TypeEnv env) (ExpId id (Field [])) = do
     case Map.lookup id env of
         Just (OverScheme lVars lT lOps lFuncs, _) -> 
             confess (overloadedAsArgument id)
-        Just (scheme,_) -> do
+        Just (scheme,s) -> do
             t <- instantiate scheme
-            if isFunctionType t
+            if isFunctionType t && s == GlobalScopeFun
                 then tiExp (TypeEnv env) (ExpFunction (getFstLoc id) id (getSndLoc id) Nothing)
                 else return (nullSubst, t, ExpId id (Field []))
         Nothing -> do
@@ -535,7 +563,7 @@ tiExp env (ExpOp2 locA e1 (Op2 op opTyp loc) e2 locB) = do
     defType <- newSPLVar
     let def = (nullSubst, defType, ExpOp2 locA e1 (Op2 op opTyp loc) e2 locB)
 
-    (t1, t2, t3, opType) <- op2Type op (getDLoc e1) (getDLoc e2)
+    (t1, t2, t3, opType) <- op2Type op (getDLoc e1) (getDLoc e2) (DLoc locA locB)
     (s1, t1', e1') <- injectErrLoc def (tiExp env e1) (getDLoc e1)
 
     s2 <- injectErrLoc nullSubst (mgu t1' (apply s1 t1)) (getDLoc e1)
@@ -592,20 +620,22 @@ tiFunction (TypeEnv env) (ExpFunction locA id locB _) =
             dictate (refBeforeDec "Function" id) >> return (nullSubst, t,ExpFunction locA id locB Nothing)
 
 tiFunCall :: TypeEnv -> Bool -> FunCall -> TI (Subst, SPLType, FunCall, Overloaded)
-tiFunCall (TypeEnv env) monomorph (FunCall locA id args locB _) =
+tiFunCall (TypeEnv env) monomorph (FunCall locA id args locB _) = do
     case Map.lookup id env of
-        Just (OverScheme lockedvars lockedType lockedOps lockedFuncs,GlobalScope) -> do
-            (t, ops, funcs) <- instantiateOver (OverScheme lockedvars lockedType lockedOps lockedFuncs)
-            -- let argTypes = getArgsTypes t
+        Just (OverScheme lockedvars lockedType lockedOps lockedFuncs,s) | isGlobalScope s -> do
 
+            traceM (yellow ++ pp id ++ " " ++ show monomorph ++ reset)
+            (t, ops, funcs) <- instantiateOver (OverScheme lockedvars lockedType lockedOps lockedFuncs)
             (s1, args',ol) <- typeCheckExps id monomorph (TypeEnv env) nullSubst args ops funcs (getArgTypes t)
             let returnType = getReturnType t
-            -- trace ("\nCall \n"++ pp id ++"\nWith type:\n"++ pp t ++ "\nops:\n" ++ pp ops++"\nfull type type:\n" ++ pp (apply s1 t)) $
+            
             return (s1, apply s1 returnType, FunCall locA id args' locB (Just $ apply s1 t),ol)
-        Just (scheme,GlobalScope) -> do
+        Just (scheme,s) | isGlobalScope s -> do
             t <- instantiate scheme
-            -- let argTypes = getArgsTypes t
             (s1, args', ol) <- typeCheckExps id monomorph (TypeEnv env) nullSubst args [] [] (getArgTypes t)
+
+            -- traceM ("ENV IN " ++ pp id ++ printEnv (TypeEnv env) ++ "\n" ++ pp t ++ printSubst s1)
+
             let returnType = getReturnType t
             return (s1, apply s1 returnType, FunCall locA id args' locB (Just $ apply s1 t), ol)
         Just (OverScheme lVars lT lOps lFuncs, _) -> 
@@ -616,7 +646,7 @@ tiFunCall (TypeEnv env) monomorph (FunCall locA id args locB _) =
                 then return t
                 else do
                     argTypes <- mapM (newSPLVarDLoc . getDLoc) args
-                    FunType argTypes <$> newSPLVarLoc locA locB
+                    FunType locA argTypes <$> newSPLVarLoc locA locB <*> pure locB
 
             s1 <- injectErrLoc nullSubst (mgu funType t) (DLoc locA locB)
             
@@ -632,140 +662,155 @@ tiFunCall (TypeEnv env) monomorph (FunCall locA id args locB _) =
 
 -- ===================== Monomorphization ============================
 class Monomorphization a where
-    monomorphize :: a -> TypeEnv -> TI (a, Overloaded)
+    monomorphize :: a -> TypeEnv -> TI (a, Subst, Overloaded)
 
 instance Monomorphization a => Monomorphization [a] where
-    monomorphize [] env = return ([],emptyOL)
+    monomorphize [] env = return ([],nullSubst, emptyOL)
     monomorphize (x:xs) env = do
-        (a,b) <- monomorphize x env
-        (as,b') <- monomorphize xs env
-        return (a:as, b`unionOL`b')
+        (a,s1, b) <- monomorphize x env
+        (as,s2, b') <- monomorphize xs env
+        let cs1 = s2 `composeSubst` s1
+        return (a:as, cs1, b`unionOL`b')
 
 instance Monomorphization FunDecl where
     monomorphize (FunDecl funName args fType vars stmts) env = do
-        (vars', ol1) <- monomorphize vars  env
-        (stmts', ol2) <- monomorphize stmts env
-        return (FunDecl funName args fType vars' stmts', ol1 `unionOL` ol2)
+        (vars', s1, ol1) <- monomorphize vars  env
+        (stmts', s2, ol2) <- monomorphize stmts env
+        let cs1 = s2 `composeSubst` s1
+        return (FunDecl funName args fType vars' stmts', cs1, ol1 `unionOL` ol2)
 
 instance Monomorphization Stmt where
     monomorphize (StmtIf e stmts (Just els) loc) env = do
-        (e', ol1) <- monomorphize e env
-        (stmts', ol2) <- monomorphize stmts env
-        (els', ol3) <- monomorphize els env
-        return (StmtIf e' stmts' (Just els') loc, ol1 `unionOL` ol2 `unionOL` ol3)
+        (e',s1, ol1) <- monomorphize e env
+        (stmts',s2, ol2) <- monomorphize stmts env
+        (els',s3, ol3) <- monomorphize els env
+        let cs1 = s3 `composeSubst` s2 `composeSubst` s1
+        return (StmtIf e' stmts' (Just els') loc, cs1, ol1 `unionOL` ol2 `unionOL` ol3)
     monomorphize (StmtIf e stmts Nothing loc) env = do
-        (e', ol1) <- monomorphize e env
-        (stmts', ol2) <- monomorphize stmts env
-        return (StmtIf e stmts Nothing loc, ol1 `unionOL` ol2)
+        (e', s1, ol1) <- monomorphize e env
+        (stmts', s2, ol2) <- monomorphize stmts env
+        let cs1 =  s2 `composeSubst` s1
+        return (StmtIf e stmts Nothing loc,cs1, ol1 `unionOL` ol2)
     monomorphize (StmtWhile e stmts loc) env = do
-        (e', ol1) <- monomorphize e env
-        (stmts', ol2) <- monomorphize stmts env
-        return (StmtWhile e' stmts' loc, ol1 `unionOL` ol2)
+        (e', s1, ol1) <- monomorphize e env
+        (stmts', s2, ol2) <- monomorphize stmts env
+        let cs1 =  s2 `composeSubst` s1
+        return (StmtWhile e' stmts' loc, cs1, ol1 `unionOL` ol2)
     monomorphize (StmtAssignVar id fields e t) env = do
-        (e',ol1) <- monomorphize e env
-        return (StmtAssignVar id fields e' t, ol1)
+        (e',s, ol1) <- monomorphize e env
+        return (StmtAssignVar id fields e' t,s, ol1)
     monomorphize (StmtFuncCall funCall loc) env = do
-        (funCall', ol1) <- monomorphize funCall env
-        return (StmtFuncCall funCall' loc, ol1)
+        (funCall',s1, ol1) <- monomorphize funCall env
+        return (StmtFuncCall funCall' loc,s1, ol1)
     monomorphize (StmtReturn (Just e) loc) env = do
-        (e', ol1) <- monomorphize e env
-        return (StmtReturn (Just e') loc, ol1)
-    monomorphize x env = return (x, emptyOL)
+        (e',s, ol1) <- monomorphize e env
+        return (StmtReturn (Just e') loc,s, ol1)
+    monomorphize x env = return (x,nullSubst, emptyOL)
 
 instance Monomorphization VarDecl where
     monomorphize (VarDeclType t id e) env = do
-        (e', ol1) <- monomorphize e env
-        return (VarDeclType t id e', ol1)
-    monomorphize x env = return (x, emptyOL)
+        (e',s, ol1) <- monomorphize e env
+        return (VarDeclType t id e',s, ol1)
+    monomorphize x env = return (x,nullSubst, emptyOL)
 
 instance Monomorphization Exp where
     monomorphize (ExpBracket e) env = do
-        (e', ol1) <- monomorphize e env
-        return (ExpBracket e', ol1)
+        (e',s, ol1) <- monomorphize e env
+        return (ExpBracket e',s, ol1)
     monomorphize (ExpOp1 locA op e locB) env = do
-        (e', ol1) <- monomorphize e env
-        return (ExpOp1 locA op e' locB, ol1)
+        (e',s, ol1) <- monomorphize e env
+        return (ExpOp1 locA op e' locB,s, ol1)
     monomorphize (ExpList locA exps locB t) env = do
-        (exps', ol1) <- monomorphize exps env
-        return (ExpList locA exps' locB t, ol1)
+        (exps',s, ol1) <- monomorphize exps env
+        return (ExpList locA exps' locB t,s, ol1)
     monomorphize (ExpTuple locA (e1, e2) locB t) env = do
-        (e1', ol1) <- monomorphize e1 env
-        (e2', ol2) <- monomorphize e2 env
-        return (ExpTuple locA (e1', e2') locB t, ol1 `unionOL` ol2)
-    monomorphize (ExpOp2 locA e1 (Op2 op (Just (FunType t t')) loc) e2 locB) env | containsIDType (FunType t t') && op /= Con = do
+        (e1',s1, ol1) <- monomorphize e1 env
+        (e2',s2,  ol2) <- monomorphize e2 env
+        let cs1 =  s2 `composeSubst` s1
+        return (ExpTuple locA (e1', e2') locB t,cs1, ol1 `unionOL` ol2)
+    monomorphize (ExpOp2 locA e1 (Op2 op (Just (FunType locF1 t t' locF2)) loc) e2 locB) env | containsIDType (FunType locF1 t t' locF2) && op /= Con = do
         let name = idLocCreator $ overloadedOpName op (head t)
-        (e1', ol1) <- monomorphize e1 env
-        (e2', ol2) <- monomorphize e2 env
-        let exp = ExpFunCall (FunCall locA name [e1',e2'] locB (Just (FunType t t')))
-        return (exp, singletonOLOp (Op2 op (Just (FunType t t')) loc) `unionOL` (ol1 `unionOL` ol2))
-    monomorphize (ExpOp2 locA e1 (Op2 op (Just (FunType t t')) loc) e2 locB) env = do
+        (e1',s1, ol1) <- monomorphize e1 env
+        (e2',s2, ol2) <- monomorphize e2 env
+        let cs1 =  s2 `composeSubst` s1
+        let exp = ExpFunCall (FunCall locA name [e1',e2'] locB (Just (FunType locF1 t t' locF2)))
+        return (exp,cs1, singletonOLOp (Op2 op (Just (FunType locF1 t t' locF2)) loc) `unionOL` (ol1 `unionOL` ol2))
+    monomorphize (ExpOp2 locA e1 (Op2 op (Just (FunType locF1 t t' locF2)) loc) e2 locB) env = do
         -- let name = idLocCreator $ overloadedOpName op (head t)
-        (e1', ol1) <- monomorphize e1 env
-        (e2', ol2) <- monomorphize e2 env
-        let exp = ExpOp2 locA e1' (Op2 op (Just (FunType t t')) loc) e2' locB
-        return (exp,ol1 `unionOL` ol2)
+        (e1',s1, ol1) <- monomorphize e1 env
+        (e2',s2, ol2) <- monomorphize e2 env
+        let cs1 =  s2 `composeSubst` s1
+        let exp = ExpOp2 locA e1' (Op2 op (Just (FunType locF1 t t' locF2)) loc) e2' locB
+        return (exp,cs1, ol1 `unionOL` ol2)
     monomorphize (ExpFunCall funCall) env = do
-        (funCall', ol1) <- monomorphize funCall env
-        return (ExpFunCall funCall', ol1)
+        (funCall', s, ol1) <- monomorphize funCall env
+        return (ExpFunCall funCall', s, ol1)
     monomorphize (ExpId id (Field [])) (TypeEnv env) =
         case Map.lookup id env of
             Just (OverScheme lockerVars lockedT lockedOps lockedFuncs,s) -> do
                 (t, ops, funcs) <- instantiateOver $ OverScheme lockerVars lockedT lockedOps lockedFuncs
-                return (ExpId id (Field []), toOLOpFun ops funcs )
-            _ -> return (ExpId id (Field []), emptyOL)
-    monomorphize x env = return (x, emptyOL)
+                return (ExpId id (Field []),nullSubst, toOLOpFun ops funcs )
+            _ -> return (ExpId id (Field []),nullSubst, emptyOL)
+    monomorphize x env = return (x, nullSubst, emptyOL)
 
 instance Monomorphization FunCall where
-    monomorphize (FunCall locA (ID idLocA "print" idLocB) args locB (Just (FunType t t'))) env | containsIDType (FunType t t') = do
+    monomorphize (FunCall locA (ID idLocA "print" idLocB) args locB (Just (FunType locF1 t t' locF2))) env | containsIDType (FunType locF1 t t' locF2) = do
         let name = idLocCreator $ overloadedTypeName "print" (head t)
-        (args', ol1) <- monomorphize args env
+        (args',s1, ol1) <- monomorphize args env
         return
-            (FunCall locA name args' locB (Just (FunType t t')),
-            singletonOLFun (FunCall locA name args' locB (Just (FunType t t'))) `unionOL` ol1)
+            (FunCall locA name args' locB (Just (FunType locF1 t t' locF2)),
+            s1,
+            singletonOLFun (FunCall locA name args' locB (Just (FunType locF1 t t' locF2))) `unionOL` ol1)
     monomorphize (FunCall locA id args locB t) env | containsIDTypeMaybe t = do
         defT <- newSPLVar
         let def = (nullSubst, defT, FunCall locA id args locB t,emptyOL)
-
-        (_,_,funcall,overloaded) <- tiFunCall env True (FunCall locA id args locB t)
+        
+        traceM (green ++ pp id ++ " " ++ show True ++ reset)
+        (s,_,funcall,overloaded) <- tiFunCall env True (FunCall locA id args locB t)
+        traceM (green ++ printSubst s ++ reset)
 
         -- trace ( "\nMonomorphizing "++pp id++"\n"++show overloaded ++ "\nEND\n") $ 
-        return (funcall, overloaded)
-    monomorphize x env = return (x, emptyOL)
+        return (funcall, s, overloaded)
+    monomorphize (FunCall locA id args locB t) env = do
+        -- traceM (red ++ pp id ++ " " ++ show True ++ reset)
+        return (FunCall locA id args locB t, nullSubst, emptyOL)
 
 
 
 instance Monomorphization Op2Typed where
-    monomorphize (Op2 op (Just (FunType t t')) loc) env | containsIDType (FunType t t') && op /= Con = do
+    monomorphize (Op2 op (Just (FunType locF1 t t' locF2)) loc) env | containsIDType (FunType locF1 t t' locF2) && op /= Con = do
         let name = idLocCreator $ overloadedOpName op (head t)
-        return (Op2 op (Just (FunType t t')) loc, singletonOLOp (Op2 op (Just (FunType t t')) loc))
-    monomorphize x env = return (x, emptyOL)
-
-
-
+        return (Op2 op (Just (FunType locF1 t t' locF2)) loc,
+                nullSubst,
+                singletonOLOp (Op2 op (Just (FunType locF1 t t' locF2)) loc))
+    monomorphize x env = return (x, nullSubst, emptyOL)
 
 -- ===================== Main Type Inference ============================
-typeInference :: SPL -> Either Error (Subst, TypeEnv, SPL)
+typeInference :: SPL -> Either Error (Subst, TypeEnv, SPL, (Map String Op2Typed, Map String FunCall))
 typeInference code = do
     case runTI (tiSPL code) of
-        (That (s1, env, spl), state) -> do
+        (That (s1, env, spl), (_,maps)) -> do
             -- let SPL code' = apply s1 spl
             let SPL code' = spl
             -- cleanCode <- removeDeadCode (SPL $ removeMutRec code')
             let cleanCode = SPL $ removeMutRec code'
             -- let updatedCode = apply s1 cleanCode
-            Right (s1, env, cleanCode)
+            Right (s1, env, cleanCode, maps)
         (These errs a, state) -> Left errs
         (This errs, state) -> Left errs
+
+tokenizeParserTI file = tokeniseAndParse mainSegments file >>= (mutRec . fst) >>= typeInference
 
 
 mainTIIO filename = do
 
     file <- readFile  ("../SPL_test_code/" ++ filename)
     case tokeniseAndParse mainSegments file >>= (mutRec . fst) >>= typeInference of
-        Right (s1, env, code) -> do
+        Right (s1, env, code, maps) -> do
             putStr $ pp code
-            putStr $ "\nEnv:\n" ++ printEnv env
-            putStr $ "\nSubst:\n" ++ printSubst (Map.toList s1)
+            putStr $ printOverloading maps
+            putStr $ printEnv env
+            putStr $ printSubst s1
         Left x -> putStr $ showError file x
 
 
@@ -774,9 +819,10 @@ mainTI filename = do
     -- print path
     file <- readFile  ("../SPL_test_code/" ++ filename)
     case tokeniseAndParse mainSegments file >>= (mutRec . fst) >>= rtga >>= typeInference of
-        Right (s1, env, code) -> do
+        Right (s1, env, code, maps) -> do
             writeFile "../SPL_test_code/ti-out.spl"$ pp code
-            -- putStr $ "\nEnv:\n" ++ printEnv env
-            -- putStr $ "\nSubst:\n" ++ printSubst (Map.toList s1)
+            putStr $ printOverloading maps
+            putStr $ printEnv env
+            -- putStr $ printSubst s1
         Left x -> putStr $ showError file x
 

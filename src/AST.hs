@@ -30,7 +30,7 @@ data SPLType
     | ArrayType Loc SPLType Loc
     | IdType IDLoc
 
-    | FunType [SPLType] SPLType
+    | FunType Loc [SPLType] SPLType Loc
     | Void Loc Loc
     
 --    | BracketType SPLType
@@ -42,7 +42,7 @@ instance Eq SPLType where
   (==) (TupleType _ (a,b) loc) (TupleType _ (c,d) loc') = (==) a c && (==) b d
   (==) (ArrayType _ a loc) (ArrayType _ b loc') = (==) a b
   (==) (IdType (ID _ l _)) (IdType (ID _ r _)) = l == r
-  (==) (FunType arg ret) (FunType arg' ret') = (==) arg arg' && (==) ret ret'
+  (==) (FunType _ arg ret _) (FunType _ arg' ret' _) = (==) arg arg' && (==) ret ret'
   (==) (Void _ _) (Void _ _) = True
   (==) _ _ = False
 
@@ -57,11 +57,11 @@ instance Eq SPLType where
 -- eqType _ _ = False
 
 isFunctionType :: SPLType -> Bool
-isFunctionType (FunType arg ret) = True 
+isFunctionType (FunType _ arg ret _) = True 
 isFunctionType _ = False
 
 isVoidFun :: SPLType -> Bool
-isVoidFun (FunType _ ret) = ret == Void (Loc (-1) (-1)) (Loc (-1) (-1))
+isVoidFun (FunType _ _ ret _) = ret == Void (Loc (-1) (-1)) (Loc (-1) (-1))
 isVoidFun _ = False
 
 data BasicType
@@ -91,7 +91,7 @@ data Exp
   | ExpList Loc [Exp] Loc (Maybe SPLType)
   | ExpTuple Loc (Exp, Exp) Loc (Maybe SPLType)
 
-  | ExpCurry Loc FunCurry Loc
+  -- | ExpCurry Loc FunCurry Loc
   | ExpFunction Loc IDLoc Loc (Maybe SPLType)
   deriving(Show)
 
@@ -110,14 +110,15 @@ instance Eq Exp where
   (==) (ExpTuple _ (l1, l2) _ t1) (ExpTuple _ (r1, r2) _ t2) = l1 == r1 && l2 == r2 && t1 == t2
 
   (==) (ExpFunction _ id1 _ t1) (ExpFunction _ id2 _ t2) = id1 == id2  && t2 == t1
+  (==) _ _ = False
 
 data FunCall
     = FunCall Loc IDLoc [Exp] Loc (Maybe SPLType)
     deriving (Show, Eq)
 
-data FunCurry
-    = FunCurry IDLoc [Exp] SPLType
-    deriving (Show, Eq)
+-- data FunCurry
+--     = FunCurry IDLoc [Exp] SPLType
+--     deriving (Show, Eq)
 
 newtype Field
   = Field [StandardFunction]
@@ -198,7 +199,6 @@ instance LOC ErrorLoc where
   getLineNum (DLoc (Loc line col) _) = line
   getColNum (DLoc (Loc line col) _) = col
 
-
 instance LOC Loc where
   showLoc (Loc line col) = "on Line " ++ show line ++ " and, Col "++ show col
   getDLoc x = DLoc x x
@@ -232,26 +232,14 @@ instance LOC SPLType where
   getDLoc (TypeBasic locA  _ locB) = DLoc locA locB
   getDLoc (ArrayType locA  _ locB) =  DLoc locA locB
   getDLoc (TupleType locA  _ locB) =  DLoc locA locB
-  getDLoc (FunType arg ret) = DLoc (getFstLoc $ head arg) (getSndLoc ret)
+  getDLoc (FunType locA arg ret locB) = DLoc locA locB
   getDLoc (IdType idloc) =  getDLoc idloc
   getDLoc (Void locA locB) = DLoc locA locB
 
   getFstLoc x = let (DLoc a _) = getDLoc x in a
   getSndLoc x = let (DLoc _ b) = getDLoc x in b
-
-  getLineNum (TypeBasic locA  _ locBc) = getLineNum locA
-  getLineNum (ArrayType locA  _ locB) = getLineNum locA
-  getLineNum (TupleType locA  _ locB) = getLineNum locA
-  getLineNum (IdType idloc) = getLineNum idloc
-  getLineNum (Void locA locB) = getLineNum locA
-  getLineNum x = getLineNum (getDLoc x)
-
-  getColNum (ArrayType locA  _ locB) = getColNum locA
-  getColNum (TupleType locA  _ locB) = getColNum locA
-  getColNum (TypeBasic locA  _ locB) = getColNum locA
-  getColNum (IdType idloc) = getColNum idloc
-  getColNum (Void locA locB) = getColNum locA
-  getColNum x = getColNum (getDLoc x)
+  getLineNum x = getLineNum (getFstLoc x)
+  getColNum x = getColNum (getSndLoc x)
 
 instance LOC Exp where
   showLoc x = let DLoc loc _ = getDLoc x in showLoc loc
@@ -271,13 +259,18 @@ instance LOC Exp where
 
   getFstLoc x = let (DLoc a _) = getDLoc x in a
   getSndLoc x = let (DLoc _ b) = getDLoc x in b
-
   getLineNum x = getLineNum $ getFstLoc x
-
   getColNum x = getColNum $ getFstLoc x
 
 instance LOC FunCall where
+  showLoc x = let DLoc loc _ = getDLoc x in showLoc loc
+
   getDLoc (FunCall locA _ _ locB _) = DLoc locA locB
+
+  getFstLoc x = let (DLoc a _) = getDLoc x in a
+  getSndLoc x = let (DLoc _ b) = getDLoc x in b
+  getLineNum x = getLineNum $ getFstLoc x
+  getColNum x = getColNum $ getFstLoc x
 
 instance LOC StandardFunction where
   showLoc x = showLoc $ getFstLoc x
@@ -337,7 +330,7 @@ instance PrettyPrinter SPLType where
   pp (IdType id) = pp id
   -- Prints function types haskell style:
   -- pp (FunType arg ret) = pp arg ++ " -> " ++ pp ret
-  pp (FunType args ret) = concatMap (\x -> ppFuncs x ++ " "  ) args ++ "-> " ++ pp ret
+  pp (FunType _ args ret _) = concatMap (\x -> ppFuncs x ++ " "  ) args ++ "-> " ++ ppFuncs ret
     where ppFuncs x = if isFunctionType x then "("++ pp x ++")" else pp x
   pp (Void _ _) = "Void"
 
@@ -345,13 +338,13 @@ instance PrettyPrinter SPLType where
 
 
 getAllTypes :: SPLType -> [SPLType]
-getAllTypes (FunType args ret) = args ++ [ret]
+getAllTypes (FunType _ args ret _) = args ++ [ret]
 
 getArgTypes :: SPLType -> [SPLType]
-getArgTypes (FunType args ret) = args
+getArgTypes (FunType _ args ret _) = args
 
 getReturnType :: SPLType -> SPLType
-getReturnType (FunType args ret) = ret
+getReturnType (FunType _ args ret _) = ret
 
 instance PrettyPrinter BasicType where
   pp BasicInt = "Int"
@@ -382,9 +375,9 @@ instance PrettyPrinter Exp where
   pp (ExpOp1 _ op e _) = pp op ++ pp e
   pp (ExpFunCall c) = pp c;
   pp (ExpList _ xs _ _) =  "["++ intercalate "," (Prelude.map pp xs)  ++ "]"
-  pp (ExpTuple _ (a,b) _ _) =  "(" ++ pp a ++ ", " ++ pp b ++")"
+  pp (ExpTuple _ (a,b) _ (Just t)) =  "(" ++ pp a ++ ", " ++ pp b ++ ")" 
   pp (ExpEmptyList _ _) = "[]"
-  pp (ExpFunction _ id _ (Just t)) = pp id {-- ++ " :: " ++ pp t --}
+  pp (ExpFunction _ id _ (Just t)) = pp id ++ "/* f */" {-- ++ " :: " ++ pp t --}
 
 instance PrettyPrinter Field where
   pp (Field xs) = concatMap pp xs

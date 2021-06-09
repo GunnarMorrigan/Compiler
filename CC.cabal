@@ -44,6 +44,7 @@ library
     containers,
     array,
     directory,
+    process,
     mtl,
     monad-chronicle,
     these
@@ -53,10 +54,6 @@ executable CC_exe
   main-is: GenSSM.hs
   hs-source-dirs:
       src
-  -- other-modules:
-  --     Paths_CC
-  -- hs-source-dirs:
-  --     app
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
     CC,
@@ -65,6 +62,7 @@ executable CC_exe
     containers,
     array,
     directory,
+    process,
     mtl,
     monad-chronicle,
     these
@@ -77,7 +75,8 @@ test-suite CC_tests
   other-modules:
     LexerTest,
     ParserTest,
-    TITest
+    TITest,
+    GenTest
   hs-source-dirs:
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
@@ -88,6 +87,7 @@ test-suite CC_tests
     containers,
     array,
     directory,
+    process,
     mtl,
     monad-chronicle,
     these,
@@ -100,7 +100,8 @@ executable Linux_tests
   other-modules:
     LexerTest,
     ParserTest,
-    TITest
+    TITest,
+    GenTest
   hs-source-dirs:
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
@@ -111,6 +112,7 @@ executable Linux_tests
     containers,
     array,
     directory,
+    process,
     mtl,
     monad-chronicle,
     these,

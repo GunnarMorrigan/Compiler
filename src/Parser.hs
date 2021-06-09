@@ -180,8 +180,9 @@ splType = bracketType <|> rigidType <|> idType <|> voidType
 
 funType :: Parser (Token, Loc, Loc) SPLType
 funType = do
+  locA <- firstLocParser
   ys <- many'' splType
-  FunType ys <$> retType
+  uncurry (FunType locA ys) <$> pLastLocParser retType
   -- ys <- many'' splType
   -- ret <- case length ys of
   --   0 -> Just <$> retType
@@ -431,11 +432,12 @@ idP = Parser $ \case
 pLastLocParser :: Parser (Token, Loc, Loc) a -> Parser (Token, Loc, Loc) (a,Loc)
 pLastLocParser (Parser p) = Parser $
     \input -> case p input of
-        Right (a,remainingTokens) ->
-            case getLastLoc input (head remainingTokens) of
-                Just loc -> return ((a,loc),remainingTokens)
-                Nothing -> Left $ Error defaultLoc "Could not find last loc in parser"
-        Left x -> Left x
+      Right (a,[]) -> let (_,_,loc) = last input in return ((a,loc),[])
+      Right (a,remainingTokens) ->
+          case getLastLoc input (head remainingTokens) of
+              Just loc -> return ((a,loc),remainingTokens)
+              Nothing -> Left $ Error defaultLoc "Could not find last loc in parser"
+      Left x -> Left x
 
 getLastLoc :: [(Token, Loc , Loc)] -> (Token, Loc , Loc) -> Maybe Loc
 getLastLoc [] _ = Nothing

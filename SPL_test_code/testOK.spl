@@ -1,16 +1,17 @@
-var x = 10;
 
-app(x, f){
-    var y = f.hd;
-    return f(x);
+
+
+equal(x,y){
+  return x == y;
 }
 
-
-equal(x, y){
-    x = 10;
-    return x == y;
+correct(l,k){
+  return equal(l,k);
+}
+main () {
+  print(equal(1,2));
+  correct(True,False);
+  //print(1);
+  //print(swapCopy(t));
 }
 
-correct(x, y) :: Int Int -> Bool{
-    return equal(x, y);
-}

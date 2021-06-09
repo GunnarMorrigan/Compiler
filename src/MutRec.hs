@@ -110,7 +110,7 @@ removeDeadCode nodes = do
         Nothing -> Left $ Error defaultLoc "Required main function not found."
         Just mainVertex -> 
             let code = reachable graph mainVertex 
-            in Right $ SPL $ map ((\(a,_,_) -> a) . getNode) code
+            in Right nodes
 
 
 mainMutRecToIO :: String -> IO()

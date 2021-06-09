@@ -1,44 +1,69 @@
-LDSA 1
-STR R5
-LDC 10 //[Int] a = (10 : (20 : (30 : [])));
-LDC 20
-LDC 30
-LDC 0
-STMH 2
-STMH 2
-STMH 2
 BRA main
-_printArrayInt:  LINK 1
+correct:  LINK 0
+	LDL -4
+	LDL -3
 	LDL -2
-	STL 1
-	LDC 91
-	TRAP 1
-	LDL 1
-	LDC 0
+	BSR equal
+	AJS -3
+	LDR RR
+	correctEnd:  STR RR
+	UNLINK
+	RET
+equal:  LINK 0
+	LDL -4
+	LDL -3
+	BSR _eqa6
+	AJS -2
+	LDR RR
+	equalEnd:  STR RR
+	UNLINK
+	RET
+_eqInt:  LINK 0
+	LDL -3
+	LDL -2
 	EQ
-	BRT _printArrayIntEnd
-	LDL 1
-	LDH -1
-	TRAP 0
-	LDL 1
-	LDH 0
-	LDC 0
-	EQ
-	BRT _printArrayIntEnd
-	LDC 44
+	STR RR
+	UNLINK
+	RET
+_printBool:  LINK 0
+	LDL -2
+	BRF _printFalse
+	LDC 101
+	LDC 117
+	LDC 114
+	LDC 84
 	TRAP 1
-	LDL 1
-	LDH 0
-	STL 1
-	LDC 30
-	STR PC
-	_printArrayIntEnd:  LDC 93
+	TRAP 1
+	TRAP 1
+	TRAP 1
+	UNLINK
+	RET
+	_printFalse:  LDC 101
+	LDC 115
+	LDC 108
+	LDC 97
+	LDC 70
+	TRAP 1
+	TRAP 1
+	TRAP 1
+	TRAP 1
 	TRAP 1
 	UNLINK
 	RET
 main:  LINK 0
-	LDR R5
-	LDA 0
-	BSR _printArrayInt
+	LDC 1
+	LDC 2
+	LDC 36
+	BSR equal
+	AJS -3
+	LDR RR
+	BSR _printBool
+	AJS -1
+	LDC -1
+	LDC 0
+	BSR correct
+	AJS -2
+	LDR RR
+	BSR _printBool
 	AJS -1
 	HALT

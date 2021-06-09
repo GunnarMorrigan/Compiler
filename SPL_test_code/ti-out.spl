@@ -1,17 +1,13 @@
-Int x = 10;
-
-equal (x, y) :: Int Int -> Bool {
-    x = 10;
-    return (x == y);
+equal (x, y, _eqa6) :: a6 a6 (a6 a6 -> Bool) -> Bool {
+    return _eqa6(x, y) /*:: a6 a6 -> Bool*/;
 }
 
-correct (x, y) :: Int Int -> Bool {
-    return equal(x, y) /*:: Int Int -> Bool*/;
+correct (l, k, _eqa14) :: a14 a14 (a14 a14 -> Bool) -> Bool {
+    return equal(l, k, _eqa14) /*:: a14 a14 (a14 a14 -> Bool) -> Bool*/;
 }
 
-app (x, f) :: a9 (a9 -> a13) -> a13 {
-    a9 -> a13 y = f;
-
-    return f(x) /*:: a9 -> a13*/;
+main () :: -> Void {
+    print(equal(1, 2, _eqInt/* f */) /*:: Int Int (Int Int -> Bool) -> Bool*/) /*:: Bool -> Void*/;
+    correct(True, False, _eqBool/* f */) /*:: Bool Bool (Bool Bool -> Bool) -> Bool*/;
 }
 

@@ -96,10 +96,11 @@ showPlaceOfError code' (Error (Loc line col) msg) =
 showPlaceOfError code' (ErrorD (DLoc (Loc line col) (Loc line' col')) msg) =
     let code = replaceTab code' in
     msg ++ "\n" ++
-    (if line == 1 then "" else lines code !! (line - 2) ++ "\n" )
-    ++ makePlaceOfErrorRed (col-1) (col'-1) ( lines code !! (line - 1)) ++ "\n"
-    ++ replicate (col - 1) ' ' ++ replicate (col'-col) '^' ++ "\n"
-    ++ if length code > line then lines code !! line ++ "\n" else "" 
+    (if line == 1 then "" else lineNumber ++ lines code !! (line - 2) ++ "\n" )
+    ++ show line ++ " |" ++ makePlaceOfErrorRed (col-1) (col'-1) ( lines code !! (line - 1)) ++ "\n"
+    ++ lineNumber ++ replicate (col - 1) ' ' ++ replicate (col'-col) '^' ++ "\n"
+    ++ if length code > line then lineNumber ++ lines code !! line ++ "\n" else "" 
+    where lineNumber = replicate (length (show line)) ' ' ++ " |"
 showPlaceOfError code' x = show x
 
 makePlaceOfErrorRed :: Int -> Int -> String -> String
