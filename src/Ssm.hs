@@ -134,7 +134,7 @@ instance Assemble SsmGlobal where
     resolution env (Global inst) = Global (resolution env inst)
 
 instance Assemble SsmFunction where
-    assemble  (Function name (i:inst)) = LABEL name i:inst
+    assemble (Function name (i:inst)) = LABEL name i:inst
     resolution env (Function name inst) = Function name (resolution env inst)
 
 instance Assemble Instruct where

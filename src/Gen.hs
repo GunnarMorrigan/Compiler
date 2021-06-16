@@ -1,5 +1,6 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 module Gen where
 
 import AST
@@ -11,7 +12,7 @@ import TI
 import SSM
 
 import Data.Char
-import Data.List ( intercalate )
+import Data.List ( intercalate, isPrefixOf )
 import Data.Bifunctor as BI
 import Data.Set as Set
 import Data.Map as Map
@@ -65,6 +66,10 @@ newGlobal typ = do
     return $ G globalS typ
 
 insertOp2 :: Op2Typed -> Gen ()
+insertOp2 (Op2 op (Just (FunType locF1 args t' locF2)) loc ) = do
+    let t = head args
+    (ifS, globalS, (ops, funcCalls)) <- get
+    put (ifS, globalS, (Map.insert (overloadedOpName op t) (Op2 op (Just t) loc) ops, funcCalls))
 insertOp2 (Op2 op (Just t) loc) = do
     (ifS, globalS, (ops, funcCalls)) <- get
     put (ifS, globalS, (Map.insert (overloadedOpName op t) (Op2 op (Just t) loc) ops, funcCalls))
@@ -79,23 +84,26 @@ insertFunCall (FunCall locF (ID locA id locB) args locF'(Just (FunType locF1 t t
 genSPL :: SPL -> Map String Op2Typed -> Map String FunCall -> Gen SSM
 genSPL spl ops funcs = do
     let (globals, functions, mainDecl) = sortSPL spl
-    (assemblyGlobals, env) <- trace "1" $ genGlobals globals Map.empty
-    (assemblyFunctions, env') <- trace "2" $ genFunDecls functions env
+    (assemblyGlobals, env) <- genGlobals globals Map.empty
+    (assemblyFunctions, env') <- genFunDecls functions env
     case mainDecl of
         Nothing -> throwError $ Error defaultLoc "No main without arguments detected"
         Just main -> do
-            (assemblyMain, _) <- trace "3" $ genFunDecl main env'
+            (assemblyMain, _) <- genFunDecl main env'
             (_, _, (overloadedOps,overloadedFuns)) <- get 
+            let opsTI = Map.map adjustType ops
             return $ 
                 SSM assemblyGlobals $
                     assemblyFunctions ++
-                    genOverloadedOps True (Map.map adjustType ops) ++
-                    genOverloadedOps False overloadedOps ++
-                    genOverloadedFuns (overloadedFuns `Map.union` (Map.map adjustFuncType funcs)) ++ 
+                    genOverloadedOps True opsTI ++
+                    genOverloadedOps False (overloadedOps Map.\\ opsTI) ++
+                    -- genOverloadedFuns (overloadedFuns `Map.union` Map.map adjustFuncType funcs) ++ 
+                    genOverloadedFuns True funcs ++ 
+                    genOverloadedFuns False (overloadedFuns Map.\\ funcs) ++
                     [assemblyMain]
-    where 
+    where
         adjustType (Op2 op (Just  (FunType _ xs t _)) loc ) = Op2 op (Just $ head xs) loc
-        adjustFuncType (FunCall locA id exp locB (Just (FunType _ (x:xs) _ _))) = FunCall locA id exp locB (Just x)
+        -- adjustFuncType (FunCall locA id exp locB (Just (FunType _ (x:xs) _ _))) = FunCall locA id exp locB (Just x)
 
 
 genGlobals :: [VarDecl] -> GenEnv -> Gen ([SsmGlobal], GenEnv)
@@ -174,17 +182,29 @@ genStmts recCall ((StmtIf e stmts (Just els) loc):xs) c id env = do
 
     let elseBranchEnd = if Prelude.null xs then [BRA (fname++"End")] else [BRA contin]
 
-    (elseStmt, env') <- combineResult (genExp e [BRT th] env) (genStmts True els elseBranchEnd id)
+    (elseStmt, env') <- combineResult (genExp e [BRT th] env) (genStmts True els [] id)
+    let elseStmt' = elseStmt ++ elseBranchEnd
 
     (ifElseStmt, env'') <- genStmts True stmts [] id env'
+    -- if Prelude.null ifElseStmt then traceM (red ++ " ifElseStmt is empty! \n"++pp e ++ "\n" ++ pp loc ++ reset) else return ()
     let ifElseStmt' = insertLabel th ifElseStmt
 
     (rest, env''') <- genStmts True xs c id env''
     let rest' = insertLabel contin rest
 
-    return $ if Prelude.null xs 
-                then (elseStmt++ifElseStmt++c, env'') 
-                else (elseStmt++ifElseStmt++rest', env''')
+    case (Prelude.null stmts, Prelude.null els, Prelude.null xs) of
+        (True, True, True) -> return (c, env'')
+        (False, True, True) -> return (elseStmt'++ifElseStmt'++c, env'')
+        (True, False, True) -> return (elseStmt'++insertLabel th [NOP]++c, env'') 
+        (True, True, False) -> return (rest, env''')
+        (False, False, True) -> return (elseStmt'++ifElseStmt'++c, env'')
+        (True, False, False) -> return (elseStmt'++insertLabel th [NOP]++rest', env''')
+        (False, True, False) -> return (elseStmt'++ifElseStmt'++rest', env''')
+        (False, False, False) -> return (elseStmt'++ifElseStmt'++rest', env''')
+
+    -- return $ if Prelude.null xs 
+    --             then (elseStmt++ifElseStmt'++c, env'') 
+    --             else (elseStmt++ifElseStmt'++rest', env''')
 genStmts recCall ((StmtWhile e stmts loc):xs) c id env = do
     let (ID _ fname _) = id
     whileName <- newWhile fname
@@ -338,49 +358,66 @@ genOp2Typed (Op2 op (Just (FunType _ (ArrayType _ (IdType _) _:xs) _ _))_) c env
     return (op2Func op:c,env)
 genOp2Typed (Op2 op (Just (FunType _ (TypeBasic{}:xs) _ _))_) c env = 
     return (op2Func op:c,env)
-genOp2Typed (Op2 op (Just (FunType locF1 t t' locF2)) loc) c env = trace ("THIS IS the type:\n"++ pp t) $ do
+genOp2Typed (Op2 op (Just (FunType locF1 t t' locF2)) loc) c env = do
     let func = overloadedOpName op (head t)
     insertOp2 (Op2 op (Just (FunType locF1 t t' locF2)) loc)
     return (BSR func:AJS (-2):LDR RR:c, env)
 
 -- ==================== Overloading functions ====================
-genOverloadedFuns :: Map String FunCall -> [SsmFunction]
-genOverloadedFuns funcs = concatMap (snd . genPrint) $ Map.elems (getOverloadedFuns (Map.toList funcs))
+genOverloadedFuns :: Bool -> Map String FunCall -> [SsmFunction]
+genOverloadedFuns b funcs = concatMap (snd . genPrint b) $ Map.elems (getOverloadedFuns b (Map.toList funcs))
 
-getOverloadedFuns :: [(String, FunCall)] -> Map String SPLType
-getOverloadedFuns [] = Map.empty
-getOverloadedFuns ((name, FunCall _ (ID _ "print" _) _ _ (Just (FunType locF1 t t' locF2))):xs) = 
-    getOverloadedFun "print" (head t) `Map.union` getOverloadedFuns xs
+getOverloadedFuns :: Bool -> [(String, FunCall)] -> Map String SPLType
+getOverloadedFuns b [] = Map.empty
+getOverloadedFuns b ((name, FunCall _ (ID _ "print" _) _ _ (Just (FunType locF1 t t' locF2))):xs) = 
+    getOverloadedFun b "print" (head t) `Map.union` getOverloadedFuns b xs
+-- getOverloadedFuns ((name, FunCall _ id _ _ (Just (FunType locF1 t t' locF2))):xs) | "_print" `isPrefixOf` (getID id)  = 
+--     getOverloadedFun "print" (head t) `Map.union` getOverloadedFuns xs
+getOverloadedFuns b ((_,x):_) = error ("ERROR: " ++ pp x)
+     
 
-getOverloadedFun :: String -> SPLType -> Map String SPLType
-getOverloadedFun funcName (TypeBasic _ BasicInt _) = Map.empty 
-getOverloadedFun funcName (TypeBasic _ BasicChar _) = Map.empty 
-getOverloadedFun funcName (TypeBasic locA BasicBool locB) = 
+getOverloadedFun :: Bool -> String -> SPLType -> Map String SPLType
+getOverloadedFun b funcName (TypeBasic locA BasicBool locB) = 
     let name = overloadedTypeName funcName (TypeBasic locA BasicBool locB)
     in Map.singleton name (TypeBasic locA BasicBool locB)
-getOverloadedFun funcName (TupleType locA (t1,t2) locB) = 
+getOverloadedFun b funcName (TypeBasic locA t locB) =
+    if b 
+    then 
+        let name = overloadedTypeName funcName (TypeBasic locA t locB) 
+        in Map.singleton name (TypeBasic locA t locB)
+    else Map.empty
+getOverloadedFun b funcName (TupleType locA (t1,t2) locB) = 
     let name = overloadedTypeName funcName (TupleType locA (t1,t2) locB) 
-    in Map.singleton name (TupleType locA (t1,t2) locB) `Map.union` getOverloadedFun funcName t1 `Map.union` getOverloadedFun funcName t2
-getOverloadedFun funcName (ArrayType locA a locB) =
+    in Map.singleton name (TupleType locA (t1,t2) locB) `Map.union` getOverloadedFun b funcName t1 `Map.union` getOverloadedFun b funcName t2
+getOverloadedFun b funcName (ArrayType locA a locB) =
     let name = overloadedTypeName funcName (ArrayType locA a locB)
-    in Map.singleton name (ArrayType locA a locB) `Map.union` getOverloadedFun funcName a
-getOverloadedFun funcName t = trace ("Unexpected input in getOverloadedFun: "++funcName ++ " with type: " ++ pp t) Map.empty  
+    in Map.singleton name (ArrayType locA a locB) `Map.union` getOverloadedFun b funcName a
+getOverloadedFun b funcName t = trace ("Unexpected input in getOverloadedFun: "++funcName ++ " with type: " ++ pp t) Map.empty  
 
-genPrint :: SPLType -> (Instruct, [SsmFunction])
-genPrint (TypeBasic _ BasicInt _) = (TRAP 0, [])
-genPrint (TypeBasic _ BasicChar _) = (TRAP 1, []) 
-genPrint (TypeBasic _ BasicBool _) = do
+genPrint :: Bool -> SPLType -> (Instruct, [SsmFunction])
+-- genPrint b (TypeBasic _ BasicInt _) = 
+
+genPrint b (TypeBasic _ BasicBool _) = do
     let function = [LABEL "_printBool"  (LINK 0),LDL (-2),BRF "_printFalse",
                         LDC 101,LDC 117,LDC 114,LDC 84,
                             TRAP 1,TRAP 1,TRAP 1,TRAP 1,UNLINK,RET,
                         LABEL "_printFalse" (LDC 101),LDC 115,LDC 108,LDC 97,LDC 70,
                             TRAP 1,TRAP 1,TRAP 1,TRAP 1,TRAP 1,UNLINK,RET]
     (BSR "_printBool", [Function "_printBool" function])
-genPrint (TupleType locA (t1,t2) locB)  = do
+genPrint b (TypeBasic locA t locB) = do
+    let name = overloadedTypeName "print" (TypeBasic locA t locB) 
+    if b 
+        then do
+            let printT = fst $ genPrint False (TypeBasic locA t locB)
+            let function = [LABEL name (LINK 0),LDL (-2), printT, UNLINK, RET]
+            (BSR name, [Function name function])
+        else if t == BasicChar then (TRAP 1, []) else (TRAP 0, [])
+    
+genPrint b (TupleType locA (t1,t2) locB)  = do
     let printName = overloadedTypeName "print" (TupleType locA (t1,t2) locB)
 
-    let (printT1, functionT1) = genPrint t1 
-    let (printT2, functionT1T2) = genPrint t2 
+    let (printT1, functionT1) = genPrint False t1 
+    let (printT2, functionT1T2) = genPrint False t2 
 
     let function = LABEL printName (LINK 0): 
                         openBracket (LDL (-2):LDH 0:printT1: 
@@ -388,14 +425,14 @@ genPrint (TupleType locA (t1,t2) locB)  = do
                         closeBracket [UNLINK,RET]))
 
     (BSR printName, [Function printName function]) 
-genPrint (ArrayType _ (IdType _) loc) = do
+genPrint b (ArrayType _ (IdType _) loc) = do
     let printName  = "_printPolyEmptyList"
 
     let functions = printArray NOP printName
     (BSR printName, [Function printName functions]) 
-genPrint (ArrayType locA a locB) = do
+genPrint b (ArrayType locA a locB) = do
     let printName  = overloadedTypeName "print" (ArrayType locA a locB)
-    let (printA, functionT1) = genPrint a
+    let (printA, functionT1) = genPrint False a
 
     let functions = printArray printA printName
     (BSR printName, [Function printName functions])
@@ -451,6 +488,7 @@ genOverloadedOp func (Op2 op (Just (TupleType locA (t1,t2) locB)) opLoc)  =
 genOverloadedOp func (Op2 op (Just (ArrayType locA a locB)) opLoc) = 
     let name = overloadedTypeName (op2String op) (ArrayType locA a locB)
     in Map.singleton name (op, ArrayType locA a locB) `Map.union` genOverloadedOp func (Op2 op (Just a) opLoc)
+genOverloadedOp _ op = error ("We are not handeling this case: "++ pp op)
 
 genCompare :: Op2 -> Bool -> SPLType -> (Instruct, [SsmFunction])
 genCompare op func (TypeBasic locA BasicBool locB) = do
@@ -677,6 +715,7 @@ mainGen filename = do
                 case runGen $ genSPL spl ops funcs of
                     (Right result,_) -> do
                                 let output = pp $ resPoints result
+                                writeFile "../SPL_test_code/ti-out.spl" (pp spl)
                                 writeFile "../generated_ssm/gen.ssm" output
                     (Left x,_) -> putStr $ "ERROR:\n" ++ show x ++ "\n" ++ showError file x
             Left x -> putStr $ "\nError:\n" ++ showError file x

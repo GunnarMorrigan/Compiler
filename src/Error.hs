@@ -19,23 +19,33 @@ data Error =
 instance LOC Error where
   showLoc (Error loc _) = showLoc loc
   showLoc (ErrorD dloc _ ) = showLoc dloc
-  
+  showLoc (Errors (x:xs)) = showLoc x
+  showLoc (Errors []) = error "Showloc called for empty error list"
+
   getDLoc (Error loc _) = undefined
   getDLoc (ErrorD dloc _) = dloc
-
+  getDLoc (Errors (x:xs)) = getDLoc x
+  getDLoc (Errors []) = error "getDLoc called for empty error list"
+  
   getFstLoc (Error loc _) = loc
   getFstLoc (ErrorD dloc _) = getFstLoc dloc
   getFstLoc (Errors (x:xs)) = getFstLoc x
+  getFstLoc (Errors []) = error "getFstLoc called for empty error list"
 
   getSndLoc (Error loc _) = undefined 
   getSndLoc (ErrorD dloc _) = getSndLoc dloc 
+  getSndLoc (Errors []) = error "getSndLoc called for empty error list"
+  getSndLoc (Errors x) = getSndLoc $ last x
 
   getLineNum (Error loc _) = getLineNum loc
   getLineNum (ErrorD dloc _) = getLineNum dloc
+  getLineNum (Errors (x:xs)) = getLineNum x
+  getLineNum (Errors []) = error "getLineNum called for empty error list"
 
   getColNum (Error loc _) = getColNum loc
   getColNum (ErrorD dloc _) = getColNum dloc
-
+  getColNum (Errors (x:xs)) = getColNum x
+  getColNum (Errors []) = error "getColNum called for empty error list"
 
 
 instance Semigroup Error where
@@ -56,6 +66,7 @@ instance Eq Error where
   (==) (Error a m) (Error b m') = a == b
   (==) (ErrorD a m) (ErrorD b m') = a == b
   (==) (Errors a) (Errors b) = a == b
+  (==) _ _ = False
 
 
 instance Ord Error where
@@ -63,6 +74,12 @@ instance Ord Error where
   (ErrorD (DLoc (Loc line col) _ ) m) `compare` (Error (Loc line' col') m') = if line == line' then  col `compare` col' else line `compare` line'
   (Error (Loc line col) m) `compare` (ErrorD (DLoc (Loc line' col') _ ) m') = if line == line' then  col `compare` col' else line `compare` line'
   (ErrorD (DLoc (Loc line col) _ ) m) `compare` (ErrorD (DLoc (Loc line' col') _ ) m') = if line == line' then  col `compare` col' else line `compare` line'
+  (Errors x) `compare` (Errors y) = x `compare` y
+  (Errors (x:xs)) `compare` y = x `compare` y
+  y `compare` (Errors (x:xs)) = y `compare` x
+  y `compare` (Errors []) = GT
+  (Errors []) `compare` y = LT
+
 
 -- instance Show Error where
   -- show (Error _ message) = message

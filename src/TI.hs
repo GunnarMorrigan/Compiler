@@ -3,7 +3,7 @@ module TI where
 import Error
 import Lexer
 import AST
-import Parser
+import Parser (mainSegments, tokeniseAndParse)
 import ReturnGraph
 import MutRec
 import TImisc
@@ -56,7 +56,9 @@ tiDecl env (MutRec funcs) = do
     fTypes <- getFuncTypes funcs
     env' <- insertMore env fTypes
     (s1, env'', decls) <- tiMutRecFunDecls env' funcs
+    traceM (red ++ printEnv env'' ++ reset)
     env''' <- generalizeFuncs env'' (Prelude.map (\(a,_,_) -> a) fTypes)
+    traceM (red ++ printEnv env''' ++ reset)
     return (s1, env''', MutRec decls)
 
 tiVarDecls :: TypeEnv -> [VarDecl] -> Scope -> TI (Subst, TypeEnv, [VarDecl])
@@ -123,7 +125,9 @@ tiMutRecFunDecls (TypeEnv env) ((FunDecl funName args (Just funType) vars stmts)
 
     let cs3 = s4 `composeSubst` cs2
 
-    let funDecl = FunDecl funName args (Just $ apply cs3 funType) vars' stmts'
+    let funDecl = FunDecl funName args (Just $ apply cs2 funType) (apply cs2 vars') (apply cs2 stmts')
+
+    let returnEnv = apply cs3 env''
 
     return (cs3, apply cs3 env'', funDecl:funDecls)
 tiMutRecFunDecls (TypeEnv env) ((FunDecl funName args Nothing vars stmts):xs) = do
@@ -148,11 +152,15 @@ tiMutRecFunDecls (TypeEnv env) ((FunDecl funName args Nothing vars stmts):xs) = 
 
             let cs3 = s4 `composeSubst` cs2
 
-            let funDecl' = FunDecl funName args (Just $ apply cs3 funType) vars' stmts'
+            let funtype' = apply cs3 funType
 
-            return (cs3, apply cs2 env''', funDecl':funDecls')
-        _ ->
-            dictate (ErrorD (getDLoc funName) "Function is mutual recursive and should therefore be in the type environment but it is not.") >>
+            -- let funDecl' = FunDecl funName args (Just funtype') (apply cs2 vars') (apply cs2 stmts')
+            let funDecl' = FunDecl funName args (Just funtype') vars' stmts'
+
+            return (cs3, apply cs3 env''', funDecl':funDecls')
+
+        r ->
+            dictate (ErrorD (getDLoc funName) ("Function is mutual recursive and should therefore be in the type environment but it is not." ++ show r)) >>
             return (nullSubst, TypeEnv env, [])
 
 tiFunDecl :: TypeEnv -> FunDecl -> TI (Subst, TypeEnv, FunDecl)
@@ -272,8 +280,7 @@ tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
     let funType = apply s $ apply cs2 fType
 
 
-    -- if  nullOL overloaded
-    if True
+    if  nullOL overloaded
         then
             -- trace ("No 'poly' overloading in " ++ pp funName) $
             let funcScheme = generalize env funType in
@@ -602,7 +609,7 @@ tiExp (TypeEnv env) (ExpFunction locA function locB Nothing) = do
         Just (Scheme lockedVars lockedT,_) -> do
             t' <- instantiate (Scheme lockedVars lockedT)
             return (nullSubst, t', ExpFunction locA function locB (Just t'))
-        _ -> confess (Error defaultLoc  "Ohh fuck on 558")
+        _ -> confess (Error defaultLoc  "shit on  on 558")
 tiExp (TypeEnv env) (ExpFunction locA function locB (Just t)) |
     "_" `isPrefixOf` pp function = do
     case Map.lookup function env of
@@ -635,17 +642,29 @@ tiFunCall (TypeEnv env) monomorph (FunCall locA id args locB _) = do
             let returnType = getReturnType t
             
             return (s1, apply s1 returnType, FunCall locA id args' locB (Just $ apply s1 t),ol)
+        Just (OverScheme lVars lT lOps lFuncs, _) -> 
+            confess (overloadedAsArgument id)
         Just (scheme,s) | isGlobalScope s -> do
             t <- instantiate scheme
             (s1, args', ol) <- typeCheckExps id monomorph (TypeEnv env) nullSubst args [] [] (getArgTypes t)
 
-            -- traceM ("ENV IN " ++ pp id ++ printEnv (TypeEnv env) ++ "\n" ++ pp t ++ printSubst s1)
-
             let returnType = getReturnType t
             return (s1, apply s1 returnType, FunCall locA id args' locB (Just $ apply s1 t), ol)
-        Just (OverScheme lVars lT lOps lFuncs, _) -> 
-            confess (overloadedAsArgument id)
         Just (scheme, ArgScope) -> do
+            t <- instantiate scheme
+            funType <- if isFunctionType t
+                then return t
+                else do
+                    argTypes <- mapM (newSPLVarDLoc . getDLoc) args
+                    FunType locA argTypes <$> newSPLVarLoc locA locB <*> pure locB
+
+            s1 <- injectErrLoc nullSubst (mgu funType t) (DLoc locA locB)
+            
+            (s2, args', ol) <- typeCheckExps id monomorph (TypeEnv env) nullSubst args [] [] (getArgTypes funType)
+            let returnType = getReturnType funType
+            let cs1 = s2 `composeSubst` s1
+            return (cs1, apply cs1 returnType, FunCall locA id args' locB (Just $ apply cs1 funType), ol)
+        Just (scheme, LocalScope) -> do
             t <- instantiate scheme
             funType <- if isFunctionType t
                 then return t

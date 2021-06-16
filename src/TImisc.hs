@@ -1,3 +1,6 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
+
+
 module TImisc where
 
 import Error
@@ -47,7 +50,7 @@ insertID :: TypeEnv -> IDLoc -> SPLType -> Scope -> TI TypeEnv
 insertID (TypeEnv env) id t s =
     case lookupKey id env of
         Just((scheme,s'),id') | s==s'-> dictate (doubleDef2 id id') >> return (TypeEnv env)
-        Nothing -> return $ TypeEnv (Map.insert id (Scheme [] t,s) env)
+        _ -> return $ TypeEnv (Map.insert id (Scheme [] t,s) env)
 
 insertMore :: TypeEnv -> [(IDLoc,SPLType,Scope)] -> TI TypeEnv
 insertMore env [] = return env
@@ -62,10 +65,14 @@ remove (TypeEnv env) var = TypeEnv (Map.delete var env)
 generalizeFuncs :: TypeEnv -> [IDLoc] -> TI TypeEnv
 generalizeFuncs env [] = return env
 generalizeFuncs (TypeEnv env) (x:xs) = case Map.lookup x env of
-    Just (Scheme [] t,scope) -> let scheme = generalize (TypeEnv env) t in
+    Just (Scheme [] t,scope) -> do 
+        let scheme = generalize (TypeEnv env) t
+        traceM (blue ++ pp (Set.toList (ftv t) )++ " env:"  ++  pp (Set.toList (ftv (TypeEnv env))) ++ reset)
         generalizeFuncs (TypeEnv $ Map.insert x (scheme,GlobalScopeFun) env) xs
-    _ ->
-        dictate (ErrorD (getDLoc x) ("Function " ++ pp x ++  " is mutual recursive and should therefore be in the type environment but it is not.")) >>
+    Just (OverScheme [] t ops funcs ,scope) -> let scheme = generalizeOver (TypeEnv env) t ops funcs in
+        generalizeFuncs (TypeEnv $ Map.insert x (scheme,GlobalScopeFun) env) xs
+    s ->
+        dictate (ErrorD (getDLoc x) ("Function " ++ pp x ++  " is mutual recursive and should therefore be in the type environment but it is not." ++ show s)) >>
         return (TypeEnv env)
 
 -- ===================== State ============================
@@ -76,6 +83,8 @@ insertOp2TI (Op2 op (Just (FunType locF1 t t' locF2)) loc) =
         else do
             (s, (ops, funcCalls)) <- get
             put (s+1, (Map.insert (overloadedOpName op (head t)) (Op2 op (Just (FunType locF1 t t' locF2)) loc) ops, funcCalls))
+insertOp2TI _ = error "Unexpected Op2 inserted in the Environment"
+
 
 insertFunCallTI :: FunCall -> TI ()
 insertFunCallTI (FunCall locA id args locB (Just (FunType locF1 t t' locF2))) =
@@ -85,6 +94,7 @@ insertFunCallTI (FunCall locA id args locB (Just (FunType locF1 t t' locF2))) =
             (s, (ops, funcCalls)) <- get
             let f = Map.insert (overloadedTypeName (getID id) (head t)) (FunCall locA id [] locB (Just (FunType locF1 t t' locF2))) funcCalls
             put (s+1, (ops, f))
+insertFunCallTI _ = error "Unexpected FunCall inserted in the Environment"
 
 newSPLVar :: TI SPLType
 newSPLVar =
@@ -154,7 +164,7 @@ instantiateOver (OverScheme vars t ops funcs) = do
     nvars <- mapM (const newSPLVar) vars
     let s = Map.fromList (zip vars nvars)
     return (apply s t, apply s ops, apply s funcs)
-
+instantiateOver (Scheme _ _) = error "Calling instantiateOver with a normal Scheme"
 
 -- ===================== Substitution ============================
 type Subst = Map.Map IDLoc SPLType
@@ -296,8 +306,10 @@ class MGU a where
     mguB :: [(SPLType,SPLType)] -> a -> a ->  TI Subst
     generateError :: [(SPLType,SPLType)] -> a -> a -> Error
 
-instance MGU a => MGU [a] where
+instance  MGU a => MGU [a] where
     mguB _ [] [] = return nullSubst
+    mguB _ [] (y:ys) = error "The lists that mguB [a] was called with, are not equally long."
+    mguB _ (x:xs) [] = error "The lists that mguB [a] was called with, are not equally long."
     mguB pre (x:xs) (y:ys) = do 
         s1 <- mguB [] x y
         s2 <- mguB [] xs ys
@@ -435,6 +447,7 @@ op2Type x e1loc e2loc (DLoc begin end) | x == Plus || x == Min || x == Mult || x
 
     let retType = TypeBasic begin BasicInt end
     return (e1T, e2T, retType, FunType begin [e1T,e2T] retType end)
+
 op2Type x e1loc e2loc (DLoc begin end) | x == Eq || x == Neq = do
     e1T <- newSPLVarLoc (getFstLoc e1loc) (getSndLoc e1loc)
     let IdType (ID _ id _) = e1T
@@ -442,23 +455,27 @@ op2Type x e1loc e2loc (DLoc begin end) | x == Eq || x == Neq = do
 
     let t = TypeBasic begin BasicBool end
     return (e1T, e2T, t, FunType begin [e1T,e2T] t end)
+
 op2Type x e1loc e2loc (DLoc begin end) | x == Le || x == Ge || x == Leq || x == Geq  = do
     tv <- newSPLVarLoc begin (getSndLoc e1loc)
 
     let t = TypeBasic begin BasicBool end
     return (tv, tv, t, FunType begin [tv,tv] t end)
-op2Type x e1loc  e2loc (DLoc begin end) | x== And || x == Or = do
+op2Type x e1loc  e2loc (DLoc begin end) | x == And || x == Or = do
     let e1T = TypeBasic (getFstLoc e1loc) BasicBool (getSndLoc e1loc)
     let e2T = TypeBasic (getFstLoc e2loc) BasicBool (getSndLoc e2loc)
 
     let t = TypeBasic begin BasicBool end
     return (e1T, e2T, t, FunType begin [e1T,e2T] t end)
+
 op2Type Con e1loc e2loc (DLoc begin end) = do
     e1T <- newSPLVarLoc (getFstLoc e1loc) (getSndLoc e1loc)
     let e2T = ArrayType (getFstLoc e1loc) e1T (getFstLoc e1loc)
 
     let t = ArrayType begin e1T end
     return (e1T, e2T, t, FunType begin [e1T,e2T] t end)
+
+op2Type x e1loc e2loc (DLoc begin end) = error ("Undefined operator in op2Type: " ++ pp x ++ " .")
 
 -- ===================== Overloading ============================
 overloadFunction :: [IDLoc] -> SPLType -> TypeEnv ->  [Op2Typed] -> [FunCall] -> ([IDLoc], SPLType, Scheme)
@@ -475,10 +492,14 @@ overloadFunction args (FunType locF1 argsTypes retType locF2) env ops funcs = do
         combine (x:xs) = (\(a,b,c) (as,bs,cs) -> (a:as,b:bs,c:cs) ) x (combine xs)
         opToStuff (Op2 op (Just (FunType locF1 t t' locF2)) loc) =
             (idLocCreator $ overloadedOpName op (head t),Op2 op (Just (FunType locF1 t t' locF2)) loc, FunType locF1 t t' locF2)
+        opToStuff (Op2 op t loc) = error ("Unexpected type: " ++ show t ++ " in opToStuff")
         funcToStuff (FunCall locA id args locB (Just (FunType locF1 t t' locF2))) | getID id == "print" =
             (idLocCreator $ overloadedTypeName "print" (head t), FunCall locA id args locB (Just (FunType locF1 t t' locF2)), FunType locF1 t t' locF2)
         funcToStuff (FunCall locA id args locB (Just (FunType locF1 t t' locF2))) | "_" `isPrefixOf` pp id = 
-            (id,FunCall locA id args locB (Just (FunType locF1 t t' locF2)), FunType locF1 t t' locF2) 
+            (id,FunCall locA id args locB (Just (FunType locF1 t t' locF2)), FunType locF1 t t' locF2)
+        funcToStuff (FunCall locA id args locB t) = error ("Unexpected type: " ++ show t ++ " in funcToStuff")
+overloadFunction args t env ops funcs = error ("overloadFunction did not get a function as type for second argument. Got: "++ pp t)
+
 
 overloadedTypeName :: String -> SPLType -> String
 overloadedTypeName start t = '_':start ++ typeToName t
@@ -501,10 +522,10 @@ op2String Leq = "le"
 op2String Geq = "ge"
 op2String Eq  = "eq"
 op2String Neq = "ne"
-
-op2String x | x `elem` [Plus,Min,Mult,Div,Mod] = undefined
-op2String x | x `elem` [And,Or] = undefined
-op2String Con = undefined
+op2String _ = undefined 
+-- op2String x | x `elem` [Plus,Min,Mult,Div,Mod] = undefined
+-- op2String x | x `elem` [And,Or] = undefined
+-- op2String Con = undefined
   
 
 
@@ -537,10 +558,14 @@ emptyOL = OL Map.empty Map.empty
 singletonOLOp :: Op2Typed -> Overloaded
 singletonOLOp (Op2 op (Just t) loc) = OL (Map.singleton key (Op2 op (Just t) loc)) Map.empty
     where key = overloadedOpName op t
+singletonOLOp (Op2 op Nothing loc) = 
+    error "singletonOLOp, type of Op2 contain nothing ."
 
 singletonOLFun :: FunCall -> Overloaded
 singletonOLFun (FunCall locA id es locB (Just t)) = OL Map.empty (Map.singleton key (FunCall locA id es locB (Just t)))
     where key = overloadedTypeName (getID id) t
+singletonOLFun (FunCall locA id es locB Nothing) = 
+    error "singletonOLFun, type of FunCall contain nothing ."
 
 singletonOLOpFun :: Op2Typed -> FunCall -> Overloaded
 singletonOLOpFun (Op2 op (Just t) loc) (FunCall locA id es locB (Just t')) = OL ops funcs
@@ -549,6 +574,9 @@ singletonOLOpFun (Op2 op (Just t) loc) (FunCall locA id es locB (Just t')) = OL 
         opKey = overloadedOpName op t
         funcs = Map.singleton funcKey (FunCall locA id es locB (Just t'))
         funcKey = overloadedTypeName (pp id) t'
+singletonOLOpFun (Op2 op _ loc) (FunCall locA id es locB _) = 
+    error "singletonOLOpFun, types of Op2 or FunCall contain a nothing ."
+
 
 toOLOpFun :: [Op2Typed] -> [FunCall] -> Overloaded
 toOLOpFun ops funcs = 
@@ -558,6 +586,10 @@ toOLOpFun ops funcs =
     where 
         toMapOp (Op2 op (Just t) loc) 
                 = (overloadedOpName op t, Op2 op (Just t) loc)
+        toMapOp (Op2 op Nothing loc) =
+            error "toOLOpFun contains Nothing type in Op2Typed list."
+        toMapFun (FunCall locA id es locB Nothing) =
+            error "toOLOpFun contains Nothing type in FunCall list."
         toMapFun (FunCall locA id es locB (Just t'))
                 = (overloadedTypeName (pp id) t', FunCall locA id es locB (Just t'))
 
@@ -581,6 +613,10 @@ injectErrLoc def runable loc = do
         (This (Error _ msg), state) -> put state >> dictate (ErrorD loc msg) >> return def
         (This (ErrorD _ msg), state) -> put state >> dictate (ErrorD loc msg) >> return def
         (This (Errors (ErrorD _ msg:xs)), state) -> put state >> dictate (Errors (ErrorD loc msg:xs)) >> return def
+        (This (Errors (Error _ msg:xs)), state) -> put state >> dictate (Errors (ErrorD loc msg:xs)) >> return def
+        
+        (This (Errors []), state) -> error "Internal error: (injectErrLoc) Injecting location into an empty list error is not possible."
+        _ -> error "Internal error: (injectErrLoc) Unmatched Error(s)."
 
 injectErrLocMsg :: a -> TI a -> ErrorLoc -> String -> TI a
 injectErrLocMsg def runable loc m = do
@@ -591,6 +627,10 @@ injectErrLocMsg def runable loc m = do
         (This (Error _ _), state) -> put state >> dictate (ErrorD loc m) >> return def
         (This (ErrorD _ _), state) -> put state >> dictate (ErrorD loc m) >> return def
         (This (Errors (ErrorD _ _:xs)), state) -> put state >> dictate (Errors (ErrorD loc m:xs)) >> return def
+        (This (Errors (Error _ _:xs)), state) -> put state >> dictate (Errors (ErrorD loc m:xs)) >> return def
+
+        (This (Errors []), state) -> error "Internal error: (injectErrLoc) Injecting location into an empty list error is not possible."
+        _ -> error "Internal error: (injectErrLoc) Unmatched Error(s)."
 
 injectErrMsgAddition :: a -> TI a -> ErrorLoc -> String -> TI a
 injectErrMsgAddition def runable loc m = do
@@ -601,6 +641,10 @@ injectErrMsgAddition def runable loc m = do
         (This (Error _ msg), state) -> put state >> dictate (ErrorD loc (m++" "++msg)) >> return def
         (This (ErrorD _ msg), state) -> put state >> dictate (ErrorD loc (m++" "++msg)) >> return def
         (This (Errors (ErrorD _ msg:xs)), state) -> put state >> dictate (Errors (ErrorD loc (m++" "++msg):xs)) >> return def
+        (This (Errors (Error _ msg:xs)), state) -> put state >> dictate (Errors (ErrorD loc (m ++ " "++ msg):xs)) >> return def
+        
+        (This (Errors []), state) -> error "Internal error: (injectErrLoc) Injecting location into an empty list error is not possible."
+        _ -> error "Internal error: (injectErrLoc) Unmatched Error(s)."
 
 injectLocType :: ErrorLoc -> SPLType -> SPLType
 injectLocType (DLoc locA locB) (TypeBasic _ t _) = TypeBasic locA t locB
@@ -646,14 +690,14 @@ printEnv (TypeEnv env) = "\nEnv:\n" ++ printEnv1 (Map.toList env)
 
 printEnv1 :: [(IDLoc, (Scheme,Scope))] -> String
 printEnv1 [] = ""
-printEnv1 ((ID _ id _,(Scheme v t,GlobalScopeFun)):xs) = id ++" :: " ++ pp t ++", Global function\n"++ printEnv1 xs
-printEnv1 ((ID _ id _,(Scheme v t,GlobalScopeVar)):xs) = id ++" :: " ++ pp t ++", Global Var\n"++ printEnv1 xs
-printEnv1 ((ID _ id _,(Scheme v t,LocalScope)):xs) = id ++" :: " ++ pp t ++", Local\n"++ printEnv1 xs
-printEnv1 ((ID _ id _,(Scheme v t,ArgScope)):xs) = id ++" :: " ++ pp t ++", arg\n"++ printEnv1 xs
-printEnv1 ((ID _ id _,(OverScheme v t _ _,LocalScope)):xs) = id ++" :: " ++ pp t ++", over Local\n"++ printEnv1 xs
-printEnv1 ((ID _ id _,(OverScheme v t _ _,GlobalScopeFun)):xs) = id ++" :: " ++ pp t ++", over Global function\n"++ printEnv1 xs
-printEnv1 ((ID _ id _,(OverScheme v t _ _,GlobalScopeVar)):xs) = id ++" :: " ++ pp t ++", over Global Var\n"++ printEnv1 xs
-printEnv1 ((ID _ id _,(OverScheme v t _ _,ArgScope)):xs) = id ++" :: " ++ pp t ++ ", over arg\n"++ printEnv1 xs
+printEnv1 ((ID _ id _,(Scheme v t,GlobalScopeFun)):xs) = id ++" :: " ++ pp t ++ " | " ++ pp v ++", Global function\n"++ printEnv1 xs
+printEnv1 ((ID _ id _,(Scheme v t,GlobalScopeVar)):xs) = id ++" :: " ++ pp t ++ " | " ++ pp v ++", Global Var\n"++ printEnv1 xs
+printEnv1 ((ID _ id _,(Scheme v t,LocalScope)):xs) = id ++" :: " ++ pp t ++ " | " ++ pp v ++", Local\n"++ printEnv1 xs
+printEnv1 ((ID _ id _,(Scheme v t,ArgScope)):xs) = id ++" :: " ++ pp t ++ " | " ++ pp v ++", arg\n"++ printEnv1 xs
+printEnv1 ((ID _ id _,(OverScheme v t _ _,LocalScope)):xs) = id ++" :: " ++ pp t ++ " | " ++ pp v ++", over Local\n"++ printEnv1 xs
+printEnv1 ((ID _ id _,(OverScheme v t _ _,GlobalScopeFun)):xs) = id ++" :: " ++ pp t ++ " | " ++ pp v ++", over Global function\n"++ printEnv1 xs
+printEnv1 ((ID _ id _,(OverScheme v t _ _,GlobalScopeVar)):xs) = id ++" :: " ++ pp t ++ " | " ++ pp v ++", over Global Var\n"++ printEnv1 xs
+printEnv1 ((ID _ id _,(OverScheme v t _ _,ArgScope)):xs) = id ++" :: " ++ pp t ++ " | " ++ pp v ++", over arg\n"++ printEnv1 xs
 
 
 printOverloading :: (Map String Op2Typed, Map String FunCall) -> String
@@ -662,7 +706,9 @@ printOverloading (a,b) = "\nOverloading:\n" ++  printOverloading1 (Map.toList a)
 printOverloading1 :: [(String, Op2Typed)] -> [(String, FunCall)] -> String
 printOverloading1 [] [] = ""
 printOverloading1 ((name, Op2 op (Just t) _):xs) funcs = name ++ " " ++ pp op ++ " :: " ++ pp t ++"\n" ++ printOverloading1 xs funcs
+printOverloading1 ((name, Op2 op Nothing _):xs) funcs = name ++ " " ++ pp op ++ " :: Nothing" ++"\n" ++ printOverloading1 xs funcs
 printOverloading1 [] ((name, FunCall _ name2 _ _ (Just t) ):xs) =  name ++ " :: " ++ pp t ++"\n" ++ printOverloading1 [] xs
+printOverloading1 [] ((name, FunCall _ name2 _ _ Nothing ):xs) =  name ++ " :: Nothing" ++"\n" ++ printOverloading1 [] xs
 
 printSubst :: Subst -> String
 printSubst s = "\nSubst:\n" ++ printSubst1 (Map.toList s)

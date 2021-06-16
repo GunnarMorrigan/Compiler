@@ -343,12 +343,15 @@ instance PrettyPrinter SPLType where
 
 getAllTypes :: SPLType -> [SPLType]
 getAllTypes (FunType _ args ret _) = args ++ [ret]
+getAllTypes _ = error "getAllTypes not called with a function type"
 
 getArgTypes :: SPLType -> [SPLType]
 getArgTypes (FunType _ args ret _) = args
+getArgTypes _ = error "getArgTypes not called with a function type"
 
 getReturnType :: SPLType -> SPLType
 getReturnType (FunType _ args ret _) = ret
+getReturnType _ = error "getReturnType not called with a function type"
 
 instance PrettyPrinter BasicType where
   pp BasicInt = "Int"
@@ -413,6 +416,7 @@ instance PrettyPrinter Op1 where
   pp Not = "!"
 instance PrettyPrinter Op2Typed where
   pp (Op2 op (Just t) loc) = show op ++ " :: " ++ pp t
+  pp (Op2 op Nothing loc ) = show op ++ " :: Nothing"
 
 instance PrettyPrinter Op2 where
   pp Plus = "+" -- Int->Int->Int
@@ -446,3 +450,4 @@ sortDecls (FuncMain (FunDecl (ID locA "main" locB) [] fType locals stmts):xs) =
     let (globals,funcs,main) = sortDecls xs 
     in (globals,funcs,Just (FunDecl (ID locA "main" locB) [] fType locals stmts))
 sortDecls (FuncMain x:xs) = let (globals,funcs,main) = sortDecls xs in (globals,x:funcs,main)
+sortDecls (MutRec _:_) = error "sortDecls called with code containing mutRec."
