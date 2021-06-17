@@ -1,73 +1,142 @@
 BRA main
-app:  LINK 0
-	LDL -4
-	LDL -3
-	LDL -2
-	JSR
-	AJS -2
-	LDR RR
-	appEnd:  STR RR
-	UNLINK
+annoying:  LINK 0
+	annoyingEnd:  UNLINK
 	RET
-correct:  LINK 0
-	LDL -4
-	LDL -3
+bar:  LINK 0
 	LDL -2
-	BSR equal
-	AJS -3
-	LDR RR
-	correctEnd:  STR RR
-	UNLINK
+	BRT _bar_ifTh0
+	LDC 11
+	TRAP 0
+	BRA bar_ifCon0
+	_bar_ifTh0:  NOP
+	bar_ifCon0:  BRA barEnd
+	barEnd:  UNLINK
 	RET
-equal:  LINK 0
-	LDL -4
-	LDL -3
-	LDL -2
-	JSR
-	AJS -2
-	LDR RR
-	equalEnd:  STR RR
-	UNLINK
-	RET
-kaasfunctie:  LINK 2
-	LDC 10
-	STL 1
+foo:  LINK 0
+	LDC -1
+	BRT _foo_ifTh0
 	LDC 0
-	STL 2
+	BSR _printBool
+	AJS -1
+	BRA foo_ifCon0
+	_foo_ifTh0:  LDC -1
+	BSR _printBool
+	AJS -1
+	foo_ifCon0:  NOP
+	fooEnd:  UNLINK
+	RET
+haha:  LINK 0
 	LDL -2
-	LDC 1
+	BRF haha_ifCon0
+	haha_ifCon0:  LDC 8
+	TRAP 0
+	BRA hahaEnd
+	hahaEnd:  UNLINK
+	RET
+jojo:  LINK 0
+	LDL -2
+	BRT _jojo_ifTh0
+	BRA jojo_ifCon0
+	_jojo_ifTh0:  LDC 10
+	TRAP 0
+	jojo_ifCon0:  NOP
+	jojoEnd:  UNLINK
+	RET
+w:  LINK 0
+	_w_while0:  LDL -2
+	LDC 10
 	LT
-	BRF kaasfunctie_ifCon0
-	LDL 2
-	STR RR
-	BRA kaasfunctieEnd
-	kaasfunctie_ifCon0:  LDL 1
-	LDL -3
-	MUL
-	LDL -2
-	MUL
-	LDL -3
+	BRF wEnd
 	LDL -2
 	LDC 1
-	SUB
-	BSR kaasfunctie
-	AJS -2
-	LDR RR
-	SUB
-	LDLA 2
+	ADD
+	LDLA -2
 	STA 0
-	LDL 2
-	STR RR
-	BRA kaasfunctieEnd
-	kaasfunctieEnd:  STR RR
+	LDL -2
+	TRAP 0
+	LDC 10
+	TRAP 1
+	BRA _w_while0
+	wEnd:  UNLINK
+	RET
+_printBool:  LINK 0
+	LDL -2
+	BRF _printFalse
+	LDC 101
+	LDC 117
+	LDC 114
+	LDC 84
+	TRAP 1
+	TRAP 1
+	TRAP 1
+	TRAP 1
+	UNLINK
+	RET
+	_printFalse:  LDC 101
+	LDC 115
+	LDC 108
+	LDC 97
+	LDC 70
+	TRAP 1
+	TRAP 1
+	TRAP 1
+	TRAP 1
+	TRAP 1
 	UNLINK
 	RET
 main:  LINK 0
+	LDC 102
+	TRAP 1
 	LDC 10
-	LDC 2
-	LDC 54
-	BSR app
-	AJS -3
-	LDR RR
-	TRAP 0
+	TRAP 1
+	BSR foo
+	LDC 10
+	TRAP 1
+	LDC 66
+	TRAP 1
+	LDC 10
+	TRAP 1
+	LDC -1
+	BSR bar
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDC 0
+	BSR bar
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDC 87
+	TRAP 1
+	LDC 0
+	BSR w
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDC -1
+	BSR haha
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDC 0
+	BSR haha
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDC -1
+	BSR jojo
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDC 0
+	BSR jojo
+	AJS -1
+	LDC 10
+	TRAP 1
+	LDC -1
+	BSR annoying
+	AJS -1
+	LDC 0
+	BSR annoying
+	AJS -1
 	HALT

@@ -1,0 +1,108 @@
+foo(){
+  if (True){
+    print(True);
+  }
+  else{
+    print(False);
+  }
+}
+
+w(a){
+  
+  while (a < 10){
+    a = a + 1;
+    print(a);
+    print('\n');
+  }
+
+}
+
+
+bar(x) {
+  if(x) {
+
+  }
+  else {
+    print(11);
+  }
+  return;
+}
+
+haha(x) {
+  if(x) {
+    
+  }
+  print(8);
+  return;
+}
+
+jojo(x) {
+  if(x) {
+    print(10);
+  }
+  else {
+    
+  }
+}
+
+annoying(x) {
+  if(x) {
+
+  }
+  else {
+    
+  }
+}
+
+main() {
+  print('f');
+  print('\n');
+  foo();
+  print('\n');
+
+  print('B');
+  print('\n');
+  bar(True);
+  print('\n');
+  bar(False);
+  print('\n');
+
+  print('W');
+  w(0);
+  print('\n');
+  
+  haha(True);
+  print('\n');
+  haha(False);
+  print('\n');
+  
+  jojo(True);
+  print('\n');
+  jojo(False);
+  print('\n');
+
+
+  annoying(True);
+  annoying(False);
+}
+
+/*
+fTrue
+B
+
+11
+W1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+
+8
+8
+10
+*/

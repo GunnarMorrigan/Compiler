@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 module TI where
 
 import Error
@@ -57,7 +58,7 @@ tiDecl env (MutRec funcs) = do
     env' <- insertMore env fTypes
     (s1, env'', decls) <- tiMutRecFunDecls env' funcs
     traceM (red ++ printEnv env'' ++ reset)
-    env''' <- generalizeFuncs env'' (Prelude.map (\(a,_,_) -> a) fTypes)
+    env''' <- generalizeFuncs env env'' (Prelude.map (\(a,_,_) -> a) fTypes)
     traceM (red ++ printEnv env''' ++ reset)
     return (s1, env''', MutRec decls)
 
@@ -129,7 +130,13 @@ tiMutRecFunDecls (TypeEnv env) ((FunDecl funName args (Just funType) vars stmts)
 
     let returnEnv = apply cs3 env''
 
-    return (cs3, apply cs3 env'', funDecl:funDecls)
+
+    (_,s, overloaded) <- monomorphize funDecl env'
+    if  nullOL overloaded
+        then
+            return (cs3, apply cs3 env'', funDecl:funDecls)
+        else
+            confess (overloadingMutRec funName)
 tiMutRecFunDecls (TypeEnv env) ((FunDecl funName args Nothing vars stmts):xs) = do
     case Map.lookup funName env of
         Just (Scheme [] funType,s) | isGlobalScope s ->  do
@@ -157,10 +164,15 @@ tiMutRecFunDecls (TypeEnv env) ((FunDecl funName args Nothing vars stmts):xs) = 
             -- let funDecl' = FunDecl funName args (Just funtype') (apply cs2 vars') (apply cs2 stmts')
             let funDecl' = FunDecl funName args (Just funtype') vars' stmts'
 
-            return (cs3, apply cs3 env''', funDecl':funDecls')
+            (_,s, overloaded) <- monomorphize funDecl' env'
 
+            if  nullOL overloaded
+                then
+                    return (cs3, apply cs3 env''', funDecl':funDecls')
+                else
+                    confess (overloadingMutRec funName)
         r ->
-            dictate (ErrorD (getDLoc funName) ("Function is mutual recursive and should therefore be in the type environment but it is not." ++ show r)) >>
+            dictate (mutRecShouldBeInTypeEnv funName) >>
             return (nullSubst, TypeEnv env, [])
 
 tiFunDecl :: TypeEnv -> FunDecl -> TI (Subst, TypeEnv, FunDecl)
@@ -198,7 +210,6 @@ tiFunDecl env (FunDecl funName args _ vars stmts) | pp funName == "main" =
                 else
                     confess (Error (getFstLoc funName) ("Some functions require overloaded built-ins (print, ==, <, >, etc) but the type for these functions is unkown.\n" 
                                                 ++"It is thus impossible to create these for you."))
-
 tiFunDecl env (FunDecl funName args (Just funType) vars stmts) = do
     let FunType locF1 argTypes retType locF2 = funType
     case length args `compare` length argTypes of
@@ -247,7 +258,6 @@ tiFunDecl env (FunDecl funName args (Just funType) vars stmts) = do
                         let (args', fType', scheme) = overloadFunction args (apply s funType) env polyOp2 polyFunCall
                         let FunDecl funName' _ (Just _) vars'' stmts'' = funDecl'
                         return (cs2, TImisc.insert (apply cs2 env) funName scheme GlobalScopeFun, FunDecl funName' args' (Just fType') vars'' stmts'')
-
 tiFunDecl env (FunDecl funName args Nothing vars stmts) = do
     argTypes <- mapM (newSPLVarDLoc . getDLoc) args
     retType <- newSPLVar

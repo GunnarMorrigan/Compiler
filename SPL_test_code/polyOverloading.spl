@@ -8,7 +8,7 @@ equal(x, y){
     return x == y;
 }
 
-kut(k, l){
+kk(k, l){
     return equal(k,l);
 }
 
@@ -19,13 +19,13 @@ kut(k, l){
 
 main(){
     print(1);
-    kut([],[]);
-    //piemel([],[],True,False);
+    kk([],[]);
+    //pp([],[],True,False);
 }
 
 /*
-piemel(k, l, m, n){
-    return kutje(k,l);
+kk(k, l, m, n){
+    return kkj(k,l);
 }
 
 

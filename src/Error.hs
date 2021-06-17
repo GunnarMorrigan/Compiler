@@ -173,8 +173,12 @@ applVarAsFunc id = ErrorD (getDLoc id) ("Variable: '" ++ pp id ++ "', is being u
 
 overloadedAsArgument id = ErrorD (getDLoc id) ("Function: '" ++ pp id ++ "', uses unclear overloading. \nUsing '" ++ pp id  ++ "' as a higher order function is not allowed. \nProviding a fully rigid type signature may help.")
 
+
 appliedStdOnFunction stds id loc = ErrorD loc ("Cannot apply: " ++ p stds ++ " to function: '" ++ pp id ++ "'")
   where p x = intercalate ", " (map pp x)
+
+overloadingMutRec funName = ErrorD (getDLoc funName) ("Overloaded built-ins not allowed in Mutual Recursive functions. \nFound in function: " ++ pp funName)
+mutRecShouldBeInTypeEnv x = ErrorD (getDLoc x) ("Function " ++ pp x ++  " is mutual recursive and should therefore be in the type environment but it is not.")
 -- ========== Colors ==========
 reset = "\x1b[0m"
 bright = "\x1b[1m"

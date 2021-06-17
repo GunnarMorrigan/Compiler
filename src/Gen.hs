@@ -180,10 +180,10 @@ genStmts recCall ((StmtIf e stmts (Just els) loc):xs) c id env = do
     let (ID _ fname _) = id
     (th, _, contin) <- newIf fname
 
-    let elseBranchEnd = if Prelude.null xs then [BRA (fname++"End")] else [BRA contin]
+    -- let elseBranchEnd = if Prelude.null xs then [BRA (fname++"End")] else [BRA contin]
 
-    (elseStmt, env') <- combineResult (genExp e [BRT th] env) (genStmts True els [] id)
-    let elseStmt' = elseStmt ++ elseBranchEnd
+    (elseStmt, env') <- combineResult (genExp e [BRT th] env) (genStmts True els [BRA contin] id)
+    -- let elseStmt' = elseStmt ++ elseBranchEnd
 
     (ifElseStmt, env'') <- genStmts True stmts [] id env'
     -- if Prelude.null ifElseStmt then traceM (red ++ " ifElseStmt is empty! \n"++pp e ++ "\n" ++ pp loc ++ reset) else return ()
@@ -191,16 +191,17 @@ genStmts recCall ((StmtIf e stmts (Just els) loc):xs) c id env = do
 
     (rest, env''') <- genStmts True xs c id env''
     let rest' = insertLabel contin rest
+    let continNop = insertLabel contin [NOP]
 
     case (Prelude.null stmts, Prelude.null els, Prelude.null xs) of
         (True, True, True) -> return (c, env'')
-        (False, True, True) -> return (elseStmt'++ifElseStmt'++c, env'')
-        (True, False, True) -> return (elseStmt'++insertLabel th [NOP]++c, env'') 
+        (False, True, True) -> return (elseStmt++ifElseStmt'++continNop++c, env'')
+        (True, False, True) -> return (elseStmt++insertLabel th [NOP]++continNop++c, env'') 
         (True, True, False) -> return (rest, env''')
-        (False, False, True) -> return (elseStmt'++ifElseStmt'++c, env'')
-        (True, False, False) -> return (elseStmt'++insertLabel th [NOP]++rest', env''')
-        (False, True, False) -> return (elseStmt'++ifElseStmt'++rest', env''')
-        (False, False, False) -> return (elseStmt'++ifElseStmt'++rest', env''')
+        (False, False, True) -> return (elseStmt++ifElseStmt'++continNop++c, env'')
+        (True, False, False) -> return (elseStmt++insertLabel th [NOP]++rest', env''')
+        (False, True, False) -> return (elseStmt++ifElseStmt'++rest', env''')
+        (False, False, False) -> return (elseStmt++ifElseStmt'++rest', env''')
 
     -- return $ if Prelude.null xs 
     --             then (elseStmt++ifElseStmt'++c, env'') 
@@ -228,7 +229,7 @@ genStmt (StmtAssignVar (ID locA name locB) (Field []) exp t) c _ env =
     case Map.lookup (ID locA name locB) env of
         Nothing -> throwError $ ErrorD (DLoc locA locB) ("Variable " ++ name ++ " unkown in generator " ++ showLoc locA) 
         Just mem -> do
-            let storeVar = loadAddress mem ++ [STA 0]
+            let storeVar = storeAddress mem
             (assembly, env') <- genExp exp storeVar env
             return (assembly++c, env') 
 genStmt (StmtAssignVar (ID locA name locB) (Field xs) exp (Just t)) c _ env = 
@@ -665,6 +666,12 @@ loadAddress (G x t) = case x of
     0 -> load (R R5)
     _ -> load (R R5)++[LDC x, ADD]
 loadAddress (R r)   = [LDR r]
+
+storeAddress :: Mem -> [Instruct]
+storeAddress (G x t) = load (R R5)++[STA x]
+storeAddress (L x _) = [LDLA x, STA 0]
+
+
 
 load :: Mem -> [Instruct] 
 load (L x _) = [LDL x]

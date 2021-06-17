@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 module MutRec where
 
 import Data.Graph as Graph
@@ -37,7 +38,7 @@ instance SPLGraph Decl where
 
 instance Callees Decl where
     getCallees (VarMain e) = getCallees e
-    getCallees (FuncMain e) = getCallees e 
+    getCallees (FuncMain e) = getCallees e
 
 instance Callees FunDecl where
     getCallees (FunDecl _ _ _ vs stmts) = getCallees vs ++ getCallees stmts
@@ -71,6 +72,7 @@ removeMutRec [] = []
 removeMutRec (x:xs) = x:removeMutRec xs
 
 showSCC :: [SCC (Decl, String, [String])] -> IO()
+showSCC [] = return ()
 showSCC [x] = print x
 showSCC (x:xs) = do
     print x
@@ -101,6 +103,7 @@ onlyFuncMain :: [(Decl, IDLoc, [IDLoc])] -> Bool
 onlyFuncMain [] = True
 onlyFuncMain ((VarMain x,_,_):xs) = False
 onlyFuncMain ((FuncMain x,_,_):xs) = onlyFuncMain xs
+onlyFuncMain ((MutRec x,_,_):xs) = False
 
 -- ===== Remove dead code =====
 removeDeadCode :: SPL -> Either Error SPL

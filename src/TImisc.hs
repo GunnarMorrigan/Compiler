@@ -62,18 +62,30 @@ insertMore (TypeEnv env) ((id,t,s):xs) =
 remove :: TypeEnv -> IDLoc -> TypeEnv
 remove (TypeEnv env) var = TypeEnv (Map.delete var env)
 
-generalizeFuncs :: TypeEnv -> [IDLoc] -> TI TypeEnv
-generalizeFuncs env [] = return env
-generalizeFuncs (TypeEnv env) (x:xs) = case Map.lookup x env of
+-- generalizeFuncs :: TypeEnv -> [IDLoc] -> TI TypeEnv
+-- generalizeFuncs env [] = return env
+-- generalizeFuncs (TypeEnv env) (x:xs) = case Map.lookup x env of
+--     Just (Scheme [] t,scope) -> do 
+--         let scheme = generalize (TypeEnv env) t
+--         traceM (blue ++ pp (Set.toList (ftv t) )++ " env:"  ++  pp (Set.toList (ftv (TypeEnv env))) ++ reset)
+--         generalizeFuncs (TypeEnv $ Map.insert x (scheme,GlobalScopeFun) env) xs
+--     Just (OverScheme [] t ops funcs ,scope) -> let scheme = generalizeOver (TypeEnv env) t ops funcs in
+--         generalizeFuncs (TypeEnv $ Map.insert x (scheme,GlobalScopeFun) env) xs
+--     s ->
+--         dictate (ErrorD (getDLoc x) ("Function " ++ pp x ++  " is mutual recursive and should therefore be in the type environment but it is not." ++ show s)) >>
+--         return (TypeEnv env)
+
+generalizeFuncs :: TypeEnv -> TypeEnv -> [IDLoc] -> TI TypeEnv
+generalizeFuncs old new [] = return old
+generalizeFuncs old (TypeEnv newEnv) (x:xs) = case Map.lookup x newEnv of
     Just (Scheme [] t,scope) -> do 
-        let scheme = generalize (TypeEnv env) t
-        traceM (blue ++ pp (Set.toList (ftv t) )++ " env:"  ++  pp (Set.toList (ftv (TypeEnv env))) ++ reset)
-        generalizeFuncs (TypeEnv $ Map.insert x (scheme,GlobalScopeFun) env) xs
-    Just (OverScheme [] t ops funcs ,scope) -> let scheme = generalizeOver (TypeEnv env) t ops funcs in
-        generalizeFuncs (TypeEnv $ Map.insert x (scheme,GlobalScopeFun) env) xs
+        let scheme = generalize old t
+        let TypeEnv oldEnv = old
+        generalizeFuncs (TypeEnv $ Map.insert x (scheme,GlobalScopeFun) oldEnv) (TypeEnv newEnv) xs
+    Just (OverScheme [] t ops funcs ,scope) -> undefined 
     s ->
-        dictate (ErrorD (getDLoc x) ("Function " ++ pp x ++  " is mutual recursive and should therefore be in the type environment but it is not." ++ show s)) >>
-        return (TypeEnv env)
+        dictate (mutRecShouldBeInTypeEnv x) >>
+        return old
 
 -- ===================== State ============================
 insertOp2TI :: Op2Typed -> TI ()

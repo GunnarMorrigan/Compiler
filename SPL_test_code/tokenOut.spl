@@ -1,1 +1,0 @@
-FunDecl (ID (Loc 6 1) "equal" (Loc 6 6)) [ID (Loc 6 7) "x" (Loc 6 8),ID (Loc 6 10) "y" (Loc 6 11)] Nothing [] [StmtReturn (Just (ExpOp2 (Loc 7 14) (ExpId (ID (Loc 7 12) "x" (Loc 7 13)) (Field [])) (Op2 Eq Nothing (Loc 7 14)) (ExpId (ID (Loc 7 17) "y" (Loc 7 18)) (Field [])) (Loc 7 16))) (Loc 7 5)]
