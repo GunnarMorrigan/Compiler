@@ -1,0 +1,32 @@
+var hoi = (10 + 2);
+
+function2 (a, b) :: Bool Int -> Void {
+	while (a) {
+		return 10;
+		return 10;
+	}
+	return b;
+}
+
+temp (x, y) :: a b -> (a, b) {
+	if ((x == True)) {
+		print(('x' : []));
+		b = (b + 10);
+		b = (b + 10);
+		return ((10 + ((10 * 9) / 7)) + 8);
+	} else {
+		print(('x' : []));
+		return 10;
+	}
+}
+Int x = 10;
+
+temp (x, y) :: Int Int -> (Int, Int) {
+	if ((x == True)) {
+		print(('x' : []));
+		return ((10 + ((10 * 9) / 7)) + 8);
+	} else {
+		print(('x' : []));
+		return 10;
+	}
+}
